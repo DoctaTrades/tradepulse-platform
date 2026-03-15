@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     const fcfMargin = latestIncome.revenue ? Math.round((freeCashFlow / latestIncome.revenue) * 100 * 10) / 10 : null;
 
     // Dividend — compute from profile data
-    const annualDiv = profile.lastDiv || 0;
+    const annualDiv = profile.lastDividend || profile.lastDiv || 0;
     const divYield = ratios.dividendYielTTM ? Math.round(ratios.dividendYielTTM * 100 * 100) / 100
       : (annualDiv && price && price > 0) ? Math.round((annualDiv / price) * 100 * 100) / 100 : 0;
     const payoutRatio = ratios.payoutRatioTTM ? Math.round(ratios.payoutRatioTTM * 100 * 10) / 10
