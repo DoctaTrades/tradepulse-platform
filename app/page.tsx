@@ -38,6 +38,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const JournalModule = dynamic(() => import('./modules/journal/JournalModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading journal...</div> });
 const ScreenerModule = dynamic(() => import('./modules/screener/ScreenerModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading screener...</div> });
 const MarketPulseModule = dynamic(() => import('./modules/research/MarketPulseModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading market pulse...</div> });
+const DeepDiveModule = dynamic(() => import('./modules/research/DeepDiveModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading deep dive...</div> });
 
 // ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }: { onAuth: (user: any) => void }) {
@@ -129,6 +130,7 @@ const SIDEBAR = [
   { label:"Research", items:[
     { id:"screener", icon:"search", name:"Screener" },
     { id:"marketpulse", icon:"trendUp", name:"Market Pulse" },
+    { id:"deepdive", icon:"search", name:"Deep Dive" },
   ]},
   { label:"Tools", items:[
     { id:"playbook", icon:"book", name:"Playbook" },
@@ -269,6 +271,9 @@ export default function TradePulsePlatform() {
 
           {/* Market Pulse module */}
           {tab === "marketpulse" && <MarketPulseModule/>}
+
+          {/* Deep Dive module */}
+          {tab === "deepdive" && <DeepDiveModule/>}
         </div>
       </div>
     </div>
