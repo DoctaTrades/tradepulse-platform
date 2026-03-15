@@ -218,20 +218,30 @@ export default function ScreenerModule({ user }: { user?: any }) {
     emaTrend: 'any', targetDelta: 0.30, targetDTE: [25, 45] as [number, number],
   });
 
-  // Check Schwab connection status on load
+  // Admin IDs that can use platform Schwab
+  const ADMIN_IDS = ['a4f7c71e-95bc-43f9-bbfd-108f1feb6f48'];
+  const ADMIN_EMAILS = ['risethediver@gmail.com'];
+  const isAdmin = user?.id && ADMIN_IDS.includes(user.id) || user?.email && ADMIN_EMAILS.includes(user.email?.toLowerCase());
+
+  // Check Schwab connection status on load — only for admin
   useEffect(() => {
-    fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
+    if (isAdmin) {
+      fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
+    } else {
+      // Non-admin: show disconnected for platform Schwab
+      setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'N/A' });
+    }
     // Check URL params for OAuth callback result
     const params = new URLSearchParams(window.location.search);
     if (params.get('schwab_connected')) {
-      setSchwabStatus({ connected: true, expiresAt: Date.now() + 1800000, refreshExpiresEstimate: '~7 days' });
+      if (isAdmin) setSchwabStatus({ connected: true, expiresAt: Date.now() + 1800000, refreshExpiresEstimate: '~7 days' });
       window.history.replaceState({}, '', '/');
     }
     if (params.get('schwab_error')) {
       setLogs(prev => [...prev, `⚠ Schwab auth error: ${params.get('schwab_error')}`]);
       window.history.replaceState({}, '', '/');
     }
-  }, []);
+  }, [user?.id]);
 
   // ─── SCAN ─────────────────────────────────────────────
   const runScan = useCallback(async () => {
@@ -520,8 +530,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
           <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{results.length || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Results</div></div>
           <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{scanStats.scanned || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Scanned</div></div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border" style={{ borderColor: 'var(--border)', background: 'var(--navy3)' }}>
-            <div className={`w-2 h-2 rounded-full ${schwabStatus.connected ? 'bg-green-500 shadow-[0_0_8px_#10b981]' : 'bg-gray-500'}`} />
-            <span className="font-mono text-[10px]" style={{ color: 'var(--text-mid)' }}>{schwabStatus.connected ? 'SCHWAB' : scanning ? 'SCANNING' : 'READY'}</span>
+            <div className={`w-2 h-2 rounded-full ${schwabStatus.connected ? 'bg-green-500 shadow-[0_0_8px_#10b981]' : userKeys.schwab?.clientId ? 'bg-green-400' : userKeys.tradier?.accessToken ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : userKeys.polygon?.apiKey ? 'bg-yellow-500' : 'bg-gray-500'}`} />
+            <span className="font-mono text-[10px]" style={{ color: 'var(--text-mid)' }}>{schwabStatus.connected ? 'SCHWAB' : userKeys.schwab?.clientId ? 'SCHWAB (Personal)' : userKeys.tradier?.accessToken ? 'TRADIER' : userKeys.polygon?.apiKey ? 'POLYGON' : scanning ? 'SCANNING' : 'NO API'}</span>
           </div>
         </div>
         {scanning && <div className="font-mono text-xs" style={{ color: 'var(--gold)' }}>⚡ {scanProgress.ticker} ({scanProgress.current}/{scanProgress.total})</div>}
