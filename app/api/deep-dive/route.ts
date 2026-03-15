@@ -13,24 +13,33 @@ async function fmpFetch(endpoint: string, params: Record<string, string> = {}) {
   return res.json();
 }
 
+// Safe fetch that returns empty on failure (free tier may not have all endpoints)
+async function safeFmpFetch(endpoint: string, params: Record<string, string> = {}) {
+  try {
+    return await fmpFetch(endpoint, params);
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(req: NextRequest) {
   const ticker = req.nextUrl.searchParams.get('ticker')?.toUpperCase();
   if (!ticker) return NextResponse.json({ error: 'Missing ticker parameter' });
   if (!FMP_KEY) return NextResponse.json({ error: 'FMP API key not configured' });
 
   try {
-    // Fetch all data in parallel
+    // Fetch all data in parallel — use safe fetch for endpoints that may not be on free tier
     const [profileArr, ratiosArr, incomeArr, balanceArr, cashFlowArr, quoteArr, ratingArr, analystArr, earningsArr, growthArr] = await Promise.all([
       fmpFetch('/profile', { symbol: ticker }),
-      fmpFetch('/ratios-ttm', { symbol: ticker }),
-      fmpFetch('/income-statement', { symbol: ticker, period: 'annual', limit: '5' }),
-      fmpFetch('/balance-sheet-statement', { symbol: ticker, period: 'annual', limit: '3' }),
-      fmpFetch('/cash-flow-statement', { symbol: ticker, period: 'annual', limit: '3' }),
-      fmpFetch('/quote', { symbol: ticker }),
-      fmpFetch('/rating', { symbol: ticker }),
-      fmpFetch('/analyst-estimates', { symbol: ticker, limit: '4' }),
-      fmpFetch('/earnings-surprises', { symbol: ticker, limit: '8' }),
-      fmpFetch('/financial-growth', { symbol: ticker, period: 'annual', limit: '3' }),
+      safeFmpFetch('/ratios-ttm', { symbol: ticker }),
+      safeFmpFetch('/income-statement', { symbol: ticker, period: 'annual', limit: '5' }),
+      safeFmpFetch('/balance-sheet-statement', { symbol: ticker, period: 'annual', limit: '3' }),
+      safeFmpFetch('/cash-flow-statement', { symbol: ticker, period: 'annual', limit: '3' }),
+      safeFmpFetch('/quote', { symbol: ticker }),
+      safeFmpFetch('/rating', { symbol: ticker }),
+      safeFmpFetch('/analyst-estimates', { symbol: ticker, limit: '4' }),
+      safeFmpFetch('/earnings-surprises', { symbol: ticker, limit: '8' }),
+      safeFmpFetch('/financial-growth', { symbol: ticker, period: 'annual', limit: '3' }),
     ]);
 
     const profile = profileArr?.[0] || {};
