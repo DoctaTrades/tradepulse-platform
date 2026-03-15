@@ -187,75 +187,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
     setDiscoveryPreset('custom');
   };
 
-  // ─── DISCOVERY PRESETS ────
-  const DISCOVERY_PRESETS = [
-    { id: 'momentum', name: 'Momentum breakouts', desc: '52W highs, RSI > 60, 2x+ volume', filters: { minRSI: 60, maxRSI: 100, minVolRatio: 2, wk52Position: 'near_high', emaTrend: 'above_all' } },
-    { id: 'pullback', name: 'Pullback to support', desc: 'Near 50 EMA, RSI 30-45, uptrend', filters: { minRSI: 30, maxRSI: 45, emaTrend: 'above200', wk52Position: 'any' } },
-    { id: 'earnings', name: 'Earnings this week', desc: 'Reporting soon, high IV rank', filters: { minIVR: 40, maxIVR: 100 } },
-    { id: 'value', name: 'Value plays', desc: 'Down 20%+ from highs, positive cash flow', filters: { wk52Position: 'near_low', minRSI: 20, maxRSI: 50 } },
-    { id: 'coveredcall', name: 'Covered call candidates', desc: 'Stable, dividend, good call premium', filters: { minDivYield: 1, minRSI: 40, maxRSI: 65, emaTrend: 'above50' } },
-  ];
-
-  // ─── RUN DISCOVERY SCAN ────
-  const runDiscoveryScan = useCallback(async (presetFilters?: any) => {
-    const f = presetFilters || customFilters;
-    setDiscoveryScanning(true);
-    setDiscoveryResults([]);
-    
-    const tickerList = universe === 'custom'
-      ? customTickers.split(/[\s,]+/).map((t: string) => t.trim().toUpperCase()).filter(Boolean)
-      : UNIVERSES[universe]?.tickers || UNIVERSES.core.tickers;
-
-    try {
-      const res = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          universe,
-          customTickers: tickerList,
-          filters: {
-            minPrice: f.minPrice || 5,
-            maxPrice: f.maxPrice || 500,
-            minRSI: f.minRSI || 0,
-            maxRSI: f.maxRSI || 100,
-            emaTrend: f.emaTrend || 'any',
-            minVol: (f.minVolRatio || 1) * 200000,
-            minIVR: f.minIVR || 0,
-            minIV: 0,
-            minBid: 0,
-            minRoR: 0,
-          },
-          userId: user?.id,
-          userEmail: user?.email,
-        }),
-      });
-      const data = await res.json();
-      
-      let filtered = data.results || [];
-      
-      // Apply additional client-side filters
-      if (f.wk52Position === 'near_high') filtered = filtered.filter((r: any) => r.price && r.ema50 && r.price > r.ema50 * 1.1);
-      if (f.wk52Position === 'near_low') filtered = filtered.filter((r: any) => r.price && r.ema200 && r.price < r.ema200);
-      if (f.minDivYield > 0) filtered = filtered.filter((r: any) => r.divYield >= f.minDivYield);
-      if (f.sector && f.sector !== 'all') filtered = filtered.filter((r: any) => r.sector === f.sector);
-      if (f.minMktCap === 'large') filtered = filtered.filter((r: any) => r.mktCap >= 10e9);
-      if (f.minMktCap === 'mid') filtered = filtered.filter((r: any) => r.mktCap >= 2e9);
-      if (f.minMktCap === 'small') filtered = filtered.filter((r: any) => r.mktCap >= 300e6 && r.mktCap < 2e9);
-      if (f.maxIVR < 100) filtered = filtered.filter((r: any) => r.ivr <= f.maxIVR);
-      
-      setDiscoveryResults(filtered);
-      if (data.source === 'polygon_fallback' && data.tickers) {
-        // Run polygon client-side scan
-        const { results: pgResults } = await polygonScan(data.tickers, data.filters, {
-          onLog: () => {},
-          onResult: (r: any) => { filtered.push(r); setDiscoveryResults([...filtered]); },
-          onProgress: () => {},
-          shouldCancel: () => false,
-        });
-      }
-    } catch {}
-    setDiscoveryScanning(false);
-  }, [customFilters, universe, customTickers, user]);
 
   // ─── UNIVERSE DEFINITIONS (client-side for preview) ────
   const UNIVERSES: Record<string, { label: string; desc: string; tickers: string[]; primary?: boolean }> = {
@@ -331,6 +262,77 @@ export default function ScreenerModule({ user }: { user?: any }) {
       ],
     },
   };
+
+  // ─── DISCOVERY PRESETS ────
+  const DISCOVERY_PRESETS = [
+    { id: 'momentum', name: 'Momentum breakouts', desc: '52W highs, RSI > 60, 2x+ volume', filters: { minRSI: 60, maxRSI: 100, minVolRatio: 2, wk52Position: 'near_high', emaTrend: 'above_all' } },
+    { id: 'pullback', name: 'Pullback to support', desc: 'Near 50 EMA, RSI 30-45, uptrend', filters: { minRSI: 30, maxRSI: 45, emaTrend: 'above200', wk52Position: 'any' } },
+    { id: 'earnings', name: 'Earnings this week', desc: 'Reporting soon, high IV rank', filters: { minIVR: 40, maxIVR: 100 } },
+    { id: 'value', name: 'Value plays', desc: 'Down 20%+ from highs, positive cash flow', filters: { wk52Position: 'near_low', minRSI: 20, maxRSI: 50 } },
+    { id: 'coveredcall', name: 'Covered call candidates', desc: 'Stable, dividend, good call premium', filters: { minDivYield: 1, minRSI: 40, maxRSI: 65, emaTrend: 'above50' } },
+  ];
+
+  // ─── RUN DISCOVERY SCAN ────
+  const runDiscoveryScan = useCallback(async (presetFilters?: any) => {
+    const f = presetFilters || customFilters;
+    setDiscoveryScanning(true);
+    setDiscoveryResults([]);
+    
+    const tickerList = universe === 'custom'
+      ? customTickers.split(/[\s,]+/).map((t: string) => t.trim().toUpperCase()).filter(Boolean)
+      : UNIVERSES[universe]?.tickers || UNIVERSES.core.tickers;
+
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          universe,
+          customTickers: tickerList,
+          filters: {
+            minPrice: f.minPrice || 5,
+            maxPrice: f.maxPrice || 500,
+            minRSI: f.minRSI || 0,
+            maxRSI: f.maxRSI || 100,
+            emaTrend: f.emaTrend || 'any',
+            minVol: (f.minVolRatio || 1) * 200000,
+            minIVR: f.minIVR || 0,
+            minIV: 0,
+            minBid: 0,
+            minRoR: 0,
+          },
+          userId: user?.id,
+          userEmail: user?.email,
+        }),
+      });
+      const data = await res.json();
+      
+      let filtered = data.results || [];
+      
+      // Apply additional client-side filters
+      if (f.wk52Position === 'near_high') filtered = filtered.filter((r: any) => r.price && r.ema50 && r.price > r.ema50 * 1.1);
+      if (f.wk52Position === 'near_low') filtered = filtered.filter((r: any) => r.price && r.ema200 && r.price < r.ema200);
+      if (f.minDivYield > 0) filtered = filtered.filter((r: any) => r.divYield >= f.minDivYield);
+      if (f.sector && f.sector !== 'all') filtered = filtered.filter((r: any) => r.sector === f.sector);
+      if (f.minMktCap === 'large') filtered = filtered.filter((r: any) => r.mktCap >= 10e9);
+      if (f.minMktCap === 'mid') filtered = filtered.filter((r: any) => r.mktCap >= 2e9);
+      if (f.minMktCap === 'small') filtered = filtered.filter((r: any) => r.mktCap >= 300e6 && r.mktCap < 2e9);
+      if (f.maxIVR < 100) filtered = filtered.filter((r: any) => r.ivr <= f.maxIVR);
+      
+      setDiscoveryResults(filtered);
+      if (data.source === 'polygon_fallback' && data.tickers) {
+        // Run polygon client-side scan
+        const { results: pgResults } = await polygonScan(data.tickers, data.filters, {
+          onLog: () => {},
+          onResult: (r: any) => { filtered.push(r); setDiscoveryResults([...filtered]); },
+          onProgress: () => {},
+          shouldCancel: () => false,
+        });
+      }
+    } catch {}
+    setDiscoveryScanning(false);
+  }, [customFilters, universe, customTickers, user]);
+
 
   // Filters
   const [universe, setUniverse] = useState('core');
