@@ -592,6 +592,16 @@ async function scanWithSchwab(tickers: string[], filters: any) {
   return { results, logs, scanned, source: 'schwab' };
 }
 
+// ─── ADMIN USERS (can use platform Schwab credentials) ────
+const ADMIN_IDS = ['a4f7c71e-95bc-43f9-bbfd-108f1feb6f48'];
+const ADMIN_EMAILS = ['risethediver@gmail.com'];
+
+function isAdmin(userId?: string, userEmail?: string): boolean {
+  if (userId && ADMIN_IDS.includes(userId)) return true;
+  if (userEmail && ADMIN_EMAILS.includes(userEmail.toLowerCase())) return true;
+  return false;
+}
+
 // ─── MAIN SCAN ENDPOINT ──────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -599,6 +609,8 @@ export async function POST(req: NextRequest) {
     universe = 'core',
     customTickers,
     filters = {},
+    userId,
+    userEmail,
   } = body;
 
   // Build ticker list
@@ -622,19 +634,30 @@ export async function POST(req: NextRequest) {
     targetDTE: filters.targetDTE ?? [25, 45],
   };
 
-  const useSchwab = await isAuthenticated();
+  const admin = isAdmin(userId, userEmail);
+  const useSchwab = admin && await isAuthenticated();
   
   if (useSchwab) {
     const result = await scanWithSchwab(tickers, f);
     return NextResponse.json(result);
+  } else if (!admin) {
+    // Non-admin user — tell them to use personal keys or Polygon fallback
+    return NextResponse.json({
+      results: [],
+      logs: ['📡 Using Polygon scan. Connect your own Schwab or Tradier in Screener Settings for real Greeks.'],
+      scanned: 0,
+      source: 'polygon_fallback',
+      tickers,
+      filters: f,
+    });
   } else {
-    // Polygon fallback — return instruction to use client-side Polygon scan
+    // Admin but Schwab not connected
     return NextResponse.json({
       results: [],
       logs: ['⚠ Schwab not connected. Using Polygon client-side scan (slower, estimated data).'],
       scanned: 0,
       source: 'polygon_fallback',
-      tickers, // Send ticker list back so client can scan with Polygon
+      tickers,
       filters: f,
     });
   }

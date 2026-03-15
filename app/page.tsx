@@ -264,7 +264,7 @@ export default function TradePulsePlatform() {
           )}
 
           {/* Screener module */}
-          {tab === "screener" && <ScreenerModule/>}
+          {tab === "screener" && <ScreenerModule user={user}/>}
 
           {/* Deep Dive placeholder */}
           {tab === "deepdive" && (

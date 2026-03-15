@@ -62,7 +62,7 @@ interface SchwabStatus {
 }
 
 // ─── COMPONENT ────────────────────────────────────────────
-export default function ScreenerModule() {
+export default function ScreenerModule({ user }: { user?: any }) {
   const [schwabStatus, setSchwabStatus] = useState<SchwabStatus>({ connected: false, expiresAt: null, refreshExpiresEstimate: 'N/A' });
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, ticker: '', found: 0 });
@@ -96,17 +96,18 @@ export default function ScreenerModule() {
 
   // Load user keys on mount
   useEffect(() => {
-    fetch('/api/user-keys', { headers: { 'x-user-id': 'current' } })
+    if (!user?.id) return;
+    fetch('/api/user-keys', { headers: { 'x-user-id': user.id } })
       .then(r => r.json())
       .then(data => { if (data.apiKeys) setUserKeys(data.apiKeys); })
       .catch(() => {});
-  }, []);
+  }, [user?.id]);
 
   const saveUserKeys = async () => {
     try {
       const res = await fetch('/api/user-keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': 'current' },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
         body: JSON.stringify({ action: 'save', apiKeys: userKeys }),
       });
       const data = await res.json();
@@ -122,7 +123,7 @@ export default function ScreenerModule() {
     try {
       const res = await fetch('/api/user-keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': 'current' },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
         body: JSON.stringify({ action: 'test', provider, apiKeys: userKeys }),
       });
       const data = await res.json();
@@ -247,14 +248,19 @@ export default function ScreenerModule() {
     const start = Date.now();
 
     try {
-      // Try server-side Schwab scan first
-      const res = await fetch('/api/scan', {
+      // Determine which scan endpoint to use
+      const hasPersonalKeys = userKeys.schwab?.clientId || userKeys.tradier?.accessToken || userKeys.polygon?.apiKey;
+      const scanUrl = hasPersonalKeys ? '/api/scan/user' : '/api/scan';
+      
+      const res = await fetch(scanUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           universe,
           filters: { ...filters, cpShortDelta },
           customTickers: tickerList,
+          userId: user?.id,
+          userEmail: user?.email,
         }),
         signal: controller.signal,
       });
