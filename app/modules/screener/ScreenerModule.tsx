@@ -686,22 +686,112 @@ export default function ScreenerModule({ user }: { user?: any }) {
 
         {activeTab === 'screener' && (
           <div className="space-y-5">
-            {/* Schwab Connection */}
-            <Panel title="🔗 Data Source">
-              <div className="flex items-center gap-4 flex-wrap">
-                {schwabStatus.connected ? (
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_8px_#10b981]" />
-                    <span className="font-mono text-sm text-green-400">Schwab Connected · 120 req/min · Real Greeks</span>
+            {/* Data Source — Multi-Provider */}
+            <Panel title="🔗 Data Source & API Keys">
+              <div className="space-y-4">
+                {/* Platform Schwab status */}
+                <div className="flex items-center gap-4 flex-wrap">
+                  {schwabStatus.connected ? (
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_8px_#10b981]" />
+                      <span className="font-mono text-sm text-green-400">Platform Schwab Connected · Real Greeks</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      {isAdmin && <a href="/api/schwab/auth" className="btn-primary text-xs">🔐 Connect Platform Schwab</a>}
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>{isAdmin ? 'Admin connection for real-time data' : 'Platform Schwab not connected — add your own keys below'}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Personal API Keys */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                  <div className="font-display text-xs font-bold tracking-wider uppercase mb-3" style={{ color: 'var(--gold)' }}>Your Personal API Keys</div>
+                  <div className="font-mono text-[10px] mb-4" style={{ color: 'var(--text-dim)' }}>
+                    Connect your own API for scanning. Schwab = best (real Greeks). Tradier = easy signup. Polygon = free fallback.
                   </div>
-                ) : (
-                  <>
-                    <a href="/api/schwab/auth" className="btn-primary">🔐 Connect Schwab</a>
-                    <span className="font-mono text-xs" style={{ color: 'var(--text-dim)' }}>
-                      Connect for real-time Greeks, bid/ask, 120 req/min · Falls back to Polygon if disconnected
-                    </span>
-                  </>
-                )}
+
+                  {/* Provider tabs */}
+                  <div className="flex gap-2 mb-4">
+                    {(['schwab', 'tradier', 'polygon'] as const).map(p => (
+                      <button key={p} onClick={() => setUserProvider(p)}
+                        className={`px-4 py-2 rounded-lg font-display text-xs font-bold tracking-wider uppercase border transition-all ${
+                          userProvider === p ? 'border-[var(--blue3)] text-[var(--blue3)]' : 'border-[var(--border)] text-[var(--text-dim)]'
+                        }`}>
+                        {p === 'schwab' ? '🏦 Schwab' : p === 'tradier' ? '📊 Tradier' : '🔷 Polygon'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Schwab personal keys */}
+                  {userProvider === 'schwab' && (
+                    <div className="space-y-3">
+                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        Register at <a href="https://developer.schwab.com" target="_blank" rel="noreferrer" className="underline" style={{ color: 'var(--blue3)' }}>developer.schwab.com</a> → Create app → Get Client ID & Secret
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Client ID</label>
+                          <input value={userKeys.schwab?.clientId || ''} onChange={(e: any) => setUserKeys((p: any) => ({...p, schwab: {...(p.schwab||{}), clientId: e.target.value}}))}
+                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="App Key"/>
+                        </div>
+                        <div>
+                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>App Secret</label>
+                          <input type="password" value={userKeys.schwab?.clientSecret || ''} onChange={(e: any) => setUserKeys((p: any) => ({...p, schwab: {...(p.schwab||{}), clientSecret: e.target.value}}))}
+                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Secret"/>
+                        </div>
+                        <div>
+                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Refresh Token</label>
+                          <input type="password" value={userKeys.schwab?.refreshToken || ''} onChange={(e: any) => setUserKeys((p: any) => ({...p, schwab: {...(p.schwab||{}), refreshToken: e.target.value}}))}
+                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Refresh token"/>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tradier keys */}
+                  {userProvider === 'tradier' && (
+                    <div className="space-y-3">
+                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        Sign up at <a href="https://developer.tradier.com" target="_blank" rel="noreferrer" className="underline" style={{ color: 'var(--blue3)' }}>developer.tradier.com</a> → Free sandbox or paid production → Get access token
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Access Token</label>
+                          <input type="password" value={userKeys.tradier?.accessToken || ''} onChange={(e: any) => setUserKeys((p: any) => ({...p, tradier: {...(p.tradier||{}), accessToken: e.target.value}}))}
+                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Bearer token"/>
+                        </div>
+                        <div className="flex items-end gap-3">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={userKeys.tradier?.sandbox || false} onChange={(e: any) => setUserKeys((p: any) => ({...p, tradier: {...(p.tradier||{}), sandbox: e.target.checked}}))} />
+                            <span className="font-mono text-xs" style={{ color: 'var(--text-mid)' }}>Sandbox (free, delayed)</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Polygon keys */}
+                  {userProvider === 'polygon' && (
+                    <div className="space-y-3">
+                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        Sign up at <a href="https://polygon.io" target="_blank" rel="noreferrer" className="underline" style={{ color: 'var(--blue3)' }}>polygon.io</a> → Free tier available → Get API key
+                      </div>
+                      <div>
+                        <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>API Key</label>
+                        <input value={userKeys.polygon?.apiKey || ''} onChange={(e: any) => setUserKeys((p: any) => ({...p, polygon: {...(p.polygon||{}), apiKey: e.target.value}}))}
+                          className="w-full max-w-md px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Polygon API key"/>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Save + Test buttons */}
+                  <div className="flex items-center gap-3 mt-4">
+                    <button onClick={saveUserKeys} className="btn-primary text-xs">💾 Save Keys</button>
+                    <button onClick={() => testUserKeys(userProvider)} className="btn-ghost text-xs">🔌 Test Connection</button>
+                    {userKeyStatus && <span className={`font-mono text-xs ${userKeyStatus.ok ? 'text-green-400' : 'text-red-400'}`}>{userKeyStatus.msg}</span>}
+                  </div>
+                </div>
               </div>
             </Panel>
 
