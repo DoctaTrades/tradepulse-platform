@@ -1,4 +1,3 @@
-'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { polygonScan } from '../../lib/polygon-scan';
@@ -89,25 +88,12 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const [expandedEquity, setExpandedEquity] = useState<Set<string>>(new Set());
   const [dashData, setDashData] = useState<any>(null);
   const [dashLoading, setDashLoading] = useState(false);
-  const [scanMode, setScanMode] = useState<'options' | 'equity' | 'discovery'>('options');
-  const [discoveryPreset, setDiscoveryPreset] = useState<string | null>(null);
-  const [discoveryResults, setDiscoveryResults] = useState<any[]>([]);
-  const [discoveryScanning, setDiscoveryScanning] = useState(false);
-  const [savedPresets, setSavedPresets] = useState<any[]>([]);
-  const [customFilters, setCustomFilters] = useState({
-    minPrice: 5, maxPrice: 500, minRSI: 30, maxRSI: 70,
-    emaTrend: 'any' as string, minVolRatio: 1, minMktCap: 'any' as string,
-    sector: 'all' as string, minIVR: 0, maxIVR: 100,
-    wk52Position: 'any' as string, minDivYield: 0, presetName: '',
-  });
-  const [showSavePreset, setShowSavePreset] = useState(false);
 
   // Per-user API key management
   const [userProvider, setUserProvider] = useState<'schwab' | 'tradier' | 'polygon'>('polygon');
   const [userKeys, setUserKeys] = useState<any>({});
   const [userKeyStatus, setUserKeyStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  // Load user keys on mount
   useEffect(() => {
     if (!user?.id) return;
     fetch('/api/user-keys', { headers: { 'x-user-id': user.id } })
@@ -147,47 +133,10 @@ export default function ScreenerModule({ user }: { user?: any }) {
     }
   };
 
-  // ─── SAVED PRESETS (load from Supabase) ────
-  useEffect(() => {
-    if (!user?.id) return;
-    fetch('/api/user-keys', { headers: { 'x-user-id': user.id } })
-      .then(r => r.json())
-      .then(data => {
-        if (data.apiKeys?.savedPresets) setSavedPresets(data.apiKeys.savedPresets);
-      }).catch(() => {});
-  }, [user?.id]);
-
-  const savePreset = async (name: string) => {
-    if (!name.trim()) return;
-    const preset = { name: name.trim(), filters: { ...customFilters }, createdAt: new Date().toISOString() };
-    const updated = [...savedPresets.filter(p => p.name !== name.trim()), preset];
-    setSavedPresets(updated);
-    const merged = { ...userKeys, savedPresets: updated };
-    await fetch('/api/user-keys', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
-      body: JSON.stringify({ action: 'save', apiKeys: merged }),
-    });
-    setShowSavePreset(false);
-    setCustomFilters(p => ({ ...p, presetName: '' }));
-  };
-
-  const deletePreset = async (name: string) => {
-    const updated = savedPresets.filter(p => p.name !== name);
-    setSavedPresets(updated);
-    const merged = { ...userKeys, savedPresets: updated };
-    await fetch('/api/user-keys', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
-      body: JSON.stringify({ action: 'save', apiKeys: merged }),
-    });
-  };
-
-  const loadPreset = (preset: any) => {
-    setCustomFilters({ ...preset.filters, presetName: '' });
-    setDiscoveryPreset('custom');
-  };
-
+  // Admin check
+  const ADMIN_IDS = ['a4f7c71e-95bc-43f9-bbfd-108f1feb6f48'];
+  const ADMIN_EMAILS = ['risethediver@gmail.com'];
+  const isAdmin = (user?.id && ADMIN_IDS.includes(user.id)) || (user?.email && ADMIN_EMAILS.includes(user.email?.toLowerCase()));
 
   // ─── UNIVERSE DEFINITIONS (client-side for preview) ────
   const UNIVERSES: Record<string, { label: string; desc: string; tickers: string[]; primary?: boolean }> = {
@@ -264,72 +213,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
     },
   };
 
-  // ─── DISCOVERY PRESETS ────
-  const DISCOVERY_PRESETS = [
-    { id: 'momentum', name: 'Momentum breakouts', desc: '52W highs, RSI > 60, 2x+ volume', filters: { minRSI: 60, maxRSI: 100, minVolRatio: 2, wk52Position: 'near_high', emaTrend: 'above_all' } },
-    { id: 'pullback', name: 'Pullback to support', desc: 'Near 50 EMA, RSI 30-45, uptrend', filters: { minRSI: 30, maxRSI: 45, emaTrend: 'above200', wk52Position: 'any' } },
-    { id: 'earnings', name: 'Earnings this week', desc: 'Reporting soon, high IV rank', filters: { minIVR: 40, maxIVR: 100 } },
-    { id: 'value', name: 'Value plays', desc: 'Down 20%+ from highs, positive cash flow', filters: { wk52Position: 'near_low', minRSI: 20, maxRSI: 50 } },
-    { id: 'coveredcall', name: 'Covered call candidates', desc: 'Stable, dividend, good call premium', filters: { minDivYield: 1, minRSI: 40, maxRSI: 65, emaTrend: 'above50' } },
-  ];
-
-  // ─── RUN DISCOVERY SCAN ────
-  const runDiscoveryScan = useCallback(async (presetFilters?: any) => {
-    const f = presetFilters || customFilters;
-    setDiscoveryScanning(true);
-    setDiscoveryResults([]);
-
-    try {
-      const res = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          universe,
-          filters: {
-            minPrice: f.minPrice || 5,
-            maxPrice: f.maxPrice || 500,
-            minRSI: f.minRSI || 0,
-            maxRSI: f.maxRSI || 100,
-            emaTrend: f.emaTrend || 'any',
-            minVol: (f.minVolRatio || 1) * 200000,
-            minIVR: f.minIVR || 0,
-            minIV: 0,
-            minBid: 0,
-            minRoR: 0,
-          },
-          userId: user?.id,
-          userEmail: user?.email,
-        }),
-      });
-      const data = await res.json();
-      
-      let filtered = data.results || [];
-      
-      // Apply additional client-side filters
-      if (f.wk52Position === 'near_high') filtered = filtered.filter((r: any) => r.price && r.ema50 && r.price > r.ema50 * 1.1);
-      if (f.wk52Position === 'near_low') filtered = filtered.filter((r: any) => r.price && r.ema200 && r.price < r.ema200);
-      if (f.minDivYield > 0) filtered = filtered.filter((r: any) => r.divYield >= f.minDivYield);
-      if (f.sector && f.sector !== 'all') filtered = filtered.filter((r: any) => r.sector === f.sector);
-      if (f.minMktCap === 'large') filtered = filtered.filter((r: any) => r.mktCap >= 10e9);
-      if (f.minMktCap === 'mid') filtered = filtered.filter((r: any) => r.mktCap >= 2e9);
-      if (f.minMktCap === 'small') filtered = filtered.filter((r: any) => r.mktCap >= 300e6 && r.mktCap < 2e9);
-      if (f.maxIVR < 100) filtered = filtered.filter((r: any) => r.ivr <= f.maxIVR);
-      
-      setDiscoveryResults(filtered);
-      if (data.source === 'polygon_fallback' && data.tickers) {
-        // Run polygon client-side scan
-        const { results: pgResults } = await polygonScan(data.tickers, data.filters, {
-          onLog: () => {},
-          onResult: (r: any) => { filtered.push(r); setDiscoveryResults([...filtered]); },
-          onProgress: () => {},
-          shouldCancel: () => false,
-        });
-      }
-    } catch {}
-    setDiscoveryScanning(false);
-  }, [customFilters, universe, user]);
-
-
   // Filters
   const [universe, setUniverse] = useState('core');
   const [filters, setFilters] = useState({
@@ -339,30 +222,22 @@ export default function ScreenerModule({ user }: { user?: any }) {
     emaTrend: 'any', targetDelta: 0.30, targetDTE: [25, 45] as [number, number],
   });
 
-  // Admin IDs that can use platform Schwab
-  const ADMIN_IDS = ['a4f7c71e-95bc-43f9-bbfd-108f1feb6f48'];
-  const ADMIN_EMAILS = ['risethediver@gmail.com'];
-  const isAdmin = user?.id && ADMIN_IDS.includes(user.id) || user?.email && ADMIN_EMAILS.includes(user.email?.toLowerCase());
-
-  // Check Schwab connection status on load — only for admin
+  // Check Schwab connection status on load
   useEffect(() => {
     if (isAdmin) {
       fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
-    } else {
-      // Non-admin: show disconnected for platform Schwab
-      setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'N/A' });
     }
     // Check URL params for OAuth callback result
     const params = new URLSearchParams(window.location.search);
     if (params.get('schwab_connected')) {
-      if (isAdmin) setSchwabStatus({ connected: true, expiresAt: Date.now() + 1800000, refreshExpiresEstimate: '~7 days' });
+      setSchwabStatus({ connected: true, expiresAt: Date.now() + 1800000, refreshExpiresEstimate: '~7 days' });
       window.history.replaceState({}, '', '/');
     }
     if (params.get('schwab_error')) {
       setLogs(prev => [...prev, `⚠ Schwab auth error: ${params.get('schwab_error')}`]);
       window.history.replaceState({}, '', '/');
     }
-  }, [user?.id]);
+  }, []);
 
   // ─── SCAN ─────────────────────────────────────────────
   const runScan = useCallback(async () => {
@@ -379,11 +254,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
     const start = Date.now();
 
     try {
-      // Determine which scan endpoint to use
-      const hasPersonalKeys = userKeys.schwab?.clientId || userKeys.tradier?.accessToken || userKeys.polygon?.apiKey;
-      const scanUrl = hasPersonalKeys ? '/api/scan/user' : '/api/scan';
-      
-      const res = await fetch(scanUrl, {
+      // Try server-side Schwab scan first
+      const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -628,7 +500,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
     }
   };
 
-  const optionsTabs = [
+  const tabs = [
     { id: 'dashboard', label: '🏠 Dashboard' },
     { id: 'screener', label: '⚙ Screener' },
     { id: 'results', label: `📊 All (${results.length})` },
@@ -639,49 +511,20 @@ export default function ScreenerModule({ user }: { user?: any }) {
     { id: 'calPress', label: `📅 Cal Press (${results.length ? getStrategyResults('calPress').length : '-'})` },
     { id: 'ic', label: `🦅 IC (${results.length ? getStrategyResults('ic').length : '-'})` },
     { id: 'uoa', label: `🔥 UOA (${results.length ? getStrategyResults('uoa').length : '-'})` },
+    { id: 'equity', label: `📊 Equities (${equityResults.length || '-'})` },
     { id: 'spx', label: '🎯 SPX Radar' },
   ];
-  const equityTabs = [
-    { id: 'equity', label: `📊 Equities (${equityResults.length || '-'})` },
-  ];
-  const discoveryTabs = [
-    { id: 'discovery', label: '🔍 Discovery' },
-    { id: 'discoveryResults', label: `📊 Results (${discoveryResults.length})` },
-  ];
-
-  const tabs = scanMode === 'options' ? optionsTabs : scanMode === 'equity' ? equityTabs : discoveryTabs;
-
-  // Auto-switch to appropriate tab when changing mode
-  const handleModeChange = (mode: 'options' | 'equity' | 'discovery') => {
-    setScanMode(mode);
-    if (mode === 'options') setActiveTab('screener');
-    if (mode === 'equity') setActiveTab('equity');
-    if (mode === 'discovery') setActiveTab('discovery');
-  };
 
   return (
     <div className="relative z-10">
-      {/* Mode Toggle + Status Bar */}
+      {/* Status Bar */}
       <div className="flex items-center justify-between px-7 py-3 border-b" style={{ borderColor: 'var(--border)', background: 'rgba(11,17,32,0.5)' }}>
         <div className="flex items-center gap-4">
-          {/* Mode Toggle */}
-          <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--navy4)' }}>
-            {([['options', 'Options premium'], ['equity', 'Equity patterns'], ['discovery', 'Stock discovery']] as const).map(([mode, label]) => (
-              <button key={mode} onClick={() => handleModeChange(mode as any)}
-                className={`px-4 py-1.5 rounded-md font-display text-[11px] font-bold tracking-wider uppercase transition-all ${
-                  scanMode === mode ? 'text-white' : 'text-[var(--text-dim)]'
-                }`}
-                style={{ background: scanMode === mode ? 'var(--blue)' : 'transparent' }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <div style={{ width: 1, height: 24, background: 'var(--border)' }} />
-          <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{scanMode === 'discovery' ? discoveryResults.length || '—' : results.length || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Results</div></div>
+          <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{results.length || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Results</div></div>
           <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{scanStats.scanned || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Scanned</div></div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border" style={{ borderColor: 'var(--border)', background: 'var(--navy3)' }}>
-            <div className={`w-2 h-2 rounded-full ${schwabStatus.connected ? 'bg-green-500 shadow-[0_0_8px_#10b981]' : userKeys.schwab?.clientId ? 'bg-green-400' : userKeys.tradier?.accessToken ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : userKeys.polygon?.apiKey ? 'bg-yellow-500' : 'bg-gray-500'}`} />
-            <span className="font-mono text-[10px]" style={{ color: 'var(--text-mid)' }}>{schwabStatus.connected ? 'SCHWAB' : userKeys.schwab?.clientId ? 'SCHWAB (Personal)' : userKeys.tradier?.accessToken ? 'TRADIER' : userKeys.polygon?.apiKey ? 'POLYGON' : scanning ? 'SCANNING' : 'NO API'}</span>
+            <div className={`w-2 h-2 rounded-full ${schwabStatus.connected ? 'bg-green-500 shadow-[0_0_8px_#10b981]' : userKeys.tradier?.accessToken ? 'bg-blue-500' : userKeys.polygon?.apiKey ? 'bg-yellow-500' : 'bg-gray-500'}`} />
+            <span className="font-mono text-[10px]" style={{ color: 'var(--text-mid)' }}>{schwabStatus.connected ? 'SCHWAB' : userKeys.schwab?.clientId ? 'SCHWAB (Personal)' : userKeys.tradier?.accessToken ? 'TRADIER' : userKeys.polygon?.apiKey ? 'POLYGON' : scanning ? 'SCANNING' : 'READY'}</span>
           </div>
         </div>
         {scanning && <div className="font-mono text-xs" style={{ color: 'var(--gold)' }}>⚡ {scanProgress.ticker} ({scanProgress.current}/{scanProgress.total})</div>}
@@ -843,121 +686,22 @@ export default function ScreenerModule({ user }: { user?: any }) {
 
         {activeTab === 'screener' && (
           <div className="space-y-5">
-            {/* Data Source — Multi-Provider */}
-            <Panel title="🔗 Data Source & API Keys">
-              <div className="space-y-4">
-                {/* Platform Schwab (owner's keys from env) */}
-                <div className="flex items-center gap-4 flex-wrap">
-                  {schwabStatus.connected ? (
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_8px_#10b981]" />
-                      <span className="font-mono text-sm text-green-400">Platform Schwab Connected · Real Greeks</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-3">
-                      <a href="/api/schwab/auth" className="btn-primary text-xs">🔐 Connect Platform Schwab</a>
-                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>Admin connection for real-time data</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Divider */}
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                  <div className="font-display text-xs font-bold tracking-wider uppercase mb-3" style={{ color: 'var(--gold)' }}>Your Personal API Keys</div>
-                  <div className="font-mono text-[10px] mb-4" style={{ color: 'var(--text-dim)' }}>
-                    Connect your own API for scanning. Schwab = best (real Greeks). Tradier = easy signup. Polygon = free fallback.
+            {/* Schwab Connection */}
+            <Panel title="🔗 Data Source">
+              <div className="flex items-center gap-4 flex-wrap">
+                {schwabStatus.connected ? (
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_8px_#10b981]" />
+                    <span className="font-mono text-sm text-green-400">Schwab Connected · 120 req/min · Real Greeks</span>
                   </div>
-
-                  {/* Provider tabs */}
-                  <div className="flex gap-2 mb-4">
-                    {(['schwab', 'tradier', 'polygon'] as const).map(p => (
-                      <button key={p} onClick={() => setUserProvider(p)}
-                        className={`px-4 py-2 rounded-lg font-display text-xs font-bold tracking-wider uppercase border transition-all ${
-                          userProvider === p ? 'border-[var(--blue3)] text-[var(--blue3)]' : 'border-[var(--border)] text-[var(--text-dim)]'
-                        }`}>
-                        {p === 'schwab' ? '🏦 Schwab' : p === 'tradier' ? '📊 Tradier' : '🔷 Polygon'}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Schwab personal keys */}
-                  {userProvider === 'schwab' && (
-                    <div className="space-y-3">
-                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                        Register at <a href="https://developer.schwab.com" target="_blank" className="underline" style={{ color: 'var(--blue3)' }}>developer.schwab.com</a> → Create app → Get Client ID & Secret
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Client ID</label>
-                          <input value={userKeys.schwab?.clientId || ''} onChange={e => setUserKeys(p => ({...p, schwab: {...(p.schwab||{}), clientId: e.target.value}}))}
-                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="App Key"/>
-                        </div>
-                        <div>
-                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>App Secret</label>
-                          <input type="password" value={userKeys.schwab?.clientSecret || ''} onChange={e => setUserKeys(p => ({...p, schwab: {...(p.schwab||{}), clientSecret: e.target.value}}))}
-                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Secret"/>
-                        </div>
-                        <div>
-                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Refresh Token</label>
-                          <input type="password" value={userKeys.schwab?.refreshToken || ''} onChange={e => setUserKeys(p => ({...p, schwab: {...(p.schwab||{}), refreshToken: e.target.value}}))}
-                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Refresh token"/>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tradier keys */}
-                  {userProvider === 'tradier' && (
-                    <div className="space-y-3">
-                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                        Sign up at <a href="https://developer.tradier.com" target="_blank" className="underline" style={{ color: 'var(--blue3)' }}>developer.tradier.com</a> → Free sandbox or paid production → Get access token
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Access Token</label>
-                          <input type="password" value={userKeys.tradier?.accessToken || ''} onChange={e => setUserKeys(p => ({...p, tradier: {...(p.tradier||{}), accessToken: e.target.value}}))}
-                            className="w-full px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Bearer token"/>
-                        </div>
-                        <div className="flex items-end gap-3">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={userKeys.tradier?.sandbox || false} onChange={e => setUserKeys(p => ({...p, tradier: {...(p.tradier||{}), sandbox: e.target.checked}}))} />
-                            <span className="font-mono text-xs" style={{ color: 'var(--text-mid)' }}>Sandbox (free, delayed)</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Polygon keys */}
-                  {userProvider === 'polygon' && (
-                    <div className="space-y-3">
-                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                        Sign up at <a href="https://polygon.io" target="_blank" className="underline" style={{ color: 'var(--blue3)' }}>polygon.io</a> → Free tier available → Get API key
-                      </div>
-                      <div>
-                        <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>API Key</label>
-                        <input value={userKeys.polygon?.apiKey || ''} onChange={e => setUserKeys(p => ({...p, polygon: {...(p.polygon||{}), apiKey: e.target.value}}))}
-                          className="w-full max-w-md px-3 py-2 rounded-md font-mono text-xs border outline-none" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }} placeholder="Polygon API key"/>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Save + Test buttons */}
-                  <div className="flex items-center gap-3 mt-4">
-                    <button onClick={saveUserKeys} className="btn-primary text-xs">💾 Save Keys</button>
-                    <button onClick={() => testUserKeys(userProvider)} className="btn-ghost text-xs">🔌 Test Connection</button>
-                    {userKeyStatus && <span className={`font-mono text-xs ${userKeyStatus.ok ? 'text-green-400' : 'text-red-400'}`}>{userKeyStatus.msg}</span>}
-                    <div className="ml-auto">
-                      <label className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>Preferred: </label>
-                      <select value={userKeys.preferredProvider || 'polygon'} onChange={e => setUserKeys(p => ({...p, preferredProvider: e.target.value}))}
-                        className="px-2 py-1 rounded font-mono text-xs border" style={{ background: 'var(--navy3)', borderColor: 'var(--border)', color: 'var(--text)' }}>
-                        <option value="schwab">Schwab</option>
-                        <option value="tradier">Tradier</option>
-                        <option value="polygon">Polygon</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <a href="/api/schwab/auth" className="btn-primary">🔐 Connect Schwab</a>
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-dim)' }}>
+                      Connect for real-time Greeks, bid/ask, 120 req/min · Falls back to Polygon if disconnected
+                    </span>
+                  </>
+                )}
               </div>
             </Panel>
 
@@ -1677,202 +1421,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 <div className="font-mono text-xs mt-2" style={{ color: 'var(--gold)' }}>Calculating GEX, walls, and gamma flip</div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ═══ STOCK DISCOVERY TAB ═══ */}
-        {activeTab === 'discovery' && (
-          <div className="space-y-5">
-            {/* Preset Scans */}
-            <div>
-              <div className="font-display text-sm font-bold tracking-wider uppercase mb-3" style={{ color: 'var(--text)' }}>Preset scans</div>
-              <div className="grid grid-cols-3 gap-3">
-                {DISCOVERY_PRESETS.map(p => (
-                  <button key={p.id} onClick={() => { setDiscoveryPreset(p.id); runDiscoveryScan(p.filters); }}
-                    className="text-left p-4 rounded-lg border transition-all hover:border-[var(--blue3)]"
-                    style={{ background: discoveryPreset === p.id ? 'rgba(30,79,216,0.1)' : 'var(--navy3)', borderColor: discoveryPreset === p.id ? 'var(--blue3)' : 'var(--border)' }}>
-                    <div className="font-display text-sm font-bold" style={{ color: discoveryPreset === p.id ? 'var(--blue3)' : 'var(--text)' }}>{p.name}</div>
-                    <div className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-dim)' }}>{p.desc}</div>
-                  </button>
-                ))}
-                <button onClick={() => setDiscoveryPreset('custom')}
-                  className="text-left p-4 rounded-lg border-2 transition-all"
-                  style={{ background: discoveryPreset === 'custom' ? 'rgba(30,79,216,0.1)' : 'transparent', borderColor: discoveryPreset === 'custom' ? 'var(--blue3)' : 'var(--blue)', borderStyle: 'dashed' }}>
-                  <div className="font-display text-sm font-bold" style={{ color: 'var(--blue3)' }}>Custom scan</div>
-                  <div className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-dim)' }}>Build your own filters</div>
-                </button>
-              </div>
-            </div>
-
-            {/* Saved User Presets */}
-            {savedPresets.length > 0 && (
-              <div>
-                <div className="font-display text-sm font-bold tracking-wider uppercase mb-3" style={{ color: 'var(--gold)' }}>Your saved presets</div>
-                <div className="flex gap-2 flex-wrap">
-                  {savedPresets.map(p => (
-                    <div key={p.name} className="flex items-center gap-2 px-3 py-2 rounded-lg border" style={{ background: 'var(--navy3)', borderColor: 'var(--border)' }}>
-                      <button onClick={() => { loadPreset(p); runDiscoveryScan(p.filters); }}
-                        className="font-display text-xs font-bold" style={{ color: 'var(--text)' }}>{p.name}</button>
-                      <button onClick={() => deletePreset(p.name)} className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Custom Filter Builder */}
-            {discoveryPreset === 'custom' && (
-              <div className="p-5 rounded-xl border" style={{ background: 'var(--navy3)', borderColor: 'var(--border)' }}>
-                <div className="font-display text-sm font-bold tracking-wider uppercase mb-4" style={{ color: 'var(--text)' }}>Custom filter builder</div>
-                <div className="grid grid-cols-4 gap-4 mb-4">
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Price range</label>
-                    <div className="flex gap-2">
-                      <input type="number" value={customFilters.minPrice} onChange={e => setCustomFilters(p => ({...p, minPrice: Number(e.target.value)}))}
-                        className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                      <input type="number" value={customFilters.maxPrice} onChange={e => setCustomFilters(p => ({...p, maxPrice: Number(e.target.value)}))}
-                        className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>RSI range</label>
-                    <div className="flex gap-2">
-                      <input type="number" value={customFilters.minRSI} onChange={e => setCustomFilters(p => ({...p, minRSI: Number(e.target.value)}))}
-                        className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                      <input type="number" value={customFilters.maxRSI} onChange={e => setCustomFilters(p => ({...p, maxRSI: Number(e.target.value)}))}
-                        className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>EMA trend</label>
-                    <select value={customFilters.emaTrend} onChange={e => setCustomFilters(p => ({...p, emaTrend: e.target.value}))}
-                      className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }}>
-                      <option value="any">Any</option>
-                      <option value="above20">Above 20 EMA</option>
-                      <option value="above50">Above 50 EMA</option>
-                      <option value="above200">Above 200 EMA</option>
-                      <option value="above_both">Above 50+200</option>
-                      <option value="above_all">Above all EMAs</option>
-                      <option value="below20">Below 20 EMA</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Volume ratio</label>
-                    <select value={customFilters.minVolRatio} onChange={e => setCustomFilters(p => ({...p, minVolRatio: Number(e.target.value)}))}
-                      className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }}>
-                      <option value={1}>1x+ (normal)</option>
-                      <option value={1.5}>1.5x+ avg</option>
-                      <option value={2}>2x+ avg</option>
-                      <option value={3}>3x+ avg</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Market cap</label>
-                    <select value={customFilters.minMktCap} onChange={e => setCustomFilters(p => ({...p, minMktCap: e.target.value}))}
-                      className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }}>
-                      <option value="any">Any</option>
-                      <option value="small">Small ($300M-$2B)</option>
-                      <option value="mid">Mid ($2B+)</option>
-                      <option value="large">Large ($10B+)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Sector</label>
-                    <select value={customFilters.sector} onChange={e => setCustomFilters(p => ({...p, sector: e.target.value}))}
-                      className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }}>
-                      <option value="all">All sectors</option>
-                      <option value="Technology">Technology</option>
-                      <option value="Healthcare">Healthcare</option>
-                      <option value="Financial Services">Financials</option>
-                      <option value="Energy">Energy</option>
-                      <option value="Consumer Cyclical">Consumer Disc.</option>
-                      <option value="Consumer Defensive">Consumer Staples</option>
-                      <option value="Industrials">Industrials</option>
-                      <option value="Utilities">Utilities</option>
-                      <option value="Real Estate">Real Estate</option>
-                      <option value="Communication Services">Communication</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>IV rank range</label>
-                    <div className="flex gap-2">
-                      <input type="number" value={customFilters.minIVR} onChange={e => setCustomFilters(p => ({...p, minIVR: Number(e.target.value)}))}
-                        className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                      <input type="number" value={customFilters.maxIVR} onChange={e => setCustomFilters(p => ({...p, maxIVR: Number(e.target.value)}))}
-                        className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>52W position</label>
-                    <select value={customFilters.wk52Position} onChange={e => setCustomFilters(p => ({...p, wk52Position: e.target.value}))}
-                      className="w-full px-2 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)' }}>
-                      <option value="any">Any</option>
-                      <option value="near_high">Near 52W high</option>
-                      <option value="near_low">Near 52W low</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => runDiscoveryScan()} disabled={discoveryScanning} className="btn-primary text-xs">
-                    {discoveryScanning ? '⏳ Scanning...' : '⚡ Run custom scan'}
-                  </button>
-                  <button onClick={() => setShowSavePreset(!showSavePreset)} className="btn-ghost text-xs">💾 Save as preset</button>
-                  {showSavePreset && (
-                    <div className="flex items-center gap-2">
-                      <input value={customFilters.presetName} onChange={e => setCustomFilters(p => ({...p, presetName: e.target.value}))}
-                        onKeyDown={e => { if (e.key === 'Enter') savePreset(customFilters.presetName); }}
-                        placeholder="Preset name..."
-                        className="px-3 py-1.5 rounded font-mono text-xs border" style={{ background: 'var(--navy4)', borderColor: 'var(--border)', color: 'var(--text)', width: 160 }} />
-                      <button onClick={() => savePreset(customFilters.presetName)} className="btn-primary text-xs py-1.5">Save</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Discovery scanning indicator */}
-            {discoveryScanning && (
-              <div className="text-center py-8">
-                <div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>⚡ Scanning...</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ═══ DISCOVERY RESULTS TAB ═══ */}
-        {activeTab === 'discoveryResults' && discoveryResults.length > 0 && (
-          <div>
-            <div className="font-display text-sm font-bold tracking-wider uppercase mb-3" style={{ color: 'var(--text)' }}>
-              Discovery results — {discoveryResults.length} matches
-            </div>
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-              <table className="w-full" style={{ borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'rgba(0,0,0,0.3)' }}>
-                    {['Ticker', 'Price', 'Chg%', 'IV', 'IVR', 'RSI', 'EMA20', 'EMA50', 'Vol', 'Sector'].map(h => (
-                      <th key={h} className="font-mono text-[9px] uppercase tracking-wider text-left px-3 py-2" style={{ color: 'var(--text-dim)', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {discoveryResults.slice(0, 100).map((r: any, i: number) => (
-                    <tr key={r.ticker} style={{ background: i % 2 === 0 ? 'rgba(0,0,0,0.1)' : 'transparent' }}
-                      className="hover:bg-[rgba(30,79,216,0.08)] cursor-pointer" onClick={() => setSelectedTicker(r)}>
-                      <td className="px-3 py-2 font-display text-sm font-bold" style={{ color: 'var(--text)' }}>{r.ticker}</td>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--text-mid)' }}>${r.price?.toFixed(2)}</td>
-                      <td className="px-3 py-2 font-mono text-xs font-bold" style={{ color: r.change >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.change >= 0 ? '+' : ''}{r.change?.toFixed(2)}%</td>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--gold)' }}>{r.iv}%</td>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: r.ivr >= 50 ? 'var(--green)' : 'var(--text-mid)' }}>{r.ivr}%</td>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: r.rsi > 70 ? 'var(--red)' : r.rsi < 30 ? 'var(--green)' : 'var(--text-mid)' }}>{r.rsi}</td>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: r.price > (r.ema20 || 0) ? 'var(--green)' : 'var(--red)' }}>{r.ema20 ? `$${r.ema20.toFixed(0)}` : '—'}</td>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: r.price > (r.ema50 || 0) ? 'var(--green)' : 'var(--red)' }}>{r.ema50 ? `$${r.ema50.toFixed(0)}` : '—'}</td>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--text-dim)' }}>{r.vol ? `${(r.vol / 1e6).toFixed(1)}M` : '—'}</td>
-                      <td className="px-3 py-2 font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>{r.sector || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
 
