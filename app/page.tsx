@@ -37,6 +37,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Dynamic imports for heavy modules (code splitting)
 const JournalModule = dynamic(() => import('./modules/journal/JournalModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading journal...</div> });
 const ScreenerModule = dynamic(() => import('./modules/screener/ScreenerModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading screener...</div> });
+const MarketPulseModule = dynamic(() => import('./modules/research/MarketPulseModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading market pulse...</div> });
 
 // ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }: { onAuth: (user: any) => void }) {
@@ -127,7 +128,7 @@ const SIDEBAR = [
   ]},
   { label:"Research", items:[
     { id:"screener", icon:"search", name:"Screener" },
-    { id:"deepdive", icon:"trendUp", name:"Stock Deep Dive", soon:true },
+    { id:"marketpulse", icon:"trendUp", name:"Market Pulse" },
   ]},
   { label:"Tools", items:[
     { id:"playbook", icon:"book", name:"Playbook" },
@@ -266,14 +267,8 @@ export default function TradePulsePlatform() {
           {/* Screener module */}
           {tab === "screener" && <ScreenerModule user={user}/>}
 
-          {/* Deep Dive placeholder */}
-          {tab === "deepdive" && (
-            <div style={{ textAlign:"center", padding:"80px 20px" }}>
-              <div style={{ fontSize:48, marginBottom:16, opacity:0.4 }}>📈</div>
-              <div style={{ fontSize:20, fontWeight:700, marginBottom:8 }}>Stock Deep Dive</div>
-              <div style={{ fontSize:13, color:"#5c6070", maxWidth:400, margin:"0 auto", lineHeight:1.6 }}>Fundamental analysis, technical health reports, and key metrics. Coming soon.</div>
-            </div>
-          )}
+          {/* Market Pulse module */}
+          {tab === "marketpulse" && <MarketPulseModule/>}
         </div>
       </div>
     </div>
