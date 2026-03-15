@@ -277,10 +277,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
     const f = presetFilters || customFilters;
     setDiscoveryScanning(true);
     setDiscoveryResults([]);
-    
-    const tickerList = universe === 'custom'
-      ? customTickers.split(/[\s,]+/).map((t: string) => t.trim().toUpperCase()).filter(Boolean)
-      : UNIVERSES[universe]?.tickers || UNIVERSES.core.tickers;
 
     try {
       const res = await fetch('/api/scan', {
@@ -288,7 +284,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           universe,
-          customTickers: tickerList,
           filters: {
             minPrice: f.minPrice || 5,
             maxPrice: f.maxPrice || 500,
@@ -331,7 +326,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       }
     } catch {}
     setDiscoveryScanning(false);
-  }, [customFilters, universe, customTickers, user]);
+  }, [customFilters, universe, user]);
 
 
   // Filters
