@@ -114,8 +114,8 @@ export default function DeepDiveModule() {
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'monospace', color: '#e2e4ea' }}>${data.quote.price?.toFixed(2)}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: pctColor(data.quote.changePct), fontFamily: 'monospace' }}>
-                {data.quote.change >= 0 ? '+' : ''}{data.quote.change?.toFixed(2)} ({fmtPct(Math.round(data.quote.changePct * 100) / 100)})
+              <div style={{ fontSize: 14, fontWeight: 700, color: pctColor(data.quote.change || 0), fontFamily: 'monospace' }}>
+                {data.quote.change >= 0 ? '+' : ''}{(data.quote.change || 0).toFixed(2)} ({data.quote.changePct ? `${data.quote.changePct >= 0 ? '+' : ''}${data.quote.changePct.toFixed(2)}%` : '—'})
               </div>
             </div>
           </div>

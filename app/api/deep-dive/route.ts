@@ -53,6 +53,10 @@ export async function GET(req: NextRequest) {
     const earnings = earningsArr || [];
     const growth = growthArr || [];
 
+    // Use profile price as primary (we know profile works)
+    const price = profile.price || quote.price || 0;
+    const mktCap = profile.marketCap || profile.mktCap || quote.marketCap || 0;
+
     // Current financials
     const latestIncome = income[0] || {};
     const prevIncome = income[1] || {};
@@ -60,36 +64,63 @@ export async function GET(req: NextRequest) {
     const latestCashFlow = cashFlow[0] || {};
     const latestGrowth = growth[0] || {};
 
-    // Revenue growth
-    const revenueGrowth = latestGrowth.revenueGrowth ? Math.round(latestGrowth.revenueGrowth * 100 * 10) / 10 : null;
-    const epsGrowth = latestGrowth.epsgrowth ? Math.round(latestGrowth.epsgrowth * 100 * 10) / 10 : null;
+    // Revenue growth — compute from income statements if growth endpoint unavailable
+    let revenueGrowth = latestGrowth.revenueGrowth ? Math.round(latestGrowth.revenueGrowth * 100 * 10) / 10 : null;
+    if (revenueGrowth === null && latestIncome.revenue && prevIncome.revenue && prevIncome.revenue > 0) {
+      revenueGrowth = Math.round(((latestIncome.revenue - prevIncome.revenue) / prevIncome.revenue) * 100 * 10) / 10;
+    }
+    let epsGrowth = latestGrowth.epsgrowth ? Math.round(latestGrowth.epsgrowth * 100 * 10) / 10 : null;
+    if (epsGrowth === null && latestIncome.eps && prevIncome.eps && prevIncome.eps > 0) {
+      epsGrowth = Math.round(((latestIncome.eps - prevIncome.eps) / prevIncome.eps) * 100 * 10) / 10;
+    }
 
-    // Margins
-    const grossMargin = ratios.grossProfitMarginTTM ? Math.round(ratios.grossProfitMarginTTM * 100 * 10) / 10 : null;
-    const netMargin = ratios.netProfitMarginTTM ? Math.round(ratios.netProfitMarginTTM * 100 * 10) / 10 : null;
-    const operatingMargin = ratios.operatingProfitMarginTTM ? Math.round(ratios.operatingProfitMarginTTM * 100 * 10) / 10 : null;
+    // Margins — compute from income statements if ratios endpoint unavailable
+    const grossMargin = ratios.grossProfitMarginTTM ? Math.round(ratios.grossProfitMarginTTM * 100 * 10) / 10
+      : (latestIncome.grossProfit && latestIncome.revenue) ? Math.round((latestIncome.grossProfit / latestIncome.revenue) * 100 * 10) / 10 : null;
+    const netMargin = ratios.netProfitMarginTTM ? Math.round(ratios.netProfitMarginTTM * 100 * 10) / 10
+      : (latestIncome.netIncome && latestIncome.revenue) ? Math.round((latestIncome.netIncome / latestIncome.revenue) * 100 * 10) / 10 : null;
+    const operatingMargin = ratios.operatingProfitMarginTTM ? Math.round(ratios.operatingProfitMarginTTM * 100 * 10) / 10
+      : (latestIncome.operatingIncome && latestIncome.revenue) ? Math.round((latestIncome.operatingIncome / latestIncome.revenue) * 100 * 10) / 10 : null;
 
-    // Valuation
-    const pe = ratios.peRatioTTM ? Math.round(ratios.peRatioTTM * 10) / 10 : quote.pe;
+    // Valuation — compute P/E from price and EPS if ratios unavailable
+    const eps = latestIncome.eps || 0;
+    const pe = ratios.peRatioTTM ? Math.round(ratios.peRatioTTM * 10) / 10
+      : (price && eps && eps > 0) ? Math.round((price / eps) * 10) / 10 : null;
     const forwardPE = quote.priceEarningsRatio || null;
-    const ps = ratios.priceToSalesRatioTTM ? Math.round(ratios.priceToSalesRatioTTM * 10) / 10 : null;
-    const pb = ratios.priceToBookRatioTTM ? Math.round(ratios.priceToBookRatioTTM * 10) / 10 : null;
-    const peg = ratios.pegRatioTTM ? Math.round(ratios.pegRatioTTM * 100) / 100 : null;
+    
+    // P/S from market cap and revenue
+    const ps = ratios.priceToSalesRatioTTM ? Math.round(ratios.priceToSalesRatioTTM * 10) / 10
+      : (mktCap && latestIncome.revenue && latestIncome.revenue > 0) ? Math.round((mktCap / latestIncome.revenue) * 10) / 10 : null;
+    
+    // P/B from market cap and book value
+    const totalEquity = latestBalance.totalStockholdersEquity || latestBalance.totalEquity || 0;
+    const pb = ratios.priceToBookRatioTTM ? Math.round(ratios.priceToBookRatioTTM * 10) / 10
+      : (mktCap && totalEquity && totalEquity > 0) ? Math.round((mktCap / totalEquity) * 10) / 10 : null;
+    
+    // PEG = PE / growth rate
+    const peg = ratios.pegRatioTTM ? Math.round(ratios.pegRatioTTM * 100) / 100
+      : (pe && epsGrowth && epsGrowth > 0) ? Math.round((pe / epsGrowth) * 100) / 100 : null;
 
-    // Debt & Balance Sheet
-    const debtToEquity = ratios.debtEquityRatioTTM ? Math.round(ratios.debtEquityRatioTTM * 100) / 100 : null;
-    const currentRatio = ratios.currentRatioTTM ? Math.round(ratios.currentRatioTTM * 100) / 100 : null;
-    const totalDebt = latestBalance.totalDebt || 0;
-    const totalCash = latestBalance.cashAndCashEquivalents || 0;
+    // Debt & Balance Sheet — compute from balance sheet
+    const totalDebt = latestBalance.totalDebt || latestBalance.longTermDebt || 0;
+    const totalCash = latestBalance.cashAndCashEquivalents || latestBalance.cashAndShortTermInvestments || 0;
     const netDebt = totalDebt - totalCash;
+    const debtToEquity = ratios.debtEquityRatioTTM ? Math.round(ratios.debtEquityRatioTTM * 100) / 100
+      : (totalDebt && totalEquity && totalEquity > 0) ? Math.round((totalDebt / totalEquity) * 100) / 100 : null;
+    const currentRatio = ratios.currentRatioTTM ? Math.round(ratios.currentRatioTTM * 100) / 100
+      : (latestBalance.totalCurrentAssets && latestBalance.totalCurrentLiabilities && latestBalance.totalCurrentLiabilities > 0)
+        ? Math.round((latestBalance.totalCurrentAssets / latestBalance.totalCurrentLiabilities) * 100) / 100 : null;
 
     // Cash Flow
     const freeCashFlow = latestCashFlow.freeCashFlow || 0;
     const fcfMargin = latestIncome.revenue ? Math.round((freeCashFlow / latestIncome.revenue) * 100 * 10) / 10 : null;
 
-    // Dividend
-    const divYield = ratios.dividendYielTTM ? Math.round(ratios.dividendYielTTM * 100 * 100) / 100 : (profile.lastDiv && quote.price) ? Math.round((profile.lastDiv / quote.price) * 100 * 100) / 100 : 0;
-    const payoutRatio = ratios.payoutRatioTTM ? Math.round(ratios.payoutRatioTTM * 100 * 10) / 10 : null;
+    // Dividend — compute from profile data
+    const annualDiv = profile.lastDiv || 0;
+    const divYield = ratios.dividendYielTTM ? Math.round(ratios.dividendYielTTM * 100 * 100) / 100
+      : (annualDiv && price && price > 0) ? Math.round((annualDiv / price) * 100 * 100) / 100 : 0;
+    const payoutRatio = ratios.payoutRatioTTM ? Math.round(ratios.payoutRatioTTM * 100 * 10) / 10
+      : (annualDiv && eps && eps > 0) ? Math.round((annualDiv / eps) * 100 * 10) / 10 : null;
 
     // Earnings surprises
     const earningsSurprises = earnings.slice(0, 4).map((e: any) => ({
@@ -210,23 +241,23 @@ export async function GET(req: NextRequest) {
         sector: profile.sector,
         industry: profile.industry,
         description: profile.description,
-        mktCap: profile.mktCap,
+        mktCap: mktCap,
         employees: profile.fullTimeEmployees,
-        exchange: profile.exchangeShortName,
+        exchange: profile.exchange || profile.exchangeShortName || '',
         website: profile.website,
         image: profile.image,
       },
       quote: {
-        price: quote.price,
-        change: quote.change,
-        changePct: quote.changesPercentage,
-        volume: quote.volume,
-        avgVolume: quote.avgVolume,
-        high52: quote.yearHigh,
-        low52: quote.yearLow,
-        open: quote.open,
-        high: quote.dayHigh,
-        low: quote.dayLow,
+        price: price,
+        change: profile.change || quote.change || 0,
+        changePct: profile.changePercentage || quote.changesPercentage || 0,
+        volume: profile.volume || quote.volume || 0,
+        avgVolume: profile.averageVolume || quote.avgVolume || 0,
+        high52: quote.yearHigh || (profile.range ? parseFloat(profile.range.split('-')[1]) : 0),
+        low52: quote.yearLow || (profile.range ? parseFloat(profile.range.split('-')[0]) : 0),
+        open: quote.open || 0,
+        high: quote.dayHigh || 0,
+        low: quote.dayLow || 0,
       },
       valuation: { pe, forwardPE, ps, pb, peg },
       growth: { revenueGrowth, epsGrowth },
