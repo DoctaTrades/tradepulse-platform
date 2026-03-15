@@ -37,6 +37,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Dynamic imports for heavy modules (code splitting)
 const JournalModule = dynamic(() => import('./modules/journal/JournalModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading journal...</div> });
 const ScreenerModule = dynamic(() => import('./modules/screener/ScreenerModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading screener...</div> });
+const DiscoveryModule = dynamic(() => import('./modules/screener/DiscoveryModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading discovery...</div> });
 const MarketPulseModule = dynamic(() => import('./modules/research/MarketPulseModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading market pulse...</div> });
 const DeepDiveModule = dynamic(() => import('./modules/research/DeepDiveModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading deep dive...</div> });
 
@@ -129,6 +130,7 @@ const SIDEBAR = [
   ]},
   { label:"Research", items:[
     { id:"screener", icon:"search", name:"Screener" },
+    { id:"discovery", icon:"trendUp", name:"Discovery" },
     { id:"marketpulse", icon:"trendUp", name:"Market Pulse" },
     { id:"deepdive", icon:"search", name:"Deep Dive" },
   ]},
@@ -250,7 +252,7 @@ export default function TradePulsePlatform() {
           <div id="tp-shell-actions" style={{ display:"flex", alignItems:"center", gap:8 }}/>
         </div>
 
-        <div className="tp-content" style={{ flex:1, overflowY:"auto", padding: tab === "screener" ? "0" : "24px 28px" }}>
+        <div className="tp-content" style={{ flex:1, overflowY:"auto", padding: tab === "screener" || tab === "discovery" ? "0" : "24px 28px" }}>
           {/* Journal module handles all journal tabs */}
           {JOURNAL_TABS.includes(tab) && (
             <div className="tp-journal-module">
@@ -268,6 +270,9 @@ export default function TradePulsePlatform() {
 
           {/* Screener module */}
           {tab === "screener" && <ScreenerModule user={user}/>}
+
+          {/* Discovery module */}
+          {tab === "discovery" && <DiscoveryModule user={user}/>}
 
           {/* Market Pulse module */}
           {tab === "marketpulse" && <MarketPulseModule/>}
