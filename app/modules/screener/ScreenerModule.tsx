@@ -518,7 +518,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
   return (
     <div className="relative z-10">
       {/* Status Bar */}
-      <div className="flex items-center justify-between px-7 py-3 border-b" style={{ borderColor: 'var(--border)', background: 'rgba(11,17,32,0.5)' }}>
+      <div className="flex items-center justify-between px-7 py-3 border-b" style={{ borderColor: 'var(--border)', background: 'var(--navy)' }}>
         <div className="flex items-center gap-4">
           <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{results.length || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Results</div></div>
           <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{scanStats.scanned || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Scanned</div></div>
@@ -530,7 +530,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
         {scanning && <div className="font-mono text-xs" style={{ color: 'var(--gold)' }}>⚡ {scanProgress.ticker} ({scanProgress.current}/{scanProgress.total})</div>}
       </div>
       {/* TAB NAV */}
-      <div className="sticky top-[67px] z-40 flex border-b overflow-x-auto backdrop-blur-lg px-7" style={{ borderColor: 'var(--border)', background: 'rgba(11,17,32,0.95)' }}>
+      <div className="sticky top-[67px] z-40 flex border-b overflow-x-auto backdrop-blur-lg px-7" style={{ borderColor: 'var(--border)', background: 'var(--navy)' }}>
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`font-display text-[13px] font-semibold tracking-wider uppercase px-5 py-3 border-b-2 whitespace-nowrap transition-all ${activeTab === tab.id ? 'border-[var(--gold)] text-[var(--gold)]' : 'border-transparent text-[var(--text-dim)] hover:text-[var(--text)]'}`}>
@@ -1518,7 +1518,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
 
       {/* SCANNING OVERLAY */}
       {scanning && (
-        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center gap-5" style={{ background: 'rgba(11,17,32,0.92)', backdropFilter: 'blur(6px)' }}>
+        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center gap-5" style={{ background: 'var(--navy)', backdropFilter: 'blur(6px)' }}>
           {/* Spinner */}
           <div className="w-14 h-14 rounded-full border-[3px] animate-spin" style={{ borderColor: 'rgba(255,255,255,0.08)', borderTopColor: 'var(--blue3)' }} />
           
