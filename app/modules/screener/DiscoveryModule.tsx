@@ -11,10 +11,20 @@ interface DiscoveryResult {
 }
 
 interface CustomFilters {
+  // Price action
   minPrice: number; maxPrice: number; minRSI: number; maxRSI: number;
-  emaTrend: string; minVolRatio: number; minMktCap: string;
-  sector: string; minIVR: number; maxIVR: number; wk52Position: string;
-  minDivYield: number;
+  emaTrend: string; pctFrom52High: string; minATR: number; maxATR: number;
+  // Options-specific
+  minIVR: number; maxIVR: number; minIV: number; maxIV: number;
+  minOptBid: number; minRoR: number; minOI: number;
+  // Volume & liquidity
+  minVolRatio: number; minAvgVol: number; minMktCap: string;
+  // Fundamentals
+  sector: string; wk52Position: string; minDivYield: number;
+  profitable: string; minRevGrowth: string;
+  minPE: number; maxPE: number;
+  // Earnings
+  earningsFilter: string;
 }
 
 interface SavedPreset {
@@ -22,10 +32,15 @@ interface SavedPreset {
 }
 
 const DEFAULT_FILTERS: CustomFilters = {
-  minPrice: 5, maxPrice: 500, minRSI: 30, maxRSI: 70,
-  emaTrend: 'any', minVolRatio: 1, minMktCap: 'any',
-  sector: 'all', minIVR: 0, maxIVR: 100,
-  wk52Position: 'any', minDivYield: 0,
+  minPrice: 5, maxPrice: 500, minRSI: 0, maxRSI: 100,
+  emaTrend: 'any', pctFrom52High: 'any', minATR: 0, maxATR: 99,
+  minIVR: 0, maxIVR: 100, minIV: 0, maxIV: 999,
+  minOptBid: 0, minRoR: 0, minOI: 0,
+  minVolRatio: 1, minAvgVol: 0, minMktCap: 'any',
+  sector: 'all', wk52Position: 'any', minDivYield: 0,
+  profitable: 'any', minRevGrowth: 'any',
+  minPE: 0, maxPE: 999,
+  earningsFilter: 'any',
 };
 
 const DISCOVERY_PRESETS = [
@@ -123,7 +138,11 @@ export default function DiscoveryModule({ user }: { user?: any }) {
             emaTrend: filters.emaTrend,
             minVol: (filters.minVolRatio || 1) * 100000,
             minIVR: filters.minIVR || 0,
-            minIV: 0, minBid: 0, minRoR: 0, minMktCap: 0, minOI: 0,
+            minIV: filters.minIV || 0,
+            minBid: filters.minOptBid || 0,
+            minRoR: filters.minRoR || 0,
+            minMktCap: 0,
+            minOI: filters.minOI || 0,
           },
           userId: user?.id,
           userEmail: user?.email,
@@ -134,14 +153,40 @@ export default function DiscoveryModule({ user }: { user?: any }) {
 
       let filtered = data.results || [];
 
-      // Client-side post-filters
+      // Client-side post-filters (applied after server scan)
+      // Price action
       if (filters.wk52Position === 'near_high') filtered = filtered.filter((r: any) => r.ema50 && r.price > r.ema50 * 1.1);
       if (filters.wk52Position === 'near_low') filtered = filtered.filter((r: any) => r.ema200 && r.price < r.ema200);
+      if (filters.pctFrom52High === '5') filtered = filtered.filter((r: any) => r.ema20 && r.price >= r.ema20 * 0.95);
+      if (filters.pctFrom52High === '10') filtered = filtered.filter((r: any) => r.ema50 && r.price >= r.ema50 * 0.9);
+      if (filters.pctFrom52High === 'down20') filtered = filtered.filter((r: any) => r.ema200 && r.price < r.ema200 * 0.8);
+      if (filters.pctFrom52High === 'down30') filtered = filtered.filter((r: any) => r.ema200 && r.price < r.ema200 * 0.7);
+      if (filters.pctFrom52High === 'down50') filtered = filtered.filter((r: any) => r.ema200 && r.price < r.ema200 * 0.5);
+      if (filters.minATR > 0) filtered = filtered.filter((r: any) => (r.atrPct || 0) >= filters.minATR);
+      if (filters.maxATR < 99) filtered = filtered.filter((r: any) => (r.atrPct || 99) <= filters.maxATR);
+
+      // Options
       if (filters.maxIVR < 100) filtered = filtered.filter((r: any) => r.ivr <= filters.maxIVR);
+      if (filters.minIV > 0) filtered = filtered.filter((r: any) => r.iv >= filters.minIV);
+      if (filters.maxIV < 999) filtered = filtered.filter((r: any) => r.iv <= filters.maxIV);
+      if (filters.minOptBid > 0) filtered = filtered.filter((r: any) => (r.optBid || 0) >= filters.minOptBid);
+      if (filters.minRoR > 0) filtered = filtered.filter((r: any) => (r.ror || 0) >= filters.minRoR);
+      if (filters.minOI > 0) filtered = filtered.filter((r: any) => (r.maxOI || 0) >= filters.minOI);
+
+      // Volume & liquidity
       if (filters.sector !== 'all') filtered = filtered.filter((r: any) => r.sector === filters.sector);
-      if (filters.minMktCap === 'large') filtered = filtered.filter((r: any) => r.mktCap >= 10e9);
-      if (filters.minMktCap === 'mid') filtered = filtered.filter((r: any) => r.mktCap >= 2e9);
+      if (filters.minMktCap === 'micro') filtered = filtered.filter((r: any) => r.mktCap > 0 && r.mktCap < 300e6);
       if (filters.minMktCap === 'small') filtered = filtered.filter((r: any) => r.mktCap >= 300e6 && r.mktCap < 2e9);
+      if (filters.minMktCap === 'mid') filtered = filtered.filter((r: any) => r.mktCap >= 2e9 && r.mktCap < 10e9);
+      if (filters.minMktCap === 'large') filtered = filtered.filter((r: any) => r.mktCap >= 10e9 && r.mktCap < 200e9);
+      if (filters.minMktCap === 'mega') filtered = filtered.filter((r: any) => r.mktCap >= 200e9);
+      if (filters.minAvgVol > 0) filtered = filtered.filter((r: any) => (r.vol || 0) >= filters.minAvgVol);
+
+      // Earnings
+      if (filters.earningsFilter === 'within7') filtered = filtered.filter((r: any) => r.daysToEarnings != null && r.daysToEarnings >= 0 && r.daysToEarnings <= 7);
+      if (filters.earningsFilter === 'within14') filtered = filtered.filter((r: any) => r.daysToEarnings != null && r.daysToEarnings >= 0 && r.daysToEarnings <= 14);
+      if (filters.earningsFilter === 'avoid7') filtered = filtered.filter((r: any) => r.daysToEarnings == null || r.daysToEarnings > 7);
+      if (filters.earningsFilter === 'avoid14') filtered = filtered.filter((r: any) => r.daysToEarnings == null || r.daysToEarnings > 14);
 
       setResults(filtered);
       setScanStats({ scanned: data.scanned || filtered.length, found: filtered.length, elapsed: `${elapsed}s` });
@@ -244,52 +289,116 @@ export default function DiscoveryModule({ user }: { user?: any }) {
       {showCustom && (
         <div className="p-5 rounded-xl border mb-5" style={{ background: 'var(--navy3)', borderColor: 'var(--border)' }}>
           <div className="font-display text-sm font-bold tracking-wider uppercase mb-4" style={{ color: 'var(--text)' }}>Custom filter builder</div>
-          <div className="grid grid-cols-4 gap-4 mb-4">
-            <div>
-              <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Price range</label>
-              <div className="flex gap-2">
-                <FilterInput label="" value={customFilters.minPrice} onChange={(v: number) => setCustomFilters(p => ({...p, minPrice: v}))} />
-                <FilterInput label="" value={customFilters.maxPrice} onChange={(v: number) => setCustomFilters(p => ({...p, maxPrice: v}))} />
+          
+          {/* Section: Price & Technicals */}
+          <div className="mb-4">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-2 pb-1" style={{ color: 'var(--gold)', borderBottom: '1px solid var(--border)' }}>Price & technicals</div>
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>Price range</label>
+                <div className="flex gap-2">
+                  <FilterInput label="" value={customFilters.minPrice} onChange={(v: number) => setCustomFilters(p => ({...p, minPrice: v}))} />
+                  <FilterInput label="" value={customFilters.maxPrice} onChange={(v: number) => setCustomFilters(p => ({...p, maxPrice: v}))} />
+                </div>
               </div>
-            </div>
-            <div>
-              <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>RSI range</label>
-              <div className="flex gap-2">
-                <FilterInput label="" value={customFilters.minRSI} onChange={(v: number) => setCustomFilters(p => ({...p, minRSI: v}))} />
-                <FilterInput label="" value={customFilters.maxRSI} onChange={(v: number) => setCustomFilters(p => ({...p, maxRSI: v}))} />
+              <div>
+                <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>RSI range</label>
+                <div className="flex gap-2">
+                  <FilterInput label="" value={customFilters.minRSI} onChange={(v: number) => setCustomFilters(p => ({...p, minRSI: v}))} />
+                  <FilterInput label="" value={customFilters.maxRSI} onChange={(v: number) => setCustomFilters(p => ({...p, maxRSI: v}))} />
+                </div>
               </div>
-            </div>
-            <FilterSelect label="EMA trend" value={customFilters.emaTrend} onChange={(v: string) => setCustomFilters(p => ({...p, emaTrend: v}))} options={[
-              { value: 'any', label: 'Any' }, { value: 'above20', label: 'Above 20 EMA' }, { value: 'above50', label: 'Above 50 EMA' },
-              { value: 'above200', label: 'Above 200 EMA' }, { value: 'above_both', label: 'Above 50 + 200' },
-              { value: 'above_all', label: 'Above all EMAs' }, { value: 'below20', label: 'Below 20 EMA' },
-            ]} />
-            <FilterSelect label="Volume" value={String(customFilters.minVolRatio)} onChange={(v: string) => setCustomFilters(p => ({...p, minVolRatio: Number(v)}))} options={[
-              { value: '1', label: '1x+ (normal)' }, { value: '1.5', label: '1.5x+ avg' },
-              { value: '2', label: '2x+ avg' }, { value: '3', label: '3x+ avg' },
-            ]} />
-            <FilterSelect label="Market cap" value={customFilters.minMktCap} onChange={(v: string) => setCustomFilters(p => ({...p, minMktCap: v}))} options={[
-              { value: 'any', label: 'Any' }, { value: 'small', label: 'Small ($300M-$2B)' },
-              { value: 'mid', label: 'Mid ($2B+)' }, { value: 'large', label: 'Large ($10B+)' },
-            ]} />
-            <FilterSelect label="Sector" value={customFilters.sector} onChange={(v: string) => setCustomFilters(p => ({...p, sector: v}))} options={[
-              { value: 'all', label: 'All sectors' }, { value: 'Technology', label: 'Technology' },
-              { value: 'Healthcare', label: 'Healthcare' }, { value: 'Financial Services', label: 'Financials' },
-              { value: 'Energy', label: 'Energy' }, { value: 'Consumer Cyclical', label: 'Consumer Disc.' },
-              { value: 'Consumer Defensive', label: 'Consumer Staples' }, { value: 'Industrials', label: 'Industrials' },
-              { value: 'Utilities', label: 'Utilities' }, { value: 'Real Estate', label: 'Real Estate' },
-              { value: 'Communication Services', label: 'Communication' },
-            ]} />
-            <div>
-              <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>IV rank range</label>
-              <div className="flex gap-2">
-                <FilterInput label="" value={customFilters.minIVR} onChange={(v: number) => setCustomFilters(p => ({...p, minIVR: v}))} />
-                <FilterInput label="" value={customFilters.maxIVR} onChange={(v: number) => setCustomFilters(p => ({...p, maxIVR: v}))} />
+              <FilterSelect label="EMA trend" value={customFilters.emaTrend} onChange={(v: string) => setCustomFilters(p => ({...p, emaTrend: v}))} options={[
+                { value: 'any', label: 'Any' }, { value: 'above20', label: 'Above 20 EMA' }, { value: 'above50', label: 'Above 50 EMA' },
+                { value: 'above200', label: 'Above 200 EMA' }, { value: 'above_both', label: 'Above 50 + 200' },
+                { value: 'above_all', label: 'Above all EMAs' }, { value: 'below20', label: 'Below 20 EMA' }, { value: 'below50', label: 'Below 50 EMA' },
+              ]} />
+              <FilterSelect label="% from 52W high" value={customFilters.pctFrom52High} onChange={(v: string) => setCustomFilters(p => ({...p, pctFrom52High: v}))} options={[
+                { value: 'any', label: 'Any' }, { value: '5', label: 'Within 5%' }, { value: '10', label: 'Within 10%' },
+                { value: '20', label: 'Within 20%' }, { value: 'down20', label: 'Down 20%+' }, { value: 'down30', label: 'Down 30%+' }, { value: 'down50', label: 'Down 50%+' },
+              ]} />
+              <div>
+                <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>ATR% range (volatility)</label>
+                <div className="flex gap-2">
+                  <FilterInput label="" value={customFilters.minATR} onChange={(v: number) => setCustomFilters(p => ({...p, minATR: v}))} />
+                  <FilterInput label="" value={customFilters.maxATR} onChange={(v: number) => setCustomFilters(p => ({...p, maxATR: v}))} />
+                </div>
               </div>
+              <FilterSelect label="52W position" value={customFilters.wk52Position} onChange={(v: string) => setCustomFilters(p => ({...p, wk52Position: v}))} options={[
+                { value: 'any', label: 'Any' }, { value: 'near_high', label: 'Near 52W high' }, { value: 'near_low', label: 'Near 52W low' },
+              ]} />
             </div>
-            <FilterSelect label="52W position" value={customFilters.wk52Position} onChange={(v: string) => setCustomFilters(p => ({...p, wk52Position: v}))} options={[
-              { value: 'any', label: 'Any' }, { value: 'near_high', label: 'Near 52W high' }, { value: 'near_low', label: 'Near 52W low' },
-            ]} />
+          </div>
+
+          {/* Section: Options */}
+          <div className="mb-4">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-2 pb-1" style={{ color: 'var(--gold)', borderBottom: '1px solid var(--border)' }}>Options data</div>
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>IV rank range (%)</label>
+                <div className="flex gap-2">
+                  <FilterInput label="" value={customFilters.minIVR} onChange={(v: number) => setCustomFilters(p => ({...p, minIVR: v}))} />
+                  <FilterInput label="" value={customFilters.maxIVR} onChange={(v: number) => setCustomFilters(p => ({...p, maxIVR: v}))} />
+                </div>
+              </div>
+              <div>
+                <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>IV range (raw %)</label>
+                <div className="flex gap-2">
+                  <FilterInput label="" value={customFilters.minIV} onChange={(v: number) => setCustomFilters(p => ({...p, minIV: v}))} />
+                  <FilterInput label="" value={customFilters.maxIV} onChange={(v: number) => setCustomFilters(p => ({...p, maxIV: v}))} />
+                </div>
+              </div>
+              <FilterInput label="Min option bid ($)" value={customFilters.minOptBid} onChange={(v: number) => setCustomFilters(p => ({...p, minOptBid: v}))} />
+              <FilterInput label="Min CSP RoR (%)" value={customFilters.minRoR} onChange={(v: number) => setCustomFilters(p => ({...p, minRoR: v}))} />
+              <FilterInput label="Min open interest" value={customFilters.minOI} onChange={(v: number) => setCustomFilters(p => ({...p, minOI: v}))} />
+            </div>
+          </div>
+
+          {/* Section: Volume & Liquidity */}
+          <div className="mb-4">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-2 pb-1" style={{ color: 'var(--gold)', borderBottom: '1px solid var(--border)' }}>Volume & liquidity</div>
+            <div className="grid grid-cols-4 gap-4">
+              <FilterSelect label="Volume vs avg" value={String(customFilters.minVolRatio)} onChange={(v: string) => setCustomFilters(p => ({...p, minVolRatio: Number(v)}))} options={[
+                { value: '0', label: 'Any' }, { value: '1', label: '1x+ (normal)' }, { value: '1.5', label: '1.5x+ avg' },
+                { value: '2', label: '2x+ avg' }, { value: '3', label: '3x+ avg' }, { value: '5', label: '5x+ (surge)' },
+              ]} />
+              <FilterSelect label="Min avg daily volume" value={String(customFilters.minAvgVol)} onChange={(v: string) => setCustomFilters(p => ({...p, minAvgVol: Number(v)}))} options={[
+                { value: '0', label: 'Any' }, { value: '100000', label: '100K+' }, { value: '500000', label: '500K+' },
+                { value: '1000000', label: '1M+' }, { value: '5000000', label: '5M+' },
+              ]} />
+              <FilterSelect label="Market cap" value={customFilters.minMktCap} onChange={(v: string) => setCustomFilters(p => ({...p, minMktCap: v}))} options={[
+                { value: 'any', label: 'Any' }, { value: 'micro', label: 'Micro (<$300M)' }, { value: 'small', label: 'Small ($300M-$2B)' },
+                { value: 'mid', label: 'Mid ($2B-$10B)' }, { value: 'large', label: 'Large ($10B-$200B)' }, { value: 'mega', label: 'Mega ($200B+)' },
+              ]} />
+            </div>
+          </div>
+
+          {/* Section: Fundamentals & Sector */}
+          <div className="mb-4">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-2 pb-1" style={{ color: 'var(--gold)', borderBottom: '1px solid var(--border)' }}>Fundamentals & sector</div>
+            <div className="grid grid-cols-4 gap-4">
+              <FilterSelect label="Sector" value={customFilters.sector} onChange={(v: string) => setCustomFilters(p => ({...p, sector: v}))} options={[
+                { value: 'all', label: 'All sectors' }, { value: 'Technology', label: 'Technology' },
+                { value: 'Healthcare', label: 'Healthcare' }, { value: 'Financial Services', label: 'Financials' },
+                { value: 'Energy', label: 'Energy' }, { value: 'Consumer Cyclical', label: 'Consumer Disc.' },
+                { value: 'Consumer Defensive', label: 'Consumer Staples' }, { value: 'Industrials', label: 'Industrials' },
+                { value: 'Utilities', label: 'Utilities' }, { value: 'Real Estate', label: 'Real Estate' },
+                { value: 'Communication Services', label: 'Communication' }, { value: 'Basic Materials', label: 'Materials' },
+              ]} />
+              <FilterInput label="Min dividend yield (%)" value={customFilters.minDivYield} onChange={(v: number) => setCustomFilters(p => ({...p, minDivYield: v}))} />
+              <div>
+                <label className="font-mono text-[9px] uppercase tracking-wider block mb-1" style={{ color: 'var(--text-dim)' }}>P/E range</label>
+                <div className="flex gap-2">
+                  <FilterInput label="" value={customFilters.minPE} onChange={(v: number) => setCustomFilters(p => ({...p, minPE: v}))} />
+                  <FilterInput label="" value={customFilters.maxPE} onChange={(v: number) => setCustomFilters(p => ({...p, maxPE: v}))} />
+                </div>
+              </div>
+              <FilterSelect label="Earnings timing" value={customFilters.earningsFilter} onChange={(v: string) => setCustomFilters(p => ({...p, earningsFilter: v}))} options={[
+                { value: 'any', label: 'Any' }, { value: 'within7', label: 'Reporting within 7 days' },
+                { value: 'within14', label: 'Reporting within 14 days' }, { value: 'avoid7', label: 'Exclude next 7 days' },
+                { value: 'avoid14', label: 'Exclude next 14 days' },
+              ]} />
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => runScan(customFilters)} disabled={scanning} className="btn-primary text-xs">
