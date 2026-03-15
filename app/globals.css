@@ -4,7 +4,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Inter:wght@300;400;500&display=swap');
 
-:root {
+:root, [data-theme="dark"] {
   --navy: #0b1120;
   --navy2: #111827;
   --navy3: #1a2540;
@@ -22,19 +22,51 @@
   --text-mid: #94a3b8;
   --border: rgba(255, 255, 255, 0.07);
   --border2: rgba(255, 255, 255, 0.12);
+  --shell-bg: #0d0f14;
+  --shell-bg2: #12141a;
+  --shell-panel: #161922;
+  --shell-input: #1e2028;
+  --shell-card: rgba(255,255,255,0.02);
+  --shell-active: rgba(99,102,241,0.12);
+}
+
+[data-theme="light"] {
+  --navy: #f5f6fa;
+  --navy2: #ffffff;
+  --navy3: #eef0f5;
+  --navy4: #e8eaf0;
+  --blue: #1e4fd8;
+  --blue2: #2563eb;
+  --blue3: #2563eb;
+  --gold: #b8860b;
+  --gold2: #d4a017;
+  --green: #059669;
+  --red: #dc2626;
+  --purple: #7c3aed;
+  --text: #1a1a2e;
+  --text-dim: #6b7280;
+  --text-mid: #374151;
+  --border: rgba(0, 0, 0, 0.08);
+  --border2: rgba(0, 0, 0, 0.12);
+  --shell-bg: #f5f6fa;
+  --shell-bg2: #ffffff;
+  --shell-panel: #ffffff;
+  --shell-input: #f3f4f6;
+  --shell-card: rgba(0,0,0,0.02);
+  --shell-active: rgba(99,102,241,0.08);
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background: var(--navy);
+  background: var(--shell-bg);
   color: var(--text);
   font-family: 'Inter', sans-serif;
   font-size: 13px;
   min-height: 100vh;
 }
 
-body::before {
+[data-theme="dark"] body::before {
   content: '';
   position: fixed;
   inset: 0;
@@ -44,6 +76,15 @@ body::before {
     radial-gradient(ellipse 70% 50% at 15% 0%, rgba(30, 79, 216, 0.15) 0%, transparent 60%),
     radial-gradient(ellipse 50% 40% at 85% 90%, rgba(240, 180, 41, 0.08) 0%, transparent 60%),
     radial-gradient(ellipse 40% 30% at 50% 50%, rgba(10, 14, 25, 0.5) 0%, transparent 100%);
+}
+
+[data-theme="light"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: none;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -97,8 +138,8 @@ body::before {
   color: var(--text);
 }
 
-/* ─── TRADEPULSE THEME OVERRIDES ─── */
-.tp-journal-module {
+/* ─── TRADEPULSE JOURNAL THEME (responds to data-theme) ─── */
+[data-theme="dark"] .tp-journal-module {
   --tp-bg: #0d0f14; --tp-bg2: #12141a; --tp-bg3: #161922;
   --tp-panel: #161922; --tp-panel-b: rgba(255,255,255,0.07);
   --tp-text: #e2e4ea; --tp-text2: #c8cad0; --tp-muted: #8a8f9e;
@@ -107,8 +148,34 @@ body::before {
   --tp-input: #1e2028; --tp-card: rgba(255,255,255,0.02);
   --tp-sel-bg: #1e2028;
 }
-.tp-journal-module select option { background: #1e2028 !important; color: #e2e4ea !important; }
+[data-theme="light"] .tp-journal-module {
+  --tp-bg: #f5f6fa; --tp-bg2: #ffffff; --tp-bg3: #eef0f5;
+  --tp-panel: #ffffff; --tp-panel-b: rgba(0,0,0,0.08);
+  --tp-text: #1a1a2e; --tp-text2: #374151; --tp-muted: #6b7280;
+  --tp-faint: #9ca3af; --tp-faintest: #d1d5db;
+  --tp-border: rgba(0,0,0,0.08); --tp-border-l: rgba(0,0,0,0.12);
+  --tp-input: #f3f4f6; --tp-card: rgba(0,0,0,0.02);
+  --tp-sel-bg: #ffffff;
+}
+[data-theme="dark"] .tp-journal-module select option { background: #1e2028 !important; color: #e2e4ea !important; }
+[data-theme="light"] .tp-journal-module select option { background: #ffffff !important; color: #1a1a2e !important; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── LOADING SPINNER ─── */
+.tp-spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  border-top: 3px solid var(--blue3);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.tp-spinner-sm {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border);
+  border-top: 2px solid var(--blue3);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 
 /* Mobile responsive for journal */
 @media (max-width: 768px) {

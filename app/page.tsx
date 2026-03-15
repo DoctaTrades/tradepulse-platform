@@ -35,11 +35,11 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Dynamic imports for heavy modules (code splitting)
-const JournalModule = dynamic(() => import('./modules/journal/JournalModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading journal...</div> });
-const ScreenerModule = dynamic(() => import('./modules/screener/ScreenerModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading screener...</div> });
-const DiscoveryModule = dynamic(() => import('./modules/screener/DiscoveryModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading discovery...</div> });
-const MarketPulseModule = dynamic(() => import('./modules/research/MarketPulseModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading market pulse...</div> });
-const DeepDiveModule = dynamic(() => import('./modules/research/DeepDiveModule'), { ssr: false, loading: () => <div style={{ padding: 40, textAlign: "center", color: "#5c6070" }}>Loading deep dive...</div> });
+const JournalModule = dynamic(() => import('./modules/journal/JournalModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading journal</span></div> });
+const ScreenerModule = dynamic(() => import('./modules/screener/ScreenerModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading screener</span></div> });
+const DiscoveryModule = dynamic(() => import('./modules/screener/DiscoveryModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading discovery</span></div> });
+const MarketPulseModule = dynamic(() => import('./modules/research/MarketPulseModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading market pulse</span></div> });
+const DeepDiveModule = dynamic(() => import('./modules/research/DeepDiveModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading deep dive</span></div> });
 
 // ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }: { onAuth: (user: any) => void }) {
@@ -149,6 +149,12 @@ export default function TradePulsePlatform() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [prefs, setPrefs] = useState({ theme: "dark" });
+  const isDark = prefs.theme !== "light";
+
+  // Apply theme to document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', prefs.theme === 'light' ? 'light' : 'dark');
+  }, [prefs.theme]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { setUser(session?.user ?? null); setLoading(false); });
@@ -156,7 +162,7 @@ export default function TradePulsePlatform() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) return <div style={{ minHeight:"100vh", background:"#0d0f14", display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ color:"#6366f1", fontSize:18, fontWeight:600 }}>Loading...</div></div>;
+  if (loading) return <div style={{ minHeight:"100vh", background:"var(--shell-bg)", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}><div className="tp-spinner"/><div style={{ color:"var(--text-dim)", fontSize:13, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, letterSpacing:1, textTransform:"uppercase" }}>Loading TradePulse</div></div>;
   if (!user) return <AuthScreen onAuth={setUser}/>;
 
   const handleSignOut = async () => { await supabase.auth.signOut(); setUser(null); };
@@ -168,18 +174,18 @@ export default function TradePulsePlatform() {
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:"#0d0f14", color:"#e2e4ea", fontFamily:"'Inter', system-ui, sans-serif", display:"flex" }}>
+    <div style={{ minHeight:"100vh", background:"var(--shell-bg)", color:"var(--text)", fontFamily:"'Inter', system-ui, sans-serif", display:"flex" }}>
       {/* ═══ SIDEBAR ═══ */}
-      <div className="tp-sidebar" style={{ width: collapsed ? 56 : 210, background:"#12141a", borderRight:"1px solid rgba(255,255,255,0.06)", display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden", transition:"width 0.2s", position:"sticky", top:0, height:"100vh" }}>
-        <div style={{ padding: collapsed ? "16px 12px" : "18px 16px 14px", borderBottom:"1px solid rgba(255,255,255,0.06)", display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setCollapsed(!collapsed)}>
+      <div className="tp-sidebar" style={{ width: collapsed ? 56 : 210, background:"var(--shell-bg2)", borderRight:"1px solid var(--border)", display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden", transition:"width 0.2s", position:"sticky", top:0, height:"100vh" }}>
+        <div style={{ padding: collapsed ? "16px 12px" : "18px 16px 14px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setCollapsed(!collapsed)}>
           <div style={{ width:30, height:30, borderRadius:8, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><SidebarIcon icon="book" size={15}/></div>
           {!collapsed && <span style={{ fontSize:16, fontWeight:800, background:"linear-gradient(135deg,#a5b4fc,#c4b5fd)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", whiteSpace:"nowrap" }}>TradePulse</span>}
         </div>
         <div style={{ flex:1, overflowY:"auto", padding:"8px 0" }}>
           {SIDEBAR.map(section => (
             <div key={section.label}>
-              {!collapsed && <div style={{ padding:"12px 18px 4px", fontSize:9, color:"#3d4150", textTransform:"uppercase", letterSpacing:1.2, fontWeight:700 }}>{section.label}</div>}
-              {collapsed && <div style={{ height:1, background:"rgba(255,255,255,0.06)", margin:"6px 8px" }}/>}
+              {!collapsed && <div style={{ padding:"12px 18px 4px", fontSize:9, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:1.2, fontWeight:700 }}>{section.label}</div>}
+              {collapsed && <div style={{ height:1, background:"var(--border)", margin:"6px 8px" }}/>}
               {section.items.map(item => (
                 <button key={item.id} onClick={()=>{if(!item.soon){setTab(item.id);setMobileOpen(false);}}} title={collapsed?item.name:undefined} style={{
                   display:"flex", alignItems:"center", gap:10, width:"calc(100% - 8px)", margin:"1px 4px",
@@ -198,7 +204,7 @@ export default function TradePulsePlatform() {
             </div>
           ))}
         </div>
-        <div style={{ borderTop:"1px solid rgba(255,255,255,0.06)", padding:"8px 4px" }}>
+        <div style={{ borderTop:"1px solid var(--border)", padding:"8px 4px" }}>
           <button onClick={()=>{setTab("settings");setMobileOpen(false);}} style={{
             display:"flex", alignItems:"center", gap:10, width:"calc(100% - 8px)", margin:"1px 4px",
             padding: collapsed?"9px 0":"8px 14px", justifyContent: collapsed?"center":"flex-start",
@@ -207,8 +213,8 @@ export default function TradePulsePlatform() {
             color: tab==="settings"?"#a5b4fc":"#5c6070"
           }}><SidebarIcon icon="settings"/>{!collapsed && <span>Settings</span>}</button>
           {!collapsed && <div style={{ padding:"8px 14px 4px" }}>
-            <div style={{ fontSize:10, color:"#3d4150", marginBottom:6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</div>
-            <button onClick={handleSignOut} style={{ display:"flex", alignItems:"center", gap:6, width:"100%", padding:"6px 10px", borderRadius:6, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#5c6070", cursor:"pointer", fontSize:10, fontWeight:600 }}>Sign Out</button>
+            <div style={{ fontSize:10, color:"var(--text-dim)", marginBottom:6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</div>
+            <button onClick={handleSignOut} style={{ display:"flex", alignItems:"center", gap:6, width:"100%", padding:"6px 10px", borderRadius:6, border:"1px solid var(--border2)", background:"transparent", color:"var(--text-dim)", cursor:"pointer", fontSize:10, fontWeight:600 }}>Sign Out</button>
           </div>}
         </div>
       </div>
@@ -216,15 +222,15 @@ export default function TradePulsePlatform() {
       {/* ═══ MOBILE MENU ═══ */}
       {mobileOpen && <>
         <div onClick={()=>setMobileOpen(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:60 }}/>
-        <div style={{ position:"fixed", top:0, left:0, bottom:0, width:260, background:"#12141a", borderRight:"1px solid rgba(255,255,255,0.06)", zIndex:70, padding:"20px 0", display:"flex", flexDirection:"column", boxShadow:"4px 0 30px rgba(0,0,0,0.4)" }}>
-          <div style={{ padding:"0 20px 18px", borderBottom:"1px solid rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <span style={{ fontSize:16, fontWeight:700, color:"#e2e4ea" }}>TradePulse</span>
-            <button onClick={()=>setMobileOpen(false)} style={{ background:"none", border:"none", color:"#5c6070", cursor:"pointer" }}><Icon d={ICONS.x} size={18}/></button>
+        <div style={{ position:"fixed", top:0, left:0, bottom:0, width:260, background:"var(--shell-bg2)", borderRight:"1px solid var(--border)", zIndex:70, padding:"20px 0", display:"flex", flexDirection:"column", boxShadow:"4px 0 30px rgba(0,0,0,0.4)" }}>
+          <div style={{ padding:"0 20px 18px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <span style={{ fontSize:16, fontWeight:700, color:"var(--text)" }}>TradePulse</span>
+            <button onClick={()=>setMobileOpen(false)} style={{ background:"none", border:"none", color:"var(--text-dim)", cursor:"pointer" }}><Icon d={ICONS.x} size={18}/></button>
           </div>
           <div style={{ flex:1, overflowY:"auto", padding:"12px 10px" }}>
             {SIDEBAR.map(section => (
               <div key={section.label}>
-                <div style={{ padding:"12px 14px 4px", fontSize:9, color:"#3d4150", textTransform:"uppercase", letterSpacing:1.2, fontWeight:700 }}>{section.label}</div>
+                <div style={{ padding:"12px 14px 4px", fontSize:9, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:1.2, fontWeight:700 }}>{section.label}</div>
                 {section.items.filter(i=>!i.soon).map(item => (
                   <button key={item.id} onClick={()=>{setTab(item.id);setMobileOpen(false);}} style={{ display:"flex", alignItems:"center", gap:12, width:"100%", padding:"10px 14px", borderRadius:10, border:"none", background:tab===item.id?"rgba(99,102,241,0.12)":"transparent", color:tab===item.id?"#a5b4fc":"#8a8f9e", cursor:"pointer", fontSize:14, fontWeight:tab===item.id?600:500, marginBottom:2 }}>
                     <SidebarIcon icon={item.icon}/> {item.name}
@@ -233,21 +239,21 @@ export default function TradePulsePlatform() {
               </div>
             ))}
           </div>
-          <div style={{ padding:"14px 20px", borderTop:"1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ fontSize:11, color:"#3d4150", marginBottom:8 }}>{user.email}</div>
-            <button onClick={()=>{handleSignOut();setMobileOpen(false);}} style={{ width:"100%", padding:"9px 14px", borderRadius:8, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#5c6070", cursor:"pointer", fontSize:12, fontWeight:600 }}>Sign Out</button>
+          <div style={{ padding:"14px 20px", borderTop:"1px solid var(--border)" }}>
+            <div style={{ fontSize:11, color:"var(--text-dim)", marginBottom:8 }}>{user.email}</div>
+            <button onClick={()=>{handleSignOut();setMobileOpen(false);}} style={{ width:"100%", padding:"9px 14px", borderRadius:8, border:"1px solid var(--border2)", background:"transparent", color:"var(--text-dim)", cursor:"pointer", fontSize:12, fontWeight:600 }}>Sign Out</button>
           </div>
         </div>
       </>}
 
       {/* ═══ MAIN ═══ */}
       <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column", minHeight:"100vh" }}>
-        <div className="tp-topbar" style={{ padding:"12px 28px", borderBottom:"1px solid rgba(255,255,255,0.06)", display:"flex", justifyContent:"space-between", alignItems:"center", background:"#0d0f14", position:"sticky", top:0, zIndex:10, flexShrink:0 }}>
+        <div className="tp-topbar" style={{ padding:"12px 28px", borderBottom:"1px solid var(--border)", display:"flex", justifyContent:"space-between", alignItems:"center", background:"var(--shell-bg)", position:"sticky", top:0, zIndex:10, flexShrink:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button className="tp-hamburger" onClick={()=>setMobileOpen(p=>!p)} style={{ display:"none", alignItems:"center", justifyContent:"center", width:36, height:36, borderRadius:8, border:"none", background:"transparent", color:"#8a8f9e", cursor:"pointer" }}>
+            <button className="tp-hamburger" onClick={()=>setMobileOpen(p=>!p)} style={{ display:"none", alignItems:"center", justifyContent:"center", width:36, height:36, borderRadius:8, border:"none", background:"transparent", color:"var(--text-mid)", cursor:"pointer" }}>
               <Icon d={mobileOpen ? ICONS.x : ICONS.menu} size={20}/>
             </button>
-            <span style={{ fontSize:18, fontWeight:700, color:"#e2e4ea" }}>{activeItem?.name || "Settings"}</span>
+            <span style={{ fontSize:18, fontWeight:700, color:"var(--text)" }}>{activeItem?.name || "Settings"}</span>
           </div>
           <div id="tp-shell-actions" style={{ display:"flex", alignItems:"center", gap:8 }}/>
         </div>
@@ -256,7 +262,7 @@ export default function TradePulsePlatform() {
           {/* Journal module handles all journal tabs */}
           {JOURNAL_TABS.includes(tab) && (
             <div className="tp-journal-module">
-              <JournalModule user={user} tab={tab} setTab={setTab} theme={{
+              <JournalModule user={user} tab={tab} setTab={setTab} theme={isDark ? {
                 bg:"#0d0f14", bgSecondary:"#12141a", bgTertiary:"#161922",
                 panelBg:"#161922", panelBorder:"rgba(255,255,255,0.07)",
                 text:"#e2e4ea", textSecondary:"#c8cad0", textMuted:"#8a8f9e", textFaint:"#5c6070", textFaintest:"#3d4150",
@@ -264,6 +270,14 @@ export default function TradePulsePlatform() {
                 inputBg:"#1e2028", cardBg:"rgba(255,255,255,0.02)",
                 headerBg:"rgba(13,15,20,0.85)", headerBorder:"rgba(255,255,255,0.06)",
                 activeBg:"rgba(99,102,241,0.12)", selectOptionBg:"#1e2028"
+              } : {
+                bg:"#f5f6fa", bgSecondary:"#ffffff", bgTertiary:"#eef0f5",
+                panelBg:"#ffffff", panelBorder:"rgba(0,0,0,0.08)",
+                text:"#1a1a2e", textSecondary:"#374151", textMuted:"#6b7280", textFaint:"#9ca3af", textFaintest:"#d1d5db",
+                border:"rgba(0,0,0,0.08)", borderLight:"rgba(0,0,0,0.12)",
+                inputBg:"#f3f4f6", cardBg:"rgba(0,0,0,0.02)",
+                headerBg:"rgba(255,255,255,0.9)", headerBorder:"rgba(0,0,0,0.08)",
+                activeBg:"rgba(99,102,241,0.08)", selectOptionBg:"#ffffff"
               }} prefs={prefs} setPrefs={setPrefs}/>
             </div>
           )}
