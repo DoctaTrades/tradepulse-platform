@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const FMP_KEY = process.env.FMP_API_KEY || '';
-const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
+const FMP_BASE = 'https://financialmodelingprep.com/stable';
 
-async function fmpFetch(endpoint: string) {
-  const url = `${FMP_BASE}${endpoint}${endpoint.includes('?') ? '&' : '?'}apikey=${FMP_KEY}`;
+async function fmpFetch(endpoint: string, params: Record<string, string> = {}) {
+  const searchParams = new URLSearchParams({ ...params, apikey: FMP_KEY });
+  const url = `${FMP_BASE}${endpoint}?${searchParams.toString()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`FMP API ${res.status}`);
   return res.json();
@@ -20,16 +21,16 @@ export async function GET(req: NextRequest) {
   try {
     // Fetch all data in parallel
     const [profileArr, ratiosArr, incomeArr, balanceArr, cashFlowArr, quoteArr, ratingArr, analystArr, earningsArr, growthArr] = await Promise.all([
-      fmpFetch(`/profile/${ticker}`),
-      fmpFetch(`/ratios-ttm/${ticker}`),
-      fmpFetch(`/income-statement/${ticker}?period=annual&limit=5`),
-      fmpFetch(`/balance-sheet-statement/${ticker}?period=annual&limit=3`),
-      fmpFetch(`/cash-flow-statement/${ticker}?period=annual&limit=3`),
-      fmpFetch(`/quote/${ticker}`),
-      fmpFetch(`/rating/${ticker}`),
-      fmpFetch(`/analyst-estimates/${ticker}?limit=4`),
-      fmpFetch(`/earnings-surprises/${ticker}?limit=8`),
-      fmpFetch(`/financial-growth/${ticker}?period=annual&limit=3`),
+      fmpFetch('/profile', { symbol: ticker }),
+      fmpFetch('/ratios-ttm', { symbol: ticker }),
+      fmpFetch('/income-statement', { symbol: ticker, period: 'annual', limit: '5' }),
+      fmpFetch('/balance-sheet-statement', { symbol: ticker, period: 'annual', limit: '3' }),
+      fmpFetch('/cash-flow-statement', { symbol: ticker, period: 'annual', limit: '3' }),
+      fmpFetch('/quote', { symbol: ticker }),
+      fmpFetch('/rating', { symbol: ticker }),
+      fmpFetch('/analyst-estimates', { symbol: ticker, limit: '4' }),
+      fmpFetch('/earnings-surprises', { symbol: ticker, limit: '8' }),
+      fmpFetch('/financial-growth', { symbol: ticker, period: 'annual', limit: '3' }),
     ]);
 
     const profile = profileArr?.[0] || {};
