@@ -8470,82 +8470,84 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
     let startIdx = -1, endIdx = allLines.length;
     for (let i = 0; i < allLines.length; i++) {
       if (allLines[i].includes("SECURITIES TRADING ACTIVITY")) startIdx = i;
-      if (startIdx > -1 && allLines[i] === "OPEN POSITIONS") { endIdx = i; break; }
+      if (startIdx > -1 && i > startIdx && allLines[i].startsWith("OPEN POSITIONS")) { endIdx = i; break; }
     }
     if (startIdx === -1) return orders;
 
     const lines = allLines.slice(startIdx, endIdx);
-    const dateRe = /^\d{2}\/\d{2}\/\d{4}$/;
-    // Stock: "SMCI - 86800U302"
-    const stockRe = /^([A-Z]{1,5})\s*-\s*[A-Z0-9]+$/;
-    // Option: "LOW 260220P00220000 -" or "SPXW 260107C06965000 -"
-    const optionRe = /^([A-Z]{1,5})\s+(\d{6}[CP]\d+)\s*-$/;
-    const actionRe = /^(B|S|BTC|BTO|STO|STC)$/;
-    const skipSet = new Set(["A","N","Y",""]);
+
+    // Option: full trade on one line
+    // e.g. "LOW 260220P00220000 - 01/02/2026 01/05/2026 B 1.00 1.95 -195.00 0.00 -0.05 -195.05 A N N"
+    const optionLineRe = /^([A-Z]{1,5})\s+(\d{6}[CP]\d+)\s+-\s+(\d{2}\/\d{2}\/\d{4})\s+\d{2}\/\d{2}\/\d{4}\s+(B|S|BTC|BTO|STO|STC)\s+(-?[\d,.]+)\s+([\d,.]+)\s+(-?[\d,.]+)\s+(-?[\d,.]+)\s+(-?[\d,.]+)\s+(-?[\d,.]+)/;
+
+    // Stock symbol line: just "SMCI - 86800U302"
+    const stockSymRe = /^([A-Z]{1,5})\s+-\s+[A-Z0-9]+$/;
+
+    // Data line starting with date: "01/02/2026 01/05/2026 B 5.00 29.90 -149.50 0.00 0.00 -149.50 ..."
+    const dataLineRe = /(\d{2}\/\d{2}\/\d{4})\s+\d{2}\/\d{2}\/\d{4}\s+(B|S|BTC|BTO|STO|STC)\s+(-?[\d,.]+)\s+([\d,.]+)\s+(-?[\d,.]+)\s+(-?[\d,.]+)\s+(-?[\d,.]+)\s+(-?[\d,.]+)/;
+
+    const clean = (v) => parseFloat(v.replace(/,/g, ""));
 
     let i = 0;
-    // Skip header lines until first trade
-    while (i < lines.length && !stockRe.test(lines[i]) && !optionRe.test(lines[i])) i++;
-
     while (i < lines.length) {
       const line = lines[i];
-      const stockM = stockRe.exec(line);
-      const optionM = optionRe.exec(line);
 
-      if (!stockM && !optionM) { i++; continue; }
-
-      let symbol, optionSymbol = null, isOption = false;
-
-      if (stockM) {
-        symbol = stockM[1];
-        i++; // skip company name line
-        i++; // now on trade date
-      } else {
-        symbol = optionM[1];
-        optionSymbol = `${optionM[1]} ${optionM[2]}`;
-        isOption = true;
-        i++; // now on trade date (no company name for options)
-      }
-
-      try {
-        const tradeDate = lines[i++];
-        const settleDate = lines[i++];
-        const action = lines[i++];
-        const qty = lines[i++];
-        const price = lines[i++];
-        const gross = lines[i++];
-        const comm = lines[i++];
-        const fee = lines[i++];
-        const net = lines[i++];
-        // Skip trailing flags (CAP=A, Overnight=N, Algorithm=N, Callable, Remarks)
-        while (i < lines.length && skipSet.has(lines[i])) i++;
-
-        if (!dateRe.test(tradeDate) || !actionRe.test(action)) continue;
-
+      // Try option match (full trade on one line)
+      const optM = optionLineRe.exec(line);
+      if (optM) {
+        const [, symbol, optCode, tradeDate, action, qty, price, gross, comm, fee, net] = optM;
         const [mm, dd, yyyy] = tradeDate.split("/");
-        const isoDate = `${yyyy}-${mm}-${dd}`;
-        const absQty = Math.abs(parseFloat(qty.replace(/,/g, "")));
-        const parsedPrice = parseFloat(price.replace(/,/g, ""));
-        const parsedComm = Math.abs(parseFloat(comm.replace(/,/g, "")));
-        const parsedFee = Math.abs(parseFloat(fee.replace(/,/g, "")));
-        const parsedNet = parseFloat(net.replace(/,/g, ""));
-
-        if (isNaN(absQty) || isNaN(parsedPrice)) continue;
-
         orders.push({
           symbol,
-          optionSymbol,
-          isOption,
-          date: isoDate,
+          optionSymbol: `${symbol} ${optCode}`,
+          isOption: true,
+          date: `${yyyy}-${mm}-${dd}`,
           action: ["B","BTO","BTC"].includes(action) ? "Buy" : "Sell",
           rawAction: action,
-          quantity: absQty,
-          price: parsedPrice,
-          fees: parsedComm + parsedFee,
-          netAmount: parsedNet,
-          gross: parseFloat(gross.replace(/,/g, ""))
+          quantity: Math.abs(clean(qty)),
+          price: clean(price),
+          fees: Math.abs(clean(comm)) + Math.abs(clean(fee)),
+          netAmount: clean(net),
+          gross: clean(gross),
         });
-      } catch (e) { i++; continue; }
+        i++;
+        continue;
+      }
+
+      // Try stock symbol match
+      const stockM = stockSymRe.exec(line);
+      if (stockM) {
+        const symbol = stockM[1];
+        // Next 1-3 lines: company name, then data line (or data on same line as company name)
+        let found = false;
+        for (let j = 1; j <= 3 && (i + j) < lines.length; j++) {
+          const dataM = dataLineRe.exec(lines[i + j]);
+          if (dataM) {
+            const [, tradeDate, action, qty, price, gross, comm, fee, net] = dataM;
+            const [mm, dd, yyyy] = tradeDate.split("/");
+            orders.push({
+              symbol,
+              optionSymbol: null,
+              isOption: false,
+              date: `${yyyy}-${mm}-${dd}`,
+              action: ["B","BTO","BTC"].includes(action) ? "Buy" : "Sell",
+              rawAction: action,
+              quantity: Math.abs(clean(qty)),
+              price: clean(price),
+              fees: Math.abs(clean(comm)) + Math.abs(clean(fee)),
+              netAmount: clean(net),
+              gross: clean(gross),
+            });
+            i = i + j + 1;
+            found = true;
+            break;
+          }
+        }
+        if (!found) i++;
+        continue;
+      }
+
+      i++;
     }
     return orders;
   };
