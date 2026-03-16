@@ -8016,6 +8016,7 @@ function SchwabSetupWizard({ user }) {
 }
 
 // ─── APPEARANCE MANAGER ─────────────────────────────────────────────────────
+function AppearanceManager({ prefs, onSave, theme }) {
   const logoInputRef = { current: null };
   const bannerInputRef = { current: null };
 
