@@ -44,27 +44,40 @@ export async function GET(req: NextRequest) {
 
   try {
     // Fetch both in parallel
-    const [economicData, earningsData] = await Promise.all([
-      finnhubFetch('/calendar/economic', { from, to }).catch(() => ({ economicCalendar: [] })),
-      finnhubFetch('/calendar/earnings', { from, to }).catch(() => ({ earningsCalendar: [] })),
+    const [economicRaw, earningsData] = await Promise.all([
+      finnhubFetch('/calendar/economic', { from, to }).catch(e => {
+        console.error('Economic calendar fetch failed:', e.message);
+        return null;
+      }),
+      finnhubFetch('/calendar/earnings', { from, to }).catch(e => {
+        console.error('Earnings calendar fetch failed:', e.message);
+        return { earningsCalendar: [] };
+      }),
     ]);
 
-    // Process economic events — filter to important US events
-    const economicEvents = (economicData?.economicCalendar || economicData?.result || [])
+    // Debug: log raw economic response structure
+    console.log('Economic raw keys:', economicRaw ? Object.keys(economicRaw) : 'null');
+    console.log('Economic raw sample:', JSON.stringify(economicRaw)?.substring(0, 500));
+
+    // Process economic events — try multiple possible response shapes
+    const rawEconomic = economicRaw?.economicCalendar || economicRaw?.result || economicRaw?.data || [];
+    const economicEvents = (Array.isArray(rawEconomic) ? rawEconomic : [])
       .filter((e: any) => {
-        const country = (e.country || e.unit || '').toUpperCase();
-        return country === 'US' || country === 'USD' || country === '';
+        // Include US events and events with no country specified
+        const country = (e.country || '').toUpperCase();
+        return !country || country === 'US' || country === 'USD' || country === 'UNITED STATES';
       })
       .map((e: any) => ({
-        event: e.event || '',
+        event: e.event || e.name || e.title || '',
         country: e.country || 'US',
         date: e.time || e.date || '',
-        impact: e.impact || 'low',
+        impact: e.impact || e.importance || 'low',
         actual: e.actual ?? null,
-        estimate: e.estimate ?? null,
-        prev: e.prev ?? null,
+        estimate: e.estimate ?? e.forecast ?? null,
+        prev: e.prev ?? e.previous ?? null,
         unit: e.unit || '',
       }))
+      .filter((e: any) => e.event) // must have an event name
       .sort((a: any, b: any) => (a.date || '').localeCompare(b.date || ''));
 
     // Process earnings
@@ -95,6 +108,9 @@ export async function GET(req: NextRequest) {
       earnings: earningsEvents,
       economicCount: economicEvents.length,
       earningsCount: earningsEvents.length,
+      _debug_economicRawKeys: economicRaw ? Object.keys(economicRaw) : null,
+      _debug_economicRawCount: Array.isArray(rawEconomic) ? rawEconomic.length : 'not array',
+      _debug_economicSample: Array.isArray(rawEconomic) ? rawEconomic.slice(0, 2) : rawEconomic,
     });
 
   } catch (e: any) {
