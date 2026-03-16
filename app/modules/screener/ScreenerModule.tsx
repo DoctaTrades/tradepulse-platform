@@ -603,7 +603,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 {/* Indices */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {dashData.indices?.map((idx: any) => (
-                    <div key={idx.symbol} className="rounded-xl border p-4" style={{ background: 'var(--card, rgba(17,24,39,0.9))', borderColor: 'var(--border)' }}>
+                    <div key={idx.symbol} className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-display text-sm font-bold" style={{ color: 'var(--blue3)' }}>{idx.symbol}</span>
                         <span className="font-mono text-xs" style={{ color: idx.change >= 0 ? 'var(--green)' : 'var(--red)' }}>
@@ -1163,7 +1163,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                       {filtered.map((r: any) => {
                         const isExpanded = expandedEquity.has(r.ticker);
                         return (
-                        <div key={r.ticker} className="rounded-xl border overflow-hidden" style={{ background: 'var(--card, rgba(17,24,39,0.9))', borderColor: 'var(--border)' }}>
+                        <div key={r.ticker} className="rounded-xl border overflow-hidden" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
                           {/* Header — always visible, clickable */}
                           <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors"
                             onClick={() => setExpandedEquity(prev => {
@@ -1353,28 +1353,28 @@ export default function ScreenerModule({ user }: { user?: any }) {
               <>
                 {/* Key Levels */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-xl border p-4" style={{ background: 'var(--card, rgba(17,24,39,0.9))', borderColor: 'var(--border)' }}>
+                  <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
                     <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>SPX Price</div>
                     <div className="font-display text-2xl font-bold" style={{ color: 'var(--blue3)' }}>${spxData.spxPrice?.toFixed(2)}</div>
                     <div className="font-mono text-[10px] mt-1" style={{ color: spxData.dataSource === 'OI' ? 'var(--green)' : 'var(--gold)' }}>
                       {spxData.dataSource === 'OI' ? '● Using Open Interest' : '● Using Volume (OI unavailable)'}
                     </div>
                   </div>
-                  <div className="rounded-xl border p-4" style={{ background: 'var(--card, rgba(17,24,39,0.9))', borderColor: 'var(--border)' }}>
+                  <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
                     <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Put Wall (Support)</div>
                     <div className="font-display text-2xl font-bold" style={{ color: 'var(--green)' }}>${spxData.putWall?.strike}</div>
                     <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
                       {spxData.putWall?.activity?.toLocaleString()} {spxData.dataSource === 'OI' ? 'OI' : 'Vol'} · ${spxData.putWall?.distFromPrice} below
                     </div>
                   </div>
-                  <div className="rounded-xl border p-4" style={{ background: 'var(--card, rgba(17,24,39,0.9))', borderColor: 'var(--border)' }}>
+                  <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
                     <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Call Wall (Resistance)</div>
                     <div className="font-display text-2xl font-bold" style={{ color: 'var(--red)' }}>${spxData.callWall?.strike}</div>
                     <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
                       {spxData.callWall?.activity?.toLocaleString()} {spxData.dataSource === 'OI' ? 'OI' : 'Vol'} · ${spxData.callWall?.distFromPrice} above
                     </div>
                   </div>
-                  <div className="rounded-xl border p-4" style={{ background: 'var(--card, rgba(17,24,39,0.9))', borderColor: 'var(--border)' }}>
+                  <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
                     <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Gamma Flip</div>
                     <div className="font-display text-2xl font-bold" style={{ color: 'var(--gold)' }}>${spxData.gammaFlip?.toFixed(0)}</div>
                     <div className="font-mono text-[10px]" style={{ color: spxData.totalGEX > 0 ? 'var(--green)' : 'var(--red)' }}>{spxData.regime}</div>
@@ -1573,8 +1573,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--card, rgba(17,24,39,0.9))', borderColor: 'var(--border)' }}>
-      <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--border)', background: 'rgba(26,37,64,0.5)' }}>
+    <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
+      <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--border)', background: 'var(--navy3)' }}>
         <div className="font-display text-sm font-bold tracking-wider uppercase">{title}</div>
       </div>
       <div className="p-5">{children}</div>
@@ -1656,7 +1656,7 @@ function ResultsTable({ results, onSelect, title }: { results: ScanResult[]; onS
     <Panel title={`${title} (${results.length})`}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px]">
-          <thead><tr style={{ background: 'rgba(15,25,41,0.9)' }}>
+          <thead><tr style={{ background: 'var(--navy3)' }}>
             <TH col="ticker" label="Ticker" />
             <TH col="price" label="Price" />
             <TH col="change" label="Chg%" />
@@ -1752,7 +1752,7 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr style={{ background: 'rgba(15,25,41,0.9)' }}>
+                        <tr style={{ background: 'var(--navy3)' }}>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>DTE</th>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>Strike</th>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>Bid</th>

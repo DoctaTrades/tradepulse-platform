@@ -9370,7 +9370,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
   const [journal, setJournal] = useState([]);
   const [goals, setGoals] = useState({});
   const [dividends, setDividends] = useState([]);
-  const [prefs, setPrefs] = useState({ theme: "dark", logo: "", banner: "", tabOrder: [], dashWidgets: [] });
+  const [prefs, setPrefs] = useState({ theme: shellPrefs?.theme || "dark", logo: "", banner: "", tabOrder: [], dashWidgets: [] });
   const cashTransactions = useMemo(() => prefs.cashTransactions || [], [prefs]);
   const setCashTransactions = useCallback(fn => {
     setPrefs(p => {
