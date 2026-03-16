@@ -3,8 +3,10 @@ import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
 
 const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
+let _equityUserId: string | undefined;
+
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  const token = await getValidAccessToken();
+  const token = await getValidAccessToken(_equityUserId);
   const url = new URL(`${SCHWAB_BASE}${endpoint}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` } });
@@ -214,9 +216,12 @@ export async function POST(req: NextRequest) {
     minPrice = 5,
     maxPrice = 1000,
     min5CR = 5,
-    mode = 'universe', // 'universe' = scan provided tickers, 'topdown' = index → sector → tickers
-    sectorFilter, // optional: 'XLK', 'XLE', etc — restricts scan to that sector's tickers
+    mode = 'universe',
+    sectorFilter,
+    userId,
   } = body;
+
+  _equityUserId = userId;
 
   const logs: string[] = ['⚡ Starting multi-timeframe equity scan...'];
   let scanned = 0;

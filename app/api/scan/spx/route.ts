@@ -3,8 +3,10 @@ import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
 
 const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
+let _spxUserId: string | undefined;
+
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  const token = await getValidAccessToken();
+  const token = await getValidAccessToken(_spxUserId);
   const url = new URL(`${SCHWAB_BASE}${endpoint}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` } });
@@ -60,12 +62,13 @@ interface WallCluster {
 }
 
 export async function POST(req: NextRequest) {
-  if (!await isAuthenticated()) {
+  const body = await req.json();
+  const { dteRange = [0, 7], wingWidth = 10, userId } = body;
+  _spxUserId = userId;
+
+  if (!await isAuthenticated(userId) && !await isAuthenticated()) {
     return NextResponse.json({ error: 'Schwab not connected. SPX Radar requires real-time data.' }, { status: 401 });
   }
-
-  const body = await req.json();
-  const { dteRange = [0, 7], wingWidth = 10 } = body;
 
   try {
     // ─── Get SPX price ───

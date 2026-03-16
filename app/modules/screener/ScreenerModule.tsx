@@ -225,8 +225,24 @@ export default function ScreenerModule({ user }: { user?: any }) {
 
   // Check Schwab connection status on load
   useEffect(() => {
-    if (isAdmin) {
-      fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
+    // Check for any user — admin uses platform schwab, others use their own credentials
+    if (user?.id) {
+      // First check user-specific credentials
+      fetch(`/api/schwab/credentials?userId=${user.id}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.connected) {
+            setSchwabStatus({ connected: true, expiresAt: data.expiresAt || Date.now() + 1800000, refreshExpiresEstimate: data.refreshExpiresEstimate || '~7 days' });
+          } else if (isAdmin) {
+            // Admin fallback: try platform schwab
+            fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
+          }
+        })
+        .catch(() => {
+          if (isAdmin) {
+            fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
+          }
+        });
     }
     // Check URL params for OAuth callback result
     const params = new URLSearchParams(window.location.search);
@@ -335,7 +351,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       const res = await fetch('/api/scan/spx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dteRange, wingWidth: Number(spxWingWidth) }),
+        body: JSON.stringify({ dteRange, wingWidth: Number(spxWingWidth), userId: user?.id }),
       });
       const data = await res.json();
       if (data.error) {
@@ -368,6 +384,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
           min5CR: equityFilter.min5CR,
           mode: equityFilter.showType === 'topdown' ? 'topdown' : 'universe',
           sectorFilter: equityFilter.sectorFilter !== 'all' ? equityFilter.sectorFilter : undefined,
+          userId: user?.id,
         }),
       });
       const data = await res.json();
@@ -701,9 +718,16 @@ export default function ScreenerModule({ user }: { user?: any }) {
                   {schwabStatus.connected ? (
                     <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>● LIVE</span>
                   ) : (
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                      Set up your API in <strong style={{ color: 'var(--blue3)' }}>Settings → Schwab API</strong> to enable scanning
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <a href={`/api/schwab/auth${user?.id ? `?userId=${user.id}` : ''}`}
+                        className="font-mono text-[10px] px-3 py-1.5 rounded-md no-underline"
+                        style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 600 }}>
+                        🔐 Connect Schwab
+                      </a>
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        or set up in <strong style={{ color: 'var(--blue3)' }}>Settings → Schwab API</strong>
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>

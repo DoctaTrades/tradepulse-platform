@@ -9,9 +9,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}?schwab_error=no_code`);
   }
 
+  // Read userId from cookie (set by auth route)
+  const userId = req.cookies.get('schwab_auth_user')?.value || undefined;
+
   try {
-    await exchangeCodeForTokens(code);
-    return NextResponse.redirect(`${appUrl}?schwab_connected=true`);
+    await exchangeCodeForTokens(code, userId);
+
+    // Clear the auth cookie
+    const response = NextResponse.redirect(`${appUrl}?schwab_connected=true`);
+    response.cookies.delete('schwab_auth_user');
+    return response;
   } catch (e: unknown) {
     console.error('Schwab callback error:', e);
     return NextResponse.redirect(`${appUrl}?schwab_error=${encodeURIComponent((e instanceof Error ? e.message : "Unknown error"))}`);

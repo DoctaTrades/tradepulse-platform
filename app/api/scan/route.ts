@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
-import { getQuotes, getOptionChain, getPriceHistory } from '@/app/lib/schwab-data';
+import { getQuotes, getOptionChain, getPriceHistory, setActiveUser } from '@/app/lib/schwab-data';
 
 // ─── TICKER UNIVERSES ─────────────────────────────────────
 const UNIVERSES: Record<string, string[]> = {
@@ -636,6 +636,9 @@ export async function POST(req: NextRequest) {
     userId,
     userEmail,
   } = body;
+
+  // Set active user for per-user credential routing
+  setActiveUser(userId);
 
   // Build ticker list
   let tickers = customTickers || UNIVERSES[universe] || UNIVERSES.core;
