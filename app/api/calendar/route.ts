@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 const FMP_KEY = process.env.FMP_API_KEY || '';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
-const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
+const FMP_BASE = 'https://financialmodelingprep.com';
 
 // Simple in-memory cache
 const cache: Record<string, { data: any; ts: number }> = {};
@@ -38,10 +38,18 @@ export async function GET(req: NextRequest) {
     // Fetch economic from FMP and earnings from Finnhub in parallel
     const [fmpEconomic, finnhubEarnings] = await Promise.all([
       FMP_KEY
-        ? cachedFetch(`${FMP_BASE}/economic_calendar?from=${from}&to=${to}&apikey=${FMP_KEY}`).catch(e => {
-            console.error('FMP economic calendar error:', e.message);
+        ? (async () => {
+            // Try /stable first, then /api/v3
+            for (const base of [`${FMP_BASE}/stable`, `${FMP_BASE}/api/v3`]) {
+              try {
+                const data = await cachedFetch(`${base}/economic_calendar?from=${from}&to=${to}&apikey=${FMP_KEY}`);
+                if (Array.isArray(data) && data.length > 0) return data;
+              } catch (e: any) {
+                console.error(`FMP ${base} economic calendar:`, e.message);
+              }
+            }
             return [];
-          })
+          })()
         : Promise.resolve([]),
       FINNHUB_KEY
         ? cachedFetch(`${FINNHUB_BASE}/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`).catch(e => {
@@ -100,6 +108,8 @@ export async function GET(req: NextRequest) {
       earnings: earningsEvents,
       economicCount: economicEvents.length,
       earningsCount: earningsEvents.length,
+      _debug_fmpRawCount: rawEconomic.length,
+      _debug_fmpSample: rawEconomic.slice(0, 2),
     });
 
   } catch (e: any) {
