@@ -13,7 +13,8 @@
     "react-dom": "^18.2.0",
     "recharts": "^2.10.0",
     "lucide-react": "^0.263.1",
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.39.0",
+    "snaptrade-typescript-sdk": "^9.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

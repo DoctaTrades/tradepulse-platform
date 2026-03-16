@@ -7623,7 +7623,7 @@ function ReportsTab({ trades, wheelTrades, accountBalances, customFields, theme,
   );
 }
 
-function SettingsTab({ futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances }) {
+function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances }) {
   const [section, setSection] = useState("accounts"); // accounts | appearance | futures | custom | importexport | ai
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPreset, setEditingPreset] = useState(null);
@@ -7688,7 +7688,7 @@ function SettingsTab({ futuresSettings, onSaveFutures, customFields, onSaveCusto
         </div>
       )}
 
-      {section === "importexport" && <ImportExportManager trades={trades} onSaveTrades={onSaveTrades} customFields={customFields} accountBalances={accountBalances}/>}
+      {section === "importexport" && <ImportExportManager user={user} trades={trades} onSaveTrades={onSaveTrades} customFields={customFields} accountBalances={accountBalances}/>}
 
       {section === "appearance" && <AppearanceManager prefs={prefs} onSave={onSavePrefs} theme={theme}/>}
 
@@ -8332,8 +8332,8 @@ function parseCSVLine(line) {
   return result;
 }
 
-function ImportExportManager({ trades, onSaveTrades, customFields, accountBalances }) {
-  const [mode, setMode] = useState(null); // null | import | export
+function ImportExportManager({ user, trades, onSaveTrades, customFields, accountBalances }) {
+  const [mode, setMode] = useState(null); // null | import | export | broker
   const [step, setStep] = useState(1);
   const [csvData, setCsvData] = useState(null); // { headers:[], rows:[][] }
   const [columnMapping, setColumnMapping] = useState({});
@@ -8345,6 +8345,21 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
   const [dragOver, setDragOver] = useState(false);
   const [csvFormat, setCsvFormat] = useState("trade-based"); // trade-based | order-based
   const [pairStats, setPairStats] = useState(null);
+
+  // ── SnapTrade Broker Sync state ──
+  const [snapStatus, setSnapStatus] = useState(null); // null | 'loading' | 'registered' | 'error'
+  const [snapConnections, setSnapConnections] = useState([]);
+  const [snapAccounts, setSnapAccounts] = useState([]);
+  const [snapError, setSnapError] = useState("");
+  const [snapLoading, setSnapLoading] = useState(false);
+  const [snapImportAccount, setSnapImportAccount] = useState("");
+  const [snapStartDate, setSnapStartDate] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 3);
+    return d.toISOString().split("T")[0];
+  });
+  const [snapEndDate, setSnapEndDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [snapOrders, setSnapOrders] = useState([]);
+  const [snapImporting, setSnapImporting] = useState(false);
 
   const accounts = [...new Set([
     ...Object.keys(accountBalances || {}),
@@ -8757,6 +8772,125 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
     { key:"grade", label:"Grade" },
   ];
 
+  // ── SnapTrade API helpers ──
+  const snapFetch = async (actionName, extra = {}) => {
+    const res = await fetch("/api/snaptrade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-id": user?.id || "" },
+      body: JSON.stringify({ action: actionName, ...extra }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "SnapTrade request failed");
+    return data;
+  };
+
+  const snapRegisterAndLoad = async () => {
+    setSnapLoading(true); setSnapError("");
+    try {
+      await snapFetch("register");
+      const acctData = await snapFetch("accounts");
+      setSnapConnections(acctData.connections || []);
+      setSnapAccounts(acctData.accounts || []);
+      setSnapStatus("registered");
+    } catch (e) {
+      setSnapError(e.message); setSnapStatus("error");
+    }
+    setSnapLoading(false);
+  };
+
+  const snapConnect = async (broker) => {
+    setSnapLoading(true); setSnapError("");
+    try {
+      const data = await snapFetch("connect", {
+        broker: broker || undefined,
+        customRedirect: window.location.href,
+      });
+      if (data.redirectURI) window.open(data.redirectURI, "_blank", "width=600,height=700");
+    } catch (e) { setSnapError(e.message); }
+    setSnapLoading(false);
+  };
+
+  const snapRefreshAccounts = async () => {
+    setSnapLoading(true); setSnapError("");
+    try {
+      const acctData = await snapFetch("accounts");
+      setSnapConnections(acctData.connections || []);
+      setSnapAccounts(acctData.accounts || []);
+    } catch (e) { setSnapError(e.message); }
+    setSnapLoading(false);
+  };
+
+  const snapDisconnect = async (connectionId) => {
+    if (!confirm("Remove this broker connection? You can reconnect later.")) return;
+    setSnapLoading(true);
+    try {
+      await snapFetch("disconnect", { connectionId });
+      await snapRefreshAccounts();
+    } catch (e) { setSnapError(e.message); }
+    setSnapLoading(false);
+  };
+
+  const snapImportTrades = async () => {
+    if (!snapImportAccount) { setSnapError("Select an account to import from"); return; }
+    setSnapImporting(true); setSnapError(""); setSnapOrders([]);
+    try {
+      const data = await snapFetch("import", { accountId: snapImportAccount, startDate: snapStartDate, endDate: snapEndDate });
+      setSnapOrders(data.orders || []);
+      if ((data.orders || []).length === 0) setSnapError("No buy/sell transactions found for this date range. Try expanding the dates.");
+    } catch (e) { setSnapError(e.message); }
+    setSnapImporting(false);
+  };
+
+  const snapConfirmImport = () => {
+    // Pair orders into trades
+    const groups = {};
+    snapOrders.forEach(o => {
+      const sym = o.isOption ? (o.optionDetail?.optionSymbol || o.symbol) : o.symbol;
+      const key = `${sym}|${o.date}`;
+      if (!groups[key]) groups[key] = { symbol: o.symbol, isOption: o.isOption, optionDetail: o.optionDetail, date: o.date, buys: [], sells: [] };
+      if (o.action === "Buy") groups[key].buys.push(o);
+      else groups[key].sells.push(o);
+    });
+    const paired = [];
+    Object.values(groups).forEach(g => {
+      const tBuyQty = g.buys.reduce((s, b) => s + b.quantity, 0);
+      const tBuyVal = g.buys.reduce((s, b) => s + b.quantity * b.price, 0);
+      const tBuyFees = g.buys.reduce((s, b) => s + b.fee, 0);
+      const avgBuy = tBuyQty > 0 ? tBuyVal / tBuyQty : 0;
+      const tSellQty = g.sells.reduce((s, b) => s + b.quantity, 0);
+      const tSellVal = g.sells.reduce((s, b) => s + b.quantity * b.price, 0);
+      const tSellFees = g.sells.reduce((s, b) => s + b.fee, 0);
+      const avgSell = tSellQty > 0 ? tSellVal / tSellQty : 0;
+      const fees = tBuyFees + tSellFees;
+      const qty = Math.min(tBuyQty, tSellQty);
+      if (qty <= 0 && tBuyQty <= 0 && tSellQty <= 0) return;
+      const effectiveQty = qty > 0 ? qty : Math.max(tBuyQty, tSellQty);
+      const isClosed = tBuyQty > 0 && tSellQty > 0;
+      const allOrd = [...g.buys, ...g.sells].sort((a, b) => a.date < b.date ? -1 : 1);
+      const dir = allOrd[0]?.action === "Sell" ? "Short" : "Long";
+      const entry = dir === "Long" ? avgBuy : avgSell;
+      const exit = dir === "Long" ? avgSell : avgBuy;
+      const mult = g.isOption ? 100 : 1;
+      const pnl = isClosed ? (dir === "Long" ? exit - entry : entry - exit) * qty * mult - fees : null;
+      paired.push({
+        id: Date.now() + Math.random(), date: g.date, ticker: g.symbol,
+        assetType: g.isOption ? "Options" : "Stock", direction: dir,
+        status: isClosed ? "Closed" : "Open",
+        entryPrice: entry.toFixed(4), exitPrice: isClosed ? exit.toFixed(4) : "",
+        quantity: String(effectiveQty), fees: fees.toFixed(2),
+        pnl: pnl !== null ? parseFloat(pnl.toFixed(2)) : null,
+        notes: `Broker sync: ${g.buys.length} buy, ${g.sells.length} sell${g.isOption && g.optionDetail ? ` (${g.optionDetail.optionType} ${g.optionDetail.strikePrice})` : ""}`,
+        strategy: g.isOption ? "Options" : "", timeframe: "", account: targetAccount || "",
+        tradeStrategy: "", playbook: "", emotions: [], optionsStrategyType: "", legs: [],
+      });
+    });
+    if (paired.length === 0) { setSnapError("No trades to import after pairing"); return; }
+    onSaveTrades(prev => [...paired.sort((a, b) => new Date(b.date) - new Date(a.date)), ...prev]);
+    setSnapOrders([]);
+    setMode(null);
+    alert(`Imported ${paired.length} trades from broker sync!`);
+  };
+
   return (
     <div>
       <div style={{ fontSize:18, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Import / Export</div>
@@ -8764,12 +8898,18 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
 
       {/* Mode selection */}
       {!mode && (
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 }}>
+          <div onClick={()=>{setMode("broker"); if(snapStatus!=="registered") snapRegisterAndLoad();}} style={{ background:"var(--tp-panel)", border:"1px solid rgba(168,85,247,0.15)", borderRadius:14, padding:"32px 24px", cursor:"pointer", textAlign:"center", transition:"border-color 0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(168,85,247,0.4)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(168,85,247,0.15)"}>
+            <Zap size={36} color="#a855f7" style={{ margin:"0 auto 14px", display:"block" }}/>
+            <div style={{ fontSize:16, fontWeight:700, color:"var(--tp-text)", marginBottom:6 }}>Broker Sync</div>
+            <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.5 }}>Connect directly to your brokerage account. Automatically pull trade history — no files needed.</div>
+            <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:10 }}>Schwab, Webull, Fidelity, IBKR, Robinhood + more</div>
+          </div>
           <div onClick={()=>setMode("import")} style={{ background:"var(--tp-panel)", border:"1px solid rgba(74,222,128,0.15)", borderRadius:14, padding:"32px 24px", cursor:"pointer", textAlign:"center", transition:"border-color 0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(74,222,128,0.4)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(74,222,128,0.15)"}>
             <Upload size={36} color="#4ade80" style={{ margin:"0 auto 14px", display:"block" }}/>
             <div style={{ fontSize:16, fontWeight:700, color:"var(--tp-text)", marginBottom:6 }}>Import Trades</div>
-            <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.5 }}>Upload a CSV or broker PDF statement. Smart auto-pairing matches buys with sells and calculates P&L automatically.</div>
-            <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:10 }}>Supports: CSV (Webull, Schwab, TD, IBKR, Fidelity) + Webull PDF Statements</div>
+            <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.5 }}>Upload a CSV or broker PDF statement. Smart auto-pairing matches buys with sells.</div>
+            <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:10 }}>CSV (Webull, Schwab, TD, IBKR, Fidelity) + Webull PDF</div>
           </div>
           <div onClick={()=>setMode("export")} style={{ background:"var(--tp-panel)", border:"1px solid rgba(96,165,250,0.15)", borderRadius:14, padding:"32px 24px", cursor:"pointer", textAlign:"center", transition:"border-color 0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(96,165,250,0.4)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(96,165,250,0.15)"}>
             <Download size={36} color="#60a5fa" style={{ margin:"0 auto 14px", display:"block" }}/>
@@ -8777,6 +8917,156 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
             <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.5 }}>Download all your trades as a CSV file. Filter by account or export everything.</div>
             <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:10 }}>{trades.length} total trades available</div>
           </div>
+        </div>
+      )}
+
+      {/* ═══ BROKER SYNC ═══ */}
+      {mode === "broker" && (
+        <div style={{ background:"var(--tp-panel)", border:"1px solid rgba(168,85,247,0.12)", borderRadius:14, padding:"24px" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <Zap size={18} color="#a855f7"/>
+              <span style={{ fontSize:15, fontWeight:600, color:"var(--tp-text)" }}>Broker Sync</span>
+            </div>
+            <button onClick={()=>{setMode(null); setSnapOrders([]); setSnapError("");}} style={{ padding:"6px 14px", borderRadius:6, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:12 }}>Back</button>
+          </div>
+
+          {snapError && (
+            <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#f87171" }}>{snapError}</div>
+          )}
+
+          {snapLoading && !snapImporting && (
+            <div style={{ textAlign:"center", padding:"30px 0" }}>
+              <div style={{ width:32, height:32, border:"3px solid rgba(255,255,255,0.08)", borderTopColor:"#a855f7", borderRadius:"50%", animation:"spin 1s linear infinite", margin:"0 auto 12px" }}/>
+              <div style={{ fontSize:13, color:"var(--tp-faint)" }}>Connecting to SnapTrade...</div>
+            </div>
+          )}
+
+          {snapStatus === "registered" && !snapLoading && (<>
+            {/* Connected Brokers */}
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:10 }}>Connected Brokers</div>
+              {snapConnections.length === 0 ? (
+                <div style={{ fontSize:12, color:"var(--tp-faint)", fontStyle:"italic", marginBottom:12 }}>No brokers connected yet. Click below to connect your first broker.</div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:12 }}>
+                  {snapConnections.map(c => (
+                    <div key={c.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", background:"var(--tp-card)", border:"1px solid var(--tp-border-l)", borderRadius:10 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        {c.logo && <img src={c.logo} alt="" style={{ width:24, height:24, borderRadius:4 }}/>}
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)" }}>{c.brokerage}</div>
+                          <div style={{ fontSize:10, color: c.disabled ? "#f87171" : "var(--tp-faintest)" }}>{c.disabled ? "Disconnected — reconnect needed" : "Connected"}</div>
+                        </div>
+                      </div>
+                      <div style={{ display:"flex", gap:6 }}>
+                        {c.disabled && <button onClick={()=>snapConnect(c.brokerageSlug)} style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(168,85,247,0.3)", background:"rgba(168,85,247,0.08)", color:"#a855f7", cursor:"pointer", fontSize:11, fontWeight:600 }}>Reconnect</button>}
+                        <button onClick={()=>snapDisconnect(c.id)} style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(239,68,68,0.2)", background:"transparent", color:"#f87171", cursor:"pointer", fontSize:11 }}>Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={()=>snapConnect()} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#7c3aed,#a855f7)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}><Plus size={14}/> Connect Broker</button>
+                {snapConnections.length > 0 && <button onClick={snapRefreshAccounts} style={{ padding:"9px 14px", borderRadius:8, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:12 }}><RefreshCw size={12}/></button>}
+              </div>
+            </div>
+
+            {/* Import Section — only show if accounts exist */}
+            {snapAccounts.length > 0 && (<>
+              <div style={{ borderTop:"1px solid var(--tp-border-l)", paddingTop:18, marginBottom:14 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:10 }}>Import Trades</div>
+              </div>
+
+              {/* Target account */}
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:11, color:"#a855f7", fontWeight:600, textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>Assign to TradePulse Account</label>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {accounts.map(a => (
+                    <button key={a} onClick={()=>setTargetAccount(a)} style={{ padding:"6px 12px", borderRadius:6, border:`1px solid ${targetAccount===a?"#a855f7":"var(--tp-border-l)"}`, background:targetAccount===a?"rgba(168,85,247,0.12)":"var(--tp-card)", color:targetAccount===a?"#a855f7":"#8a8f9e", cursor:"pointer", fontSize:11, fontWeight:targetAccount===a?600:400 }}>{a}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Broker account picker */}
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>Broker Account</label>
+                <select value={snapImportAccount} onChange={e=>setSnapImportAccount(e.target.value)} style={{ padding:"9px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", cursor:"pointer", minWidth:300 }}>
+                  <option value="">Select an account...</option>
+                  {snapAccounts.map(a => {
+                    const conn = snapConnections.find(c => c.id === a.connectionId);
+                    return <option key={a.id} value={a.id}>{conn?.brokerage || "Broker"} — {a.name || a.number} {a.type ? `(${a.type})` : ""}</option>;
+                  })}
+                </select>
+              </div>
+
+              {/* Date range */}
+              <div style={{ display:"flex", gap:12, marginBottom:16 }}>
+                <div>
+                  <label style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>Start Date</label>
+                  <input type="date" value={snapStartDate} onChange={e=>setSnapStartDate(e.target.value)} style={{ padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none" }}/>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>End Date</label>
+                  <input type="date" value={snapEndDate} onChange={e=>setSnapEndDate(e.target.value)} style={{ padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none" }}/>
+                </div>
+              </div>
+
+              {/* Fetch button */}
+              <button onClick={snapImportTrades} disabled={snapImporting || !snapImportAccount} style={{ display:"flex", alignItems:"center", gap:7, padding:"10px 22px", borderRadius:8, border:"none", background: snapImporting ? "rgba(168,85,247,0.3)" : "linear-gradient(135deg,#7c3aed,#a855f7)", color:"#fff", cursor: snapImporting ? "wait" : "pointer", fontSize:13, fontWeight:600, marginBottom:16, opacity: !snapImportAccount ? 0.5 : 1 }}>
+                {snapImporting ? <><RefreshCw size={14} className="animate-spin"/> Pulling transactions...</> : <><Download size={14}/> Fetch Trades</>}
+              </button>
+
+              {/* Results */}
+              {snapOrders.length > 0 && (
+                <div style={{ borderTop:"1px solid var(--tp-border-l)", paddingTop:14 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:8 }}>
+                    Found {snapOrders.length} transactions
+                  </div>
+                  <div style={{ maxHeight:300, overflowY:"auto", border:"1px solid var(--tp-border-l)", borderRadius:8, marginBottom:14 }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                      <thead>
+                        <tr style={{ background:"var(--tp-card)", position:"sticky", top:0 }}>
+                          <th style={{ padding:"8px 10px", textAlign:"left", color:"var(--tp-faint)", fontWeight:600, borderBottom:"1px solid var(--tp-border-l)" }}>Date</th>
+                          <th style={{ padding:"8px 10px", textAlign:"left", color:"var(--tp-faint)", fontWeight:600, borderBottom:"1px solid var(--tp-border-l)" }}>Symbol</th>
+                          <th style={{ padding:"8px 10px", textAlign:"left", color:"var(--tp-faint)", fontWeight:600, borderBottom:"1px solid var(--tp-border-l)" }}>Action</th>
+                          <th style={{ padding:"8px 10px", textAlign:"right", color:"var(--tp-faint)", fontWeight:600, borderBottom:"1px solid var(--tp-border-l)" }}>Qty</th>
+                          <th style={{ padding:"8px 10px", textAlign:"right", color:"var(--tp-faint)", fontWeight:600, borderBottom:"1px solid var(--tp-border-l)" }}>Price</th>
+                          <th style={{ padding:"8px 10px", textAlign:"right", color:"var(--tp-faint)", fontWeight:600, borderBottom:"1px solid var(--tp-border-l)" }}>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {snapOrders.slice(0, 100).map((o, i) => (
+                          <tr key={i} style={{ borderBottom:"1px solid var(--tp-border-l)" }}>
+                            <td style={{ padding:"6px 10px", color:"var(--tp-text)" }}>{o.date}</td>
+                            <td style={{ padding:"6px 10px", color: o.isOption ? "#a855f7" : "var(--tp-text)", fontWeight:600 }}>{o.symbol}{o.isOption ? " ⚡" : ""}</td>
+                            <td style={{ padding:"6px 10px", color: o.action === "Buy" ? "#4ade80" : "#f87171" }}>{o.action}</td>
+                            <td style={{ padding:"6px 10px", textAlign:"right", color:"var(--tp-text)" }}>{o.quantity}</td>
+                            <td style={{ padding:"6px 10px", textAlign:"right", color:"var(--tp-text)", fontFamily:"'JetBrains Mono', monospace" }}>${o.price?.toFixed(2)}</td>
+                            <td style={{ padding:"6px 10px", textAlign:"right", color: o.amount >= 0 ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>${o.amount?.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {snapOrders.length > 100 && <div style={{ padding:"8px 10px", fontSize:11, color:"var(--tp-faint)", textAlign:"center" }}>Showing first 100 of {snapOrders.length} transactions</div>}
+                  </div>
+
+                  <div style={{ display:"flex", gap:10 }}>
+                    <button onClick={snapConfirmImport} style={{ display:"flex", alignItems:"center", gap:7, padding:"10px 22px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#059669,#34d399)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}><Check size={14}/> Import {snapOrders.length} Transactions</button>
+                    <button onClick={()=>setSnapOrders([])} style={{ padding:"10px 16px", borderRadius:8, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:13 }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </>)}
+          </>)}
+
+          {snapStatus === "error" && !snapLoading && (
+            <div style={{ textAlign:"center", padding:"20px 0" }}>
+              <div style={{ fontSize:13, color:"#f87171", marginBottom:12 }}>Failed to connect to SnapTrade</div>
+              <button onClick={snapRegisterAndLoad} style={{ padding:"9px 18px", borderRadius:8, border:"1px solid rgba(168,85,247,0.3)", background:"rgba(168,85,247,0.08)", color:"#a855f7", cursor:"pointer", fontSize:13, fontWeight:600 }}>Retry</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -9602,7 +9892,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
       {tab==="watchlist" && <Watchlist watchlists={watchlists} onSave={setWatchlists} onPromoteTrade={promoteTrade} theme={theme}/>}
       {tab==="log" && <TradeLog trades={trades} onEdit={t=>{setEditingTrade(t);setShowTradeModal(true);}} onDelete={handleTradeDelete} theme={theme} prefs={prefs}/>}
       {tab==="reports" && <ReportsTab trades={trades} wheelTrades={wheelTrades} accountBalances={accountBalances} customFields={customFields} theme={theme} prefs={prefs}/>}
-      {tab==="settings" && <SettingsTab futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances}/>}
+      {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances}/>}
       {showTradeModal && <TradeModal onSave={handleTradeSave} onClose={()=>{setShowTradeModal(false);setEditingTrade(null);}} editTrade={editingTrade} futuresSettings={futuresSettings} customFields={customFields} playbooks={playbooks} theme={theme} accountBalances={accountBalances}/>}
       {showMigration && <MigrationPrompt onMigrate={handleMigrate} onSkip={()=>setShowMigration(false)}/>}
     </>
