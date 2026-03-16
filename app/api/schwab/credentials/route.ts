@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveUserCredentials, deleteUserCredentials, hasUserCredentials, getTokenStatus } from '@/app/lib/schwab-auth';
+import { supabase } from '@/app/lib/supabase';
 
 // GET: check if user has credentials saved
 export async function GET(req: NextRequest) {
@@ -15,15 +16,53 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: save user's Schwab App Key + Secret
+// POST: save user's API credentials (Schwab, Tradier, or Polygon)
 export async function POST(req: NextRequest) {
   try {
-    const { userId, appKey, appSecret } = await req.json();
-    if (!userId || !appKey || !appSecret) {
-      return NextResponse.json({ error: 'userId, appKey, and appSecret are required' }, { status: 400 });
+    const body = await req.json();
+    const { userId, provider } = body;
+    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+
+    // Tradier save
+    if (provider === 'tradier') {
+      const { tradierToken, tradierSandbox } = body;
+      if (!tradierToken) return NextResponse.json({ error: 'Tradier access token required' }, { status: 400 });
+
+      const { error } = await supabase
+        .from('user_schwab_credentials')
+        .upsert({
+          user_id: userId,
+          tradier_token: tradierToken.trim(),
+          tradier_sandbox: tradierSandbox || false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, message: 'Tradier token saved.' });
     }
 
-    // Basic validation
+    // Polygon save
+    if (provider === 'polygon') {
+      const { polygonKey } = body;
+      if (!polygonKey) return NextResponse.json({ error: 'Polygon API key required' }, { status: 400 });
+
+      const { error } = await supabase
+        .from('user_schwab_credentials')
+        .upsert({
+          user_id: userId,
+          polygon_key: polygonKey.trim(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, message: 'Polygon key saved.' });
+    }
+
+    // Schwab save (default)
+    const { appKey, appSecret } = body;
+    if (!appKey || !appSecret) {
+      return NextResponse.json({ error: 'appKey and appSecret are required' }, { status: 400 });
+    }
     if (appKey.length < 10) {
       return NextResponse.json({ error: 'App Key looks too short — check your Schwab developer dashboard' }, { status: 400 });
     }

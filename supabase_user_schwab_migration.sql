@@ -4,14 +4,23 @@
 
 CREATE TABLE IF NOT EXISTS user_schwab_credentials (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  app_key TEXT NOT NULL,
-  app_secret TEXT NOT NULL,
+  -- Schwab
+  app_key TEXT,
+  app_secret TEXT,
   callback_url TEXT,
   access_token TEXT,
   refresh_token TEXT,
   access_expires_at BIGINT,
   refresh_expires_at BIGINT,
   connected_at TIMESTAMPTZ,
+  -- Tradier
+  tradier_token TEXT,
+  tradier_sandbox BOOLEAN DEFAULT false,
+  -- Polygon
+  polygon_key TEXT,
+  -- Preferred provider
+  preferred_provider TEXT DEFAULT 'schwab',
+  --
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

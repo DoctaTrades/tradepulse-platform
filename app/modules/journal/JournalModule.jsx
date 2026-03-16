@@ -7787,6 +7787,9 @@ function SchwabSetupWizard({ user }) {
   const [message, setMessage] = useState("");
   const [showSecret, setShowSecret] = useState(false);
   const [expandGuide, setExpandGuide] = useState(true);
+  const [tradierToken, setTradierToken] = useState("");
+  const [tradierSandbox, setTradierSandbox] = useState(false);
+  const [polygonKey, setPolygonKey] = useState("");
 
   const userId = user?.id;
 
@@ -7835,6 +7838,34 @@ function SchwabSetupWizard({ user }) {
       setAppKey(""); setAppSecret("");
       setMessage("Credentials removed.");
     } catch {}
+  };
+
+  const handleSaveTradier = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/schwab/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, provider: "tradier", tradierToken: tradierToken.trim(), tradierSandbox }),
+      });
+      const data = await res.json();
+      setMessage(data.success ? "✅ Tradier token saved!" : `❌ ${data.error}`);
+    } catch { setMessage("❌ Failed to save Tradier token."); }
+    setSaving(false);
+  };
+
+  const handleSavePolygon = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/schwab/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, provider: "polygon", polygonKey: polygonKey.trim() }),
+      });
+      const data = await res.json();
+      setMessage(data.success ? "✅ Polygon key saved!" : `❌ ${data.error}`);
+    } catch { setMessage("❌ Failed to save Polygon key."); }
+    setSaving(false);
   };
 
   const CALLBACK_URL = typeof window !== "undefined"
@@ -8014,45 +8045,63 @@ function SchwabSetupWizard({ user }) {
 
       {/* Additional Data Sources */}
       <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 24px", marginBottom:16 }}>
-        <div style={{ fontSize:14, fontWeight:700, color:"var(--tp-text)", marginBottom:6 }}>Additional Data Sources (Optional)</div>
+        <div style={{ fontSize:14, fontWeight:700, color:"var(--tp-text)", marginBottom:6 }}>Additional Data Sources</div>
         <div style={{ fontSize:12, color:"var(--tp-muted)", marginBottom:16, lineHeight:1.6 }}>
-          Schwab is the primary and recommended data source. These are optional fallbacks or supplements.
+          Schwab is recommended for the best data quality (real Greeks, full option chains). Tradier is a solid alternative with similar capabilities. Polygon provides basic quote data only.
         </div>
 
         {/* Tradier */}
         <div style={{ marginBottom:18, paddingBottom:18, borderBottom:"1px solid var(--tp-border)" }}>
-          <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>📊 Tradier</div>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>📊 Tradier — Full Alternative to Schwab</div>
           <div style={{ fontSize:11, color:"var(--tp-muted)", marginBottom:10, lineHeight:1.5 }}>
-            Alternative broker API with easy signup. Free sandbox available with delayed data. Sign up at{" "}
-            <a href="https://developer.tradier.com" target="_blank" rel="noopener" style={{ color:"#6366f1", textDecoration:"underline" }}>developer.tradier.com</a>
+            Real-time quotes + full option chains with Greeks (via ORATS). 120 calls/min on production, 60/min on free sandbox. Sign up at{" "}
+            <a href="https://developer.tradier.com" target="_blank" rel="noopener" style={{ color:"#6366f1", textDecoration:"underline" }}>developer.tradier.com</a> — create an account, get your access token from the API Access page.
           </div>
           <div style={{ marginBottom:8 }}>
             <label style={{ display:"block", fontSize:10, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Access Token</label>
             <input
               type="password"
-              placeholder="Tradier access token..."
+              value={tradierToken}
+              onChange={e => setTradierToken(e.target.value)}
+              placeholder="Paste your Tradier access token..."
               style={{ width:"100%", padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:6, color:"var(--tp-text)", fontSize:12, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}
             />
           </div>
-          <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>Coming soon — Tradier integration is planned for a future update.</div>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+            <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
+              <input type="checkbox" checked={tradierSandbox} onChange={e => setTradierSandbox(e.target.checked)} />
+              <span style={{ fontSize:11, color:"var(--tp-muted)" }}>Sandbox mode (free, delayed data)</span>
+            </label>
+          </div>
+          {tradierToken && (
+            <button onClick={handleSaveTradier} disabled={saving} style={{ padding:"8px 18px", borderRadius:6, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+              {saving ? "Saving..." : "Save Tradier Key"}
+            </button>
+          )}
         </div>
 
         {/* Polygon */}
         <div>
-          <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>🔷 Polygon.io</div>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>🔷 Polygon.io — Basic Quotes Fallback</div>
           <div style={{ fontSize:11, color:"var(--tp-muted)", marginBottom:10, lineHeight:1.5 }}>
-            Free tier with 5 calls/min. Good for basic quote data as a fallback. Sign up at{" "}
+            Free tier: 5 calls/min (quotes only, no option chains). Useful as a fallback for holdings price lookups. Sign up at{" "}
             <a href="https://polygon.io" target="_blank" rel="noopener" style={{ color:"#6366f1", textDecoration:"underline" }}>polygon.io</a>
           </div>
           <div style={{ marginBottom:8 }}>
             <label style={{ display:"block", fontSize:10, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>API Key</label>
             <input
               type="password"
+              value={polygonKey}
+              onChange={e => setPolygonKey(e.target.value)}
               placeholder="Polygon API key..."
               style={{ width:"100%", padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:6, color:"var(--tp-text)", fontSize:12, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}
             />
           </div>
-          <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>Coming soon — Polygon integration is planned for a future update.</div>
+          {polygonKey && (
+            <button onClick={handleSavePolygon} disabled={saving} style={{ padding:"8px 18px", borderRadius:6, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+              {saving ? "Saving..." : "Save Polygon Key"}
+            </button>
+          )}
         </div>
       </div>
     </div>
