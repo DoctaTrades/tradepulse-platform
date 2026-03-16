@@ -80,7 +80,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const abortRef = useRef<AbortController | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [tickerSearch, setTickerSearch] = useState('');
-  const [cpShortDelta, setCpShortDelta] = useState(0.30);
+  const [cpShortDelta, setCpShortDelta] = useState(0.10);
+  const [cpDeltaMax, setCpDeltaMax] = useState(0.35);
   const [equityResults, setEquityResults] = useState<any[]>([]);
   const [equityLoading, setEquityLoading] = useState(false);
   const [equityLogs, setEquityLogs] = useState<string[]>([]);
@@ -260,7 +261,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           universe,
-          filters: { ...filters, cpShortDelta },
+          filters: { ...filters, cpShortDelta, cspDeltaMin: cpShortDelta, cspDeltaMax: cpDeltaMax },
           customTickers: tickerList,
           userId: user?.id,
           userEmail: user?.email,
@@ -1026,7 +1027,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 If stock breaks down, stop selling weeklies and hold the long put as downside protection.
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                <FilterField label="Short Put Delta (0-1)" value={cpShortDelta} onChange={v => setCpShortDelta(+v)} type="number" step="0.05" />
+                <FilterField label="Delta Min" value={cpShortDelta} onChange={v => setCpShortDelta(+v)} type="number" step="0.05" />
+                <FilterField label="Delta Max" value={cpDeltaMax} onChange={v => setCpDeltaMax(+v)} type="number" step="0.05" />
                 <FilterField label="Max Cost Ratio (x)" value={stratFilters.calPress.maxCostRatio} onChange={v => updateStratFilter('calPress','maxCostRatio',+v)} type="number" step="0.5" />
                 <FilterField label="Min Weekly ROI (%)" value={stratFilters.calPress.minWeeklyROI} onChange={v => updateStratFilter('calPress','minWeeklyROI',+v)} type="number" />
                 <FilterField label="Max Price ($)" value={stratFilters.calPress.maxPrice} onChange={v => updateStratFilter('calPress','maxPrice',+v)} type="number" />
@@ -1928,17 +1930,19 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
           {/* ── CSP PLAY ── */}
           {(activeStrategy === 'csp' || activeStrategy === 'results') && r.bestPut && schwabConnected && (
             <>
-              <DetailSection title="🔄 CSP / Wheel — Best Play (highest annualized return)">
+              <DetailSection title="🔄 CSP / Wheel — Best Play (highest value score)">
                 <Leg label={`${r.ticker} Put`} strike={r.bestPut.strike} bid={r.bestPut.bid} ask={r.bestPut.ask} delta={r.bestPut.delta} type="sell" />
                 <DetailRow label="Expiration" value={`${r.bestPut.expDate} (${r.bestPut.dte} DTE)`} />
                 <DetailRow label="Premium Collected" value={`$${r.bestPut.bid?.toFixed(2)} ($${(r.bestPut.bid * 100).toFixed(0)}/contract)`} color="var(--green)" />
                 <DetailRow label="Capital Required" value={`$${(r.bestPut.strike * 100).toLocaleString()}`} />
                 <DetailRow label="Return on Risk" value={`${r.ror}%`} color={r.ror >= 3 ? 'var(--green)' : 'var(--gold)'} />
-                <DetailRow label="Prob. of Profit" value={`~${Math.round((1 - Math.abs(r.bestPut.delta)) * 100)}%`} />
+                <DetailRow label="Annualized RoR" value={`${r.bestPut.annualizedRoR || '—'}%`} color="var(--gold)" />
+                <DetailRow label="Prob. of Profit" value={`~${r.bestPut.pop || Math.round((1 - Math.abs(r.bestPut.delta)) * 100)}%`} />
+                <DetailRow label="Value Score" value={`${r.bestPut.valueScore || '—'}`} color="var(--blue3)" />
                 <DetailRow label="Manage At" value="21 DTE or 50% profit" />
               </DetailSection>
               {r.cspByDTE && r.cspByDTE.length > 1 && (
-                <DetailSection title="📊 DTE Comparison — Same Delta, Different Expirations">
+                <DetailSection title="📊 Delta Range Comparison — Best Candidates Across DTE & Delta">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
@@ -1947,25 +1951,28 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>Strike</th>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>Bid</th>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>Delta</th>
+                          <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>POP</th>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>RoR%</th>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--gold)', borderColor: 'var(--border)' }}>Annual%</th>
+                          <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--blue3)', borderColor: 'var(--border)' }}>Score</th>
                           <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>$/Contract</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {r.cspByDTE.map((c: any) => {
-                          const isBest = c.annualizedRoR === Math.max(...(r.cspByDTE || []).map((x: any) => x.annualizedRoR));
+                        {r.cspByDTE.sort((a: any, b: any) => (b.valueScore || 0) - (a.valueScore || 0)).map((c: any, idx: number) => {
+                          const isBest = idx === 0;
                           return (
-                            <tr key={c.label} className={isBest ? 'bg-green-500/5' : ''}>
+                            <tr key={`${c.label}-${c.strike}-${c.delta}`} className={isBest ? 'bg-green-500/5' : ''}>
                               <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--text)' }}>
-                                {c.dte}d <span className="text-[9px]" style={{ color: 'var(--text-dim)' }}>({c.label})</span>
-                                {isBest && <span className="ml-1 text-[8px] text-green-400">★ BEST</span>}
+                                {c.label} {isBest && <span style={{ color: 'var(--green)', fontSize: 8, fontWeight: 800 }}>★ BEST</span>}
                               </td>
                               <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--text)' }}>${c.strike}</td>
                               <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--green)' }}>${c.bid?.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--text-dim)' }}>{c.delta?.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: c.ror >= 3 ? 'var(--green)' : 'var(--gold)' }}>{c.ror}%</td>
-                              <td className="px-3 py-2 border-b font-mono text-xs font-bold" style={{ borderColor: 'rgba(255,255,255,0.04)', color: isBest ? 'var(--green)' : 'var(--gold)' }}>{c.annualizedRoR}%</td>
+                              <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--text-mid)' }}>{c.delta?.toFixed(2)}</td>
+                              <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--text-mid)' }}>{c.pop || Math.round((1 - Math.abs(c.delta)) * 100)}%</td>
+                              <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--text)' }}>{c.ror}%</td>
+                              <td className="px-3 py-2 border-b font-mono text-xs font-medium" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--gold)' }}>{c.annualizedRoR}%</td>
+                              <td className="px-3 py-2 border-b font-mono text-xs font-medium" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--blue3)' }}>{c.valueScore || '—'}</td>
                               <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'var(--text-dim)' }}>${c.premium100}</td>
                             </tr>
                           );
@@ -1973,8 +1980,8 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
                       </tbody>
                     </table>
                   </div>
-                  <div className="px-4 py-2 font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                    ★ BEST = highest annualized return. Shorter DTE with similar premium = better capital efficiency.
+                  <div className="px-3 py-2 font-mono text-[9px]" style={{ color: 'var(--text-dim)' }}>
+                    Value Score = Annualized RoR × Safety Multiplier (lower delta = higher score). Sorted best to worst.
                   </div>
                 </DetailSection>
               )}

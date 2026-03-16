@@ -241,7 +241,9 @@ async function scanWithSchwab(tickers: string[], filters: any) {
       putCallRatio = totalCallOI > 0 ? Math.round((totalPutOI / totalCallOI) * 100) / 100 : 0;
 
       // Find best put for CSP analysis
-      // Search across multiple DTE buckets for comparison
+      // Search across multiple DTE buckets AND a delta range for optimal plays
+      const deltaMin = filters.cspDeltaMin || 0.10;
+      const deltaMax = filters.cspDeltaMax || 0.35;
       const dteBuckets: [string, number, number][] = [
         ['7-14d', 7, 14],
         ['25-45d', 25, 45],
@@ -250,48 +252,67 @@ async function scanWithSchwab(tickers: string[], filters: any) {
       ];
 
       cspByDTE = [];
+      let allCSPCandidates: any[] = [];
 
       for (const [label, dteMin, dteMax] of dteBuckets) {
         const candidates = allPuts.filter(p => {
           const dte = p.daysToExpiration || 0;
-          return dte >= dteMin && dte <= dteMax && Math.abs(p.delta || 0) > 0.05;
+          const absDelta = Math.abs(p.delta || 0);
+          return dte >= dteMin && dte <= dteMax && absDelta >= deltaMin && absDelta <= deltaMax && (p.bid || 0) > 0 && p.strike > 0 && p.strike < price;
         });
         if (!candidates.length) continue;
 
-        candidates.sort((a: any, b: any) =>
-          Math.abs(Math.abs(a.delta) - targetDelta) - Math.abs(Math.abs(b.delta) - targetDelta)
-        );
-        const put = candidates[0];
-        const bid = put.bid || 0;
-        if (bid <= 0 || put.strike <= 0) continue;
+        // Score each candidate: balance premium efficiency vs safety
+        const scored = candidates.map((put: any) => {
+          const bid = put.bid || 0;
+          const dte = put.daysToExpiration || 1;
+          const absDelta = Math.abs(put.delta || 0);
+          const putRor = Math.round((bid / put.strike) * 100 * 100) / 100;
+          const annualizedRoR = Math.round((putRor / dte) * 365 * 100) / 100;
+          const pop = Math.round((1 - absDelta) * 100); // probability of profit
+          const capitalRequired = put.strike * 100;
+          const premium100 = Math.round(bid * 100);
+          // Value score: weighs annualized return, but penalizes high delta (lower safety)
+          // A 0.15 delta with 25% annualized is better than 0.30 delta with 30% annualized
+          const safetyMultiplier = 1 + (0.35 - absDelta); // higher for lower deltas
+          const valueScore = Math.round(annualizedRoR * safetyMultiplier * 100) / 100;
 
-        const putRor = Math.round((bid / put.strike) * 100 * 100) / 100;
-        const dte = put.daysToExpiration || 1;
-        const annualizedRoR = Math.round((putRor / dte) * 365 * 100) / 100;
-
-        cspByDTE.push({
-          label,
-          strike: put.strike,
-          bid: put.bid,
-          ask: put.ask,
-          delta: put.delta,
-          theta: put.theta,
-          gamma: put.gamma,
-          vega: put.vega,
-          iv: put.volatility,
-          dte,
-          expDate: put.expDate?.split(':')[0],
-          symbol: put.symbol,
-          ror: putRor,
-          annualizedRoR,
-          capitalRequired: put.strike * 100,
-          premium100: Math.round(bid * 100),
+          return {
+            label,
+            strike: put.strike,
+            bid: put.bid,
+            ask: put.ask,
+            delta: put.delta,
+            theta: put.theta,
+            gamma: put.gamma,
+            vega: put.vega,
+            iv: put.volatility,
+            dte,
+            expDate: put.expDate?.split(':')[0],
+            symbol: put.symbol,
+            ror: putRor,
+            annualizedRoR,
+            capitalRequired,
+            premium100,
+            pop,
+            valueScore,
+          };
         });
+
+        // Sort by value score descending, take top 2 per DTE bucket
+        scored.sort((a: any, b: any) => b.valueScore - a.valueScore);
+        const topForBucket = scored.slice(0, 2);
+        cspByDTE.push(...topForBucket);
+        allCSPCandidates.push(...scored);
       }
 
-      // Pick the best overall (highest annualized RoR) for the main result fields
-      if (cspByDTE.length > 0) {
-        const best = cspByDTE.reduce((a, b) => a.annualizedRoR > b.annualizedRoR ? a : b);
+      // Also add the legacy single best per DTE bucket (closest to targetDelta) for backward compat
+      // But now allCSPCandidates has the full range
+
+      // Pick the best overall by value score
+      if (allCSPCandidates.length > 0) {
+        allCSPCandidates.sort((a: any, b: any) => b.valueScore - a.valueScore);
+        const best = allCSPCandidates[0];
         bestPut = best;
         optBid = best.bid;
         ror = best.ror;
