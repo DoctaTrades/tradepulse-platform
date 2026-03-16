@@ -955,6 +955,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
             <Panel title="🔄 CSP / Wheel Filters">
               <p className="font-mono text-[10px] mb-3" style={{ color: 'var(--text-dim)' }}>Bullish trend + high IVR + affordable assignment + real premium. Stocks you'd be OK owning if assigned.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                <FilterField label="Delta Min" value={cpShortDelta} onChange={v => setCpShortDelta(+v)} type="number" step="0.05" />
+                <FilterField label="Delta Max" value={cpDeltaMax} onChange={v => setCpDeltaMax(+v)} type="number" step="0.05" />
                 <FilterField label="Min IVR (%)" value={stratFilters.csp.minIVR} onChange={v => updateStratFilter('csp','minIVR',+v)} type="number" />
                 <FilterField label="Min Bid ($)" value={stratFilters.csp.minBid} onChange={v => updateStratFilter('csp','minBid',+v)} type="number" step="0.05" />
                 <FilterField label="Min RoR (%)" value={stratFilters.csp.minRoR} onChange={v => updateStratFilter('csp','minRoR',+v)} type="number" step="0.5" />
@@ -1027,8 +1029,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 If stock breaks down, stop selling weeklies and hold the long put as downside protection.
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                <FilterField label="Delta Min" value={cpShortDelta} onChange={v => setCpShortDelta(+v)} type="number" step="0.05" />
-                <FilterField label="Delta Max" value={cpDeltaMax} onChange={v => setCpDeltaMax(+v)} type="number" step="0.05" />
                 <FilterField label="Max Cost Ratio (x)" value={stratFilters.calPress.maxCostRatio} onChange={v => updateStratFilter('calPress','maxCostRatio',+v)} type="number" step="0.5" />
                 <FilterField label="Min Weekly ROI (%)" value={stratFilters.calPress.minWeeklyROI} onChange={v => updateStratFilter('calPress','minWeeklyROI',+v)} type="number" />
                 <FilterField label="Max Price ($)" value={stratFilters.calPress.maxPrice} onChange={v => updateStratFilter('calPress','maxPrice',+v)} type="number" />
