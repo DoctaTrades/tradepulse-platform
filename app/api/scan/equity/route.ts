@@ -80,6 +80,13 @@ function classifyStrat(candle: any, prev: any): string {
 }
 
 // ─── 5CR DETECTION ───────────────────────────────────────
+// 5CR = Five Candle Reversal
+// Bearish pattern (consecutive lower highs) = BULLISH reversal setup
+//   → Price has been making lower highs (selling pressure)
+//   → Trigger: break ABOVE the last candle's high reverses the pattern
+// Bullish pattern (consecutive higher lows) = BEARISH reversal setup
+//   → Price has been making higher lows (buying pressure)
+//   → Trigger: break BELOW the last candle's low reverses the pattern
 function detect5CR(candles: any[], minCount: number): { bearish: any; bullish: any } | null {
   if (candles.length < minCount + 2) return null;
   const recent = candles.slice(-20);
@@ -97,26 +104,31 @@ function detect5CR(candles: any[], minCount: number): { bearish: any; bullish: a
   }
 
   const lastCandle = recent[recent.length - 1];
-  const prevCandle = recent[recent.length - 2];
   const result: any = {};
 
   if (lowerHighCount >= minCount) {
+    // Pattern: bearish candles (lower highs) → trade is BULLISH reversal
     result.bearish = {
       count: lowerHighCount,
-      triggerPrice: prevCandle.high,
+      triggerPrice: lastCandle.high,  // break above last candle's high = reversal
       lastHigh: lastCandle.high,
-      direction: 'BEARISH → Bullish Reversal',
-      signal: `${lowerHighCount} consecutive lower highs`,
+      direction: 'BULLISH REVERSAL',
+      signal: `${lowerHighCount} consecutive lower highs → bullish reversal trigger`,
+      patternType: 'lower_highs',
+      tradeDirection: 'BULLISH',
     };
   }
 
   if (higherLowCount >= minCount) {
+    // Pattern: bullish candles (higher lows) → trade is BEARISH reversal
     result.bullish = {
       count: higherLowCount,
-      triggerPrice: prevCandle.low,
+      triggerPrice: lastCandle.low,  // break below last candle's low = reversal
       lastLow: lastCandle.low,
-      direction: 'BULLISH → Bearish Reversal',
-      signal: `${higherLowCount} consecutive higher lows`,
+      direction: 'BEARISH REVERSAL',
+      signal: `${higherLowCount} consecutive higher lows → bearish reversal trigger`,
+      patternType: 'higher_lows',
+      tradeDirection: 'BEARISH',
     };
   }
 
@@ -317,15 +329,17 @@ export async function POST(req: NextRequest) {
             if (s.direction === 'BULLISH') hasBullish = true;
             if (s.direction === 'BEARISH') hasBearish = true;
           }
-          if (tf.fiveCR_bearish) hasBearish = true; // bearish candles = bullish reversal setup
-          if (tf.fiveCR_bullish) hasBullish = true;
+          // 5CR: bearish pattern (lower highs) = bullish reversal trade
+          //       bullish pattern (higher lows) = bearish reversal trade
+          if (tf.fiveCR_bearish) hasBullish = true;  // lower highs → bullish reversal
+          if (tf.fiveCR_bullish) hasBearish = true;  // higher lows → bearish reversal
         }
 
         // Collect all unique pattern names
         const patternNames: string[] = [];
         for (const tf of tfResults) {
-          if (tf.fiveCR_bearish) patternNames.push('5CR Bearish');
-          if (tf.fiveCR_bullish) patternNames.push('5CR Bullish');
+          if (tf.fiveCR_bearish) patternNames.push('5CR Bullish Reversal');
+          if (tf.fiveCR_bullish) patternNames.push('5CR Bearish Reversal');
           for (const s of (tf.stratSetups || [])) {
             if (!patternNames.includes(s.pattern)) patternNames.push(s.pattern);
           }

@@ -1198,17 +1198,17 @@ export default function ScreenerModule({ user }: { user?: any }) {
                         {/* 5CR on this timeframe */}
                         {tf.fiveCR_bearish && (
                           <div className="flex items-center gap-2 ml-4 mb-1">
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400">5CR BEARISH</span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400">5CR ↑ BULLISH REVERSAL</span>
                             <span className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                              {tf.fiveCR_bearish.count} lower highs · Trigger: <span style={{ color: 'var(--green)' }}>${tf.fiveCR_bearish.triggerPrice?.toFixed(2)}</span>
+                              {tf.fiveCR_bearish.count} lower highs · Trigger above: <span style={{ color: 'var(--green)' }}>${tf.fiveCR_bearish.triggerPrice?.toFixed(2)}</span>
                             </span>
                           </div>
                         )}
                         {tf.fiveCR_bullish && (
                           <div className="flex items-center gap-2 ml-4 mb-1">
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400">5CR BULLISH</span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400">5CR ↓ BEARISH REVERSAL</span>
                             <span className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                              {tf.fiveCR_bullish.count} higher lows · Trigger: <span style={{ color: 'var(--red)' }}>${tf.fiveCR_bullish.triggerPrice?.toFixed(2)}</span>
+                              {tf.fiveCR_bullish.count} higher lows · Trigger below: <span style={{ color: 'var(--red)' }}>${tf.fiveCR_bullish.triggerPrice?.toFixed(2)}</span>
                             </span>
                           </div>
                         )}
