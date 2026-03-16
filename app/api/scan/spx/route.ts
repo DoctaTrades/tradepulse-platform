@@ -64,11 +64,17 @@ interface WallCluster {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { dteRange = [0, 7], wingWidth = 10, userId } = body;
-  _spxUserId = userId;
 
-  if (!await isAuthenticated(userId) && !await isAuthenticated()) {
+  // Check auth: try user-specific first, then platform fallback
+  const userAuth = userId ? await isAuthenticated(userId) : false;
+  const platformAuth = await isAuthenticated();
+
+  if (!userAuth && !platformAuth) {
     return NextResponse.json({ error: 'Schwab not connected. SPX Radar requires real-time data.' }, { status: 401 });
   }
+
+  // Use user's credentials if they have them, otherwise platform
+  _spxUserId = userAuth ? userId : undefined;
 
   try {
     // ─── Get SPX price ───

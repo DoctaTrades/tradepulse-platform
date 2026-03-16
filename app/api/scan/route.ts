@@ -638,7 +638,7 @@ export async function POST(req: NextRequest) {
   } = body;
 
   // Set active user for per-user credential routing
-  setActiveUser(userId);
+  setActiveUser(userId || undefined);
 
   // Build ticker list
   let tickers = customTickers || UNIVERSES[universe] || UNIVERSES.core;

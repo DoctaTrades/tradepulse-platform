@@ -23,9 +23,12 @@ export function getActiveUser(): string | undefined {
 
 // ─── SCHWAB FETCH ────────────────────────────────────────
 
+// Resolved userId for the current request — set by detectProvider
+let _resolvedSchwabUserId: string | undefined;
+
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  // Uses _activeUserId — getValidAccessToken will check user's tokens first, then legacy
-  const token = await getValidAccessToken(_activeUserId);
+  // Use the resolved userId from detectProvider (may be undefined for platform/legacy)
+  const token = await getValidAccessToken(_resolvedSchwabUserId);
   const url = new URL(`${SCHWAB_BASE}${endpoint}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
@@ -179,7 +182,10 @@ async function detectProvider(): Promise<'schwab' | 'tradier' | null> {
     if (userHasSchwab) {
       try {
         const userAuth = await isAuthenticated(userId);
-        if (userAuth) return 'schwab';
+        if (userAuth) {
+          _resolvedSchwabUserId = userId; // Use this user's tokens
+          return 'schwab';
+        }
       } catch {}
     }
 
@@ -188,10 +194,13 @@ async function detectProvider(): Promise<'schwab' | 'tradier' | null> {
     if (tradier) return 'tradier';
   }
 
-  // 3. Fall back to platform Schwab (env vars)
+  // 3. Fall back to platform Schwab (env vars / legacy tokens)
   try {
-    const platformAuth = await isAuthenticated();
-    if (platformAuth) return 'schwab';
+    const platformAuth = await isAuthenticated(); // no userId = legacy
+    if (platformAuth) {
+      _resolvedSchwabUserId = undefined; // Use platform/legacy tokens
+      return 'schwab';
+    }
   } catch {}
 
   return null;

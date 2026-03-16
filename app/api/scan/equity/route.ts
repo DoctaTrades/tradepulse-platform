@@ -206,10 +206,6 @@ function scanTicker(ticker: string, dailyCandles: any[], min5CR: number): any {
 
 // ─── MAIN ENDPOINT ──────────────────────────────────────
 export async function POST(req: NextRequest) {
-  if (!await isAuthenticated()) {
-    return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
-  }
-
   const body = await req.json();
   const {
     tickers = [],
@@ -221,7 +217,16 @@ export async function POST(req: NextRequest) {
     userId,
   } = body;
 
-  _equityUserId = userId;
+  // Check auth: try user-specific first, then platform fallback
+  const userAuth = userId ? await isAuthenticated(userId) : false;
+  const platformAuth = await isAuthenticated();
+
+  if (!userAuth && !platformAuth) {
+    return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
+  }
+
+  // Use user's credentials if they have them, otherwise platform
+  _equityUserId = userAuth ? userId : undefined;
 
   const logs: string[] = ['⚡ Starting multi-timeframe equity scan...'];
   let scanned = 0;
