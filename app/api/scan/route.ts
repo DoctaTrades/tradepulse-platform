@@ -659,6 +659,9 @@ export async function POST(req: NextRequest) {
     emaTrend: filters.emaTrend ?? 'any',
     targetDelta: filters.targetDelta ?? 0.30,
     targetDTE: filters.targetDTE ?? [25, 45],
+    cspDeltaMin: filters.cspDeltaMin ?? 0.10,
+    cspDeltaMax: filters.cspDeltaMax ?? 0.35,
+    cpShortDelta: filters.cpShortDelta ?? 0.30,
   };
 
   const admin = isAdmin(userId, userEmail);
