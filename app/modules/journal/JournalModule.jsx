@@ -7623,6 +7623,7 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
         <button onClick={()=>setSection("futures")} style={{ padding:"8px 16px", border:"none", background:section==="futures"?"rgba(99,102,241,0.15)":"transparent", color:section==="futures"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="futures"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Futures Presets</button>
         <button onClick={()=>setSection("custom")} style={{ padding:"8px 16px", border:"none", background:section==="custom"?"rgba(99,102,241,0.15)":"transparent", color:section==="custom"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="custom"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Custom Fields</button>
         <button onClick={()=>setSection("ai")} style={{ padding:"8px 16px", border:"none", background:section==="ai"?"rgba(99,102,241,0.15)":"transparent", color:section==="ai"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="ai"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>AI Integration</button>
+        <button onClick={()=>setSection("schwab")} style={{ padding:"8px 16px", border:"none", background:section==="schwab"?"rgba(99,102,241,0.15)":"transparent", color:section==="schwab"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="schwab"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Schwab API</button>
       </div>
 
       {section === "accounts" && <AccountBalancesManager accountBalances={accountBalances} onSave={onSaveAccountBalances} customFields={customFields} trades={trades} prefs={prefs} onSavePrefs={onSavePrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={onSaveCashTransactions} hideBalances={hideBalances}/>}
@@ -7771,12 +7772,250 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
           </div>
         </div>
       )}
+
+      {section === "schwab" && <SchwabSetupWizard user={user} />}
+    </div>
+  );
+}
+
+// ─── SCHWAB SETUP WIZARD ────────────────────────────────────────────────────
+function SchwabSetupWizard({ user }) {
+  const [appKey, setAppKey] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState(null); // { hasCredentials, connected }
+  const [message, setMessage] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [expandGuide, setExpandGuide] = useState(true);
+
+  const userId = user?.id;
+
+  // Check existing credentials on mount
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`/api/schwab/credentials?userId=${userId}`)
+      .then(r => r.json())
+      .then(d => setStatus(d))
+      .catch(() => {});
+  }, [userId]);
+
+  const handleSave = async () => {
+    if (!appKey.trim() || !appSecret.trim()) { setMessage("Both App Key and App Secret are required."); return; }
+    setSaving(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/schwab/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, appKey: appKey.trim(), appSecret: appSecret.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage("✅ Credentials saved! You can now connect to Schwab using the button in the screener.");
+        setStatus(prev => ({ ...prev, hasCredentials: true }));
+        setExpandGuide(false);
+      } else {
+        setMessage(`❌ ${data.error}`);
+      }
+    } catch (e) {
+      setMessage("❌ Failed to save — check your connection and try again.");
+    }
+    setSaving(false);
+  };
+
+  const handleRemove = async () => {
+    if (!confirm("Remove your Schwab credentials? You'll need to re-enter them to use the screener.")) return;
+    try {
+      await fetch("/api/schwab/credentials", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      setStatus({ hasCredentials: false, connected: false });
+      setAppKey(""); setAppSecret("");
+      setMessage("Credentials removed.");
+    } catch {}
+  };
+
+  const CALLBACK_URL = typeof window !== "undefined"
+    ? `${window.location.origin}/api/schwab/callback`
+    : "https://tradepulse-platform.vercel.app/api/schwab/callback";
+
+  return (
+    <div>
+      <div style={{ fontSize:18, fontWeight:700, color:"var(--tp-text)", marginBottom:4 }}>Schwab API Connection</div>
+      <div style={{ fontSize:13, color:"var(--tp-muted)", marginBottom:20, lineHeight:1.6 }}>
+        Connect your own Schwab developer API to get <strong style={{ color:"#4ade80" }}>real-time market data</strong> with <strong style={{ color:"#4ade80" }}>120 API calls/minute</strong> — dedicated to your account only. This powers the screener, SPX Radar, sector explorer, and live holdings prices.
+      </div>
+
+      {/* Status Badge */}
+      <div style={{ display:"flex", gap:12, marginBottom:20 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 16px", borderRadius:8, background: status?.connected ? "rgba(74,222,128,0.1)" : status?.hasCredentials ? "rgba(234,179,8,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${status?.connected ? "rgba(74,222,128,0.2)" : status?.hasCredentials ? "rgba(234,179,8,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+          <div style={{ width:8, height:8, borderRadius:4, background: status?.connected ? "#4ade80" : status?.hasCredentials ? "#eab308" : "#f87171" }} />
+          <span style={{ fontSize:12, fontWeight:600, color: status?.connected ? "#4ade80" : status?.hasCredentials ? "#eab308" : "#f87171" }}>
+            {status?.connected ? "Connected & Active" : status?.hasCredentials ? "Credentials Saved — Click Connect in Screener" : "Not Set Up"}
+          </span>
+        </div>
+      </div>
+
+      {/* Why Section */}
+      <div style={{ background:"var(--tp-panel)", border:"1px solid rgba(99,102,241,0.15)", borderRadius:14, padding:"18px 22px", marginBottom:20 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#a5b4fc", marginBottom:10 }}>Why do I need my own API key?</div>
+        <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.7 }}>
+          Each Schwab developer account gets <strong style={{ color:"var(--tp-text)" }}>120 API calls per minute</strong> — completely independent from other users. This means your scans, live prices, and option chains are never competing with anyone else for bandwidth. It's the difference between real-time data and waiting in line.
+          <br/><br/>
+          Setting up takes about <strong style={{ color:"var(--tp-text)" }}>5 minutes</strong> and you only do it once. Your credentials are stored securely and encrypted in your account — you won't need to enter them again.
+        </div>
+      </div>
+
+      {/* Step-by-Step Guide */}
+      <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, marginBottom:20, overflow:"hidden" }}>
+        <button onClick={() => setExpandGuide(!expandGuide)} style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 22px", border:"none", background:"transparent", cursor:"pointer", color:"var(--tp-text)" }}>
+          <span style={{ fontSize:14, fontWeight:700 }}>📋 Setup Guide (5 minutes)</span>
+          <ChevronDown size={16} style={{ color:"var(--tp-faint)", transform: expandGuide ? "rotate(180deg)" : "none", transition:"transform 0.2s" }} />
+        </button>
+
+        {expandGuide && (
+          <div style={{ padding:"0 22px 22px", display:"flex", flexDirection:"column", gap:16 }}>
+
+            {/* Step 1 */}
+            <div style={{ display:"flex", gap:14 }}>
+              <div style={{ width:28, height:28, borderRadius:14, background:"rgba(99,102,241,0.15)", color:"#a5b4fc", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, flexShrink:0 }}>1</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Create a Schwab Developer Account</div>
+                <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.6 }}>
+                  Go to <a href="https://developer.schwab.com" target="_blank" rel="noopener" style={{ color:"#6366f1", textDecoration:"underline" }}>developer.schwab.com</a> and sign up. You can use your existing Schwab brokerage login or create a new account. It's free.
+                </div>
+              </div>
+            </div>
+
+            {/* Step 2 */}
+            <div style={{ display:"flex", gap:14 }}>
+              <div style={{ width:28, height:28, borderRadius:14, background:"rgba(99,102,241,0.15)", color:"#a5b4fc", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, flexShrink:0 }}>2</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Create an App</div>
+                <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.6 }}>
+                  Once logged in, go to <strong style={{ color:"var(--tp-text)" }}>My Apps</strong> and click <strong style={{ color:"var(--tp-text)" }}>Create App</strong>. Give it any name you want (e.g., "My Trading Tools"). For the description, anything works — "Personal trading dashboard."
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div style={{ display:"flex", gap:14 }}>
+              <div style={{ width:28, height:28, borderRadius:14, background:"rgba(99,102,241,0.15)", color:"#a5b4fc", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, flexShrink:0 }}>3</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Set the Callback URL</div>
+                <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.6, marginBottom:8 }}>
+                  When creating your app, you'll see a field for <strong style={{ color:"var(--tp-text)" }}>Callback URL</strong>. Paste this exact URL:
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <code style={{ flex:1, padding:"10px 14px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"#4ade80", fontSize:12, fontFamily:"'JetBrains Mono', monospace", wordBreak:"break-all" }}>{CALLBACK_URL}</code>
+                  <button onClick={() => { navigator.clipboard.writeText(CALLBACK_URL); }} style={{ padding:"8px 12px", borderRadius:6, border:"1px solid var(--tp-border-l)", background:"var(--tp-input)", color:"var(--tp-muted)", cursor:"pointer", fontSize:11, fontWeight:600, whiteSpace:"nowrap" }}>Copy</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 4 */}
+            <div style={{ display:"flex", gap:14 }}>
+              <div style={{ width:28, height:28, borderRadius:14, background:"rgba(234,179,8,0.15)", color:"#eab308", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, flexShrink:0 }}>4</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Wait for Approval</div>
+                <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.6 }}>
+                  Schwab reviews new apps — this usually takes <strong style={{ color:"var(--tp-text)" }}>1-3 business days</strong>. You'll get an email when it's approved. This is a one-time wait.
+                </div>
+              </div>
+            </div>
+
+            {/* Step 5 */}
+            <div style={{ display:"flex", gap:14 }}>
+              <div style={{ width:28, height:28, borderRadius:14, background:"rgba(74,222,128,0.15)", color:"#4ade80", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, flexShrink:0 }}>5</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Copy Your App Key & Secret</div>
+                <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.6 }}>
+                  Once approved, go to your app's details page. You'll see your <strong style={{ color:"var(--tp-text)" }}>App Key</strong> (also called Client ID) and <strong style={{ color:"var(--tp-text)" }}>App Secret</strong> (also called Client Secret). Copy both and paste them below.
+                </div>
+              </div>
+            </div>
+
+            {/* Step 6 */}
+            <div style={{ display:"flex", gap:14 }}>
+              <div style={{ width:28, height:28, borderRadius:14, background:"rgba(74,222,128,0.15)", color:"#4ade80", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, flexShrink:0 }}>6</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Connect & Start Scanning</div>
+                <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.6 }}>
+                  After saving your keys below, go to the Screener and click <strong style={{ color:"var(--tp-text)" }}>Connect Schwab</strong>. You'll log in with your regular Schwab brokerage account (not the developer account) to authorize access. That's it — you're connected with your own 120 calls/min.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Credential Input */}
+      <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:"var(--tp-text)", marginBottom:16 }}>Your Schwab Developer Credentials</div>
+
+        <div style={{ marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:11, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:6 }}>App Key (Client ID)</label>
+          <input
+            type="text"
+            value={appKey}
+            onChange={e => setAppKey(e.target.value)}
+            placeholder="Paste your App Key here..."
+            style={{ width:"100%", padding:"10px 14px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}
+          />
+        </div>
+
+        <div style={{ marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:11, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:6 }}>App Secret (Client Secret)</label>
+          <div style={{ display:"flex", gap:8 }}>
+            <input
+              type={showSecret ? "text" : "password"}
+              value={appSecret}
+              onChange={e => setAppSecret(e.target.value)}
+              placeholder="Paste your App Secret here..."
+              style={{ flex:1, padding:"10px 14px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace" }}
+            />
+            <button onClick={() => setShowSecret(!showSecret)} style={{ padding:"8px 12px", borderRadius:8, border:"1px solid var(--tp-border-l)", background:"var(--tp-input)", color:"var(--tp-muted)", cursor:"pointer", fontSize:11 }}>
+              {showSecret ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
+
+        {message && (
+          <div style={{ fontSize:12, color: message.startsWith("✅") ? "#4ade80" : message.startsWith("❌") ? "#f87171" : "var(--tp-muted)", marginBottom:14, lineHeight:1.5 }}>
+            {message}
+          </div>
+        )}
+
+        <div style={{ display:"flex", gap:10 }}>
+          <button
+            onClick={handleSave}
+            disabled={saving || !appKey.trim() || !appSecret.trim()}
+            style={{ padding:"10px 24px", borderRadius:8, border:"none", background: saving ? "#4b5563" : "linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor: saving ? "default" : "pointer", fontSize:13, fontWeight:600, boxShadow:"0 4px 14px rgba(99,102,241,0.3)", opacity: (!appKey.trim() || !appSecret.trim()) ? 0.5 : 1 }}
+          >
+            {saving ? "Saving..." : status?.hasCredentials ? "Update Credentials" : "Save Credentials"}
+          </button>
+
+          {status?.hasCredentials && (
+            <button
+              onClick={handleRemove}
+              style={{ padding:"10px 18px", borderRadius:8, border:"1px solid rgba(248,113,113,0.3)", background:"transparent", color:"#f87171", cursor:"pointer", fontSize:12, fontWeight:600 }}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+
+        <div style={{ marginTop:14, fontSize:11, color:"var(--tp-faintest)", lineHeight:1.5 }}>
+          Your credentials are stored securely in your account and never shared with other users. Each user's API calls are completely independent.
+        </div>
+      </div>
     </div>
   );
 }
 
 // ─── APPEARANCE MANAGER ─────────────────────────────────────────────────────
-function AppearanceManager({ prefs, onSave, theme }) {
   const logoInputRef = { current: null };
   const bannerInputRef = { current: null };
 
