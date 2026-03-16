@@ -85,7 +85,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const [equityResults, setEquityResults] = useState<any[]>([]);
   const [equityLoading, setEquityLoading] = useState(false);
   const [equityLogs, setEquityLogs] = useState<string[]>([]);
-  const [equityFilter, setEquityFilter] = useState({ min5CR: 5, minPrice: 5, maxPrice: 1000, showType: 'all', patternFilter: 'all', directionFilter: 'all', sortBy: 'confluence', levelFilter: 'all', rsFilter: 'all' });
+  const [equityFilter, setEquityFilter] = useState({ min5CR: 5, minPrice: 5, maxPrice: 1000, showType: 'all', patternFilter: 'all', directionFilter: 'all', sortBy: 'confluence', levelFilter: 'all', rsFilter: 'all', sectorFilter: 'all' });
   const [expandedEquity, setExpandedEquity] = useState<Set<string>>(new Set());
   const [dashData, setDashData] = useState<any>(null);
   const [dashLoading, setDashLoading] = useState(false);
@@ -367,6 +367,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
           maxPrice: equityFilter.maxPrice,
           min5CR: equityFilter.min5CR,
           mode: equityFilter.showType === 'topdown' ? 'topdown' : 'universe',
+          sectorFilter: equityFilter.sectorFilter !== 'all' ? equityFilter.sectorFilter : undefined,
         }),
       });
       const data = await res.json();
@@ -1080,9 +1081,11 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 Top-Down mode: Indices → Sectors → Tickers. Universe mode: scan selected ticker list.
                 Results ranked by confluence — more timeframes with setups = higher priority.
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 mb-3">
                 <SelectField label="Scan Mode" value={equityFilter.showType} onChange={v => setEquityFilter(prev => ({ ...prev, showType: v }))}
                   options={[['topdown','🔻 Top-Down (Index→Sector→Ticker)'],['universe','📡 Selected Universe']]} />
+                <SelectField label="Sector" value={equityFilter.sectorFilter} onChange={v => setEquityFilter(prev => ({ ...prev, sectorFilter: v }))}
+                  options={[['all','All Sectors'],['XLK','🖥 Technology'],['XLE','⛽ Energy'],['XLF','🏦 Financials'],['XLV','🏥 Healthcare'],['XLY','🛍 Consumer Disc.'],['XLP','🛒 Consumer Staples'],['XLI','🏭 Industrials'],['XLB','⚒ Materials'],['XLRE','🏘 Real Estate'],['XLU','💡 Utilities'],['XLC','📡 Communication']]} />
                 <FilterField label="Min 5CR Candles" value={equityFilter.min5CR} onChange={v => setEquityFilter(prev => ({ ...prev, min5CR: +v }))} type="number" />
                 <FilterField label="Min Price ($)" value={equityFilter.minPrice} onChange={v => setEquityFilter(prev => ({ ...prev, minPrice: +v }))} type="number" />
                 <FilterField label="Max Price ($)" value={equityFilter.maxPrice} onChange={v => setEquityFilter(prev => ({ ...prev, maxPrice: +v }))} type="number" />

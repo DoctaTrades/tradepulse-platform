@@ -215,15 +215,23 @@ export async function POST(req: NextRequest) {
     maxPrice = 1000,
     min5CR = 5,
     mode = 'universe', // 'universe' = scan provided tickers, 'topdown' = index → sector → tickers
+    sectorFilter, // optional: 'XLK', 'XLE', etc — restricts scan to that sector's tickers
   } = body;
 
   const logs: string[] = ['⚡ Starting multi-timeframe equity scan...'];
   let scanned = 0;
 
+  // If sector filter is set, override tickers with that sector's holdings
+  let effectiveTickers = tickers;
+  if (sectorFilter && SECTOR_ETFS[sectorFilter]) {
+    effectiveTickers = SECTOR_ETFS[sectorFilter].tickers;
+    logs.push(`🏗 Sector filter: ${SECTOR_ETFS[sectorFilter].label} (${sectorFilter}) — ${effectiveTickers.length} tickers`);
+  }
+
   // ─── Fetch quotes in bulk ───
   const allTickers = mode === 'topdown'
     ? [...INDICES, ...Object.keys(SECTOR_ETFS)]
-    : tickers;
+    : effectiveTickers;
 
   const allQuotes: any = {};
   for (let i = 0; i < allTickers.length; i += 50) {
