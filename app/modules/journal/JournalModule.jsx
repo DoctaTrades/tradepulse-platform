@@ -8011,6 +8011,50 @@ function SchwabSetupWizard({ user }) {
           Your credentials are stored securely in your account and never shared with other users. Each user's API calls are completely independent.
         </div>
       </div>
+
+      {/* Additional Data Sources */}
+      <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:"var(--tp-text)", marginBottom:6 }}>Additional Data Sources (Optional)</div>
+        <div style={{ fontSize:12, color:"var(--tp-muted)", marginBottom:16, lineHeight:1.6 }}>
+          Schwab is the primary and recommended data source. These are optional fallbacks or supplements.
+        </div>
+
+        {/* Tradier */}
+        <div style={{ marginBottom:18, paddingBottom:18, borderBottom:"1px solid var(--tp-border)" }}>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>📊 Tradier</div>
+          <div style={{ fontSize:11, color:"var(--tp-muted)", marginBottom:10, lineHeight:1.5 }}>
+            Alternative broker API with easy signup. Free sandbox available with delayed data. Sign up at{" "}
+            <a href="https://developer.tradier.com" target="_blank" rel="noopener" style={{ color:"#6366f1", textDecoration:"underline" }}>developer.tradier.com</a>
+          </div>
+          <div style={{ marginBottom:8 }}>
+            <label style={{ display:"block", fontSize:10, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Access Token</label>
+            <input
+              type="password"
+              placeholder="Tradier access token..."
+              style={{ width:"100%", padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:6, color:"var(--tp-text)", fontSize:12, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}
+            />
+          </div>
+          <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>Coming soon — Tradier integration is planned for a future update.</div>
+        </div>
+
+        {/* Polygon */}
+        <div>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>🔷 Polygon.io</div>
+          <div style={{ fontSize:11, color:"var(--tp-muted)", marginBottom:10, lineHeight:1.5 }}>
+            Free tier with 5 calls/min. Good for basic quote data as a fallback. Sign up at{" "}
+            <a href="https://polygon.io" target="_blank" rel="noopener" style={{ color:"#6366f1", textDecoration:"underline" }}>polygon.io</a>
+          </div>
+          <div style={{ marginBottom:8 }}>
+            <label style={{ display:"block", fontSize:10, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>API Key</label>
+            <input
+              type="password"
+              placeholder="Polygon API key..."
+              style={{ width:"100%", padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:6, color:"var(--tp-text)", fontSize:12, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}
+            />
+          </div>
+          <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>Coming soon — Polygon integration is planned for a future update.</div>
+        </div>
+      </div>
     </div>
   );
 }
