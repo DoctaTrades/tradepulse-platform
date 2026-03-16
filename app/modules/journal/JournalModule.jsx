@@ -8885,10 +8885,29 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
       });
     });
     if (paired.length === 0) { setSnapError("No trades to import after pairing"); return; }
-    onSaveTrades(prev => [...paired.sort((a, b) => new Date(b.date) - new Date(a.date)), ...prev]);
+
+    // Duplicate detection: match on ticker + date + direction + quantity
+    const isDuplicate = (newTrade) => {
+      return trades.some(existing =>
+        existing.ticker === newTrade.ticker &&
+        existing.date === newTrade.date &&
+        existing.direction === newTrade.direction &&
+        String(existing.quantity) === String(newTrade.quantity)
+      );
+    };
+
+    const unique = paired.filter(t => !isDuplicate(t));
+    const dupeCount = paired.length - unique.length;
+
+    if (unique.length === 0) {
+      setSnapError(`All ${paired.length} trades already exist in your journal (matched by ticker + date + direction + quantity). Nothing to import.`);
+      return;
+    }
+
+    onSaveTrades(prev => [...unique.sort((a, b) => new Date(b.date) - new Date(a.date)), ...prev]);
     setSnapOrders([]);
     setMode(null);
-    alert(`Imported ${paired.length} trades from broker sync!`);
+    alert(`Imported ${unique.length} trades from broker sync!${dupeCount > 0 ? ` Skipped ${dupeCount} duplicate${dupeCount !== 1 ? "s" : ""} already in your journal.` : ""}`);
   };
 
   return (
