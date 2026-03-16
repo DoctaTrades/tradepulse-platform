@@ -8425,12 +8425,26 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        const pageText = content.items.map(item => item.str).join(" ");
+        // Build text preserving line breaks: insert newline when y-position changes
+        let lastY = null;
+        let pageText = "";
+        for (const item of content.items) {
+          const y = item.transform ? item.transform[5] : null;
+          if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) {
+            pageText += "\n";
+          }
+          pageText += item.str;
+          lastY = y;
+        }
         fullText += pageText + "\n";
       }
 
       // Parse Webull securities trading activity
+      console.log("[Webull PDF] Extracted text length:", fullText.length, "lines:", fullText.split("\n").length);
+      console.log("[Webull PDF] Contains SECURITIES TRADING ACTIVITY:", fullText.includes("SECURITIES TRADING ACTIVITY"));
+      console.log("[Webull PDF] First 500 chars of trading section:", fullText.substring(fullText.indexOf("SECURITIES TRADING"), fullText.indexOf("SECURITIES TRADING") + 500));
       const orders = parseWebullPDF(fullText);
+      console.log("[Webull PDF] Orders found:", orders.length);
       if (orders.length === 0) {
         alert("No trades found in this PDF. Make sure it's a Webull statement with Securities Trading Activity.");
         return;
