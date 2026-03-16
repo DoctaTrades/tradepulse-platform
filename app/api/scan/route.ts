@@ -392,6 +392,9 @@ async function scanWithSchwab(tickers: string[], filters: any) {
         dte: bestPut.dte,
         expDate: bestPut.expDate,
         symbol: bestPut.symbol,
+        annualizedRoR: bestPut.annualizedRoR,
+        valueScore: bestPut.valueScore,
+        pop: bestPut.pop,
       };
     }
 
