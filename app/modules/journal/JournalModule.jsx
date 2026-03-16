@@ -4558,49 +4558,19 @@ function HoldingsTab({ trades, accountBalances, onEditTrade, theme, dividends, o
     });
   };
 
-  // Fetch price from multiple sources
+  // Fetch prices via server-side API (Schwab → Finnhub fallback)
   const fetchPrice = async (ticker) => {
-    // Source 1: Financial Modeling Prep (free, CORS-friendly, no key needed for quote)
     try {
-      const resp = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${encodeURIComponent(ticker)}?apikey=demo`);
-      if (resp.ok) {
-        const data = await resp.json();
-        const price = data?.[0]?.price;
-        if (price && price > 0) return price;
-      }
-    } catch {}
-
-    // Source 2: Stockdata.org free tier (no key needed for basic)
-    try {
-      const resp = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=demo`);
-      if (resp.ok) {
-        const data = await resp.json();
-        const price = data?.data?.[0]?.price;
-        if (price && price > 0) return price;
-      }
-    } catch {}
-
-    // Source 3: Gemini AI as last resort (uses training knowledge)
-    try {
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${prefs?.geminiApiKey || GEMINI_FREE_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: "You are a stock price tool. If you know the approximate current trading price of this stock/ETF, reply with ONLY the number (like 185.42). If you don't know, reply with just the word UNKNOWN. No other text." }] },
-          contents: [{ parts: [{ text: `Current price of ${ticker}` }] }],
-          generationConfig: { maxOutputTokens: 30, temperature: 0 }
-        })
+      const resp = await fetch('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: [ticker] }),
       });
       if (resp.ok) {
         const data = await resp.json();
-        const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join(" ").trim();
-        if (!text.includes("UNKNOWN")) {
-          const match = text.match(/(\d+[\.,]?\d*)/);
-          if (match) return parseFloat(match[1].replace(",", ""));
-        }
+        if (data.prices?.[ticker]) return data.prices[ticker];
       }
     } catch {}
-
     return null;
   };
 
@@ -4623,24 +4593,26 @@ function HoldingsTab({ trades, accountBalances, onEditTrade, theme, dividends, o
   const lookupAll = async () => {
     setLookupLoading("all");
     setLookupError("");
-    let successCount = 0;
-    let lastFailed = "";
-    for (const ticker of allTickers) {
-      try {
-        const price = await fetchPrice(ticker);
-        if (price) {
-          updatePrices(prev => ({ ...prev, [ticker]: price }));
-          successCount++;
-        } else {
-          lastFailed = ticker;
+    try {
+      // Batch fetch all tickers in one API call
+      const resp = await fetch('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: allTickers }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.prices && Object.keys(data.prices).length > 0) {
+          updatePrices(prev => ({ ...prev, ...data.prices }));
         }
-      } catch { lastFailed = ticker; }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-    if (successCount === 0 && allTickers.length > 0) {
-      setLookupError("Could not fetch any prices — the free API may be rate limited. Try again in a minute or enter prices manually.");
-    } else if (successCount < allTickers.length) {
-      setLookupError(`Fetched ${successCount}/${allTickers.length} prices. Some tickers (like ${lastFailed}) may need manual entry.`);
+        if (data.missing?.length > 0) {
+          setLookupError(`Could not find prices for: ${data.missing.join(', ')}`);
+        }
+      } else {
+        setLookupError('Quote API error — check Schwab connection');
+      }
+    } catch (err) {
+      setLookupError('Lookup failed — try again');
     }
     setLookupLoading(null);
   };
