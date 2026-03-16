@@ -8450,45 +8450,99 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
 
   const parseWebullPDF = (text) => {
     const orders = [];
-    // Match patterns like: SYMBOL - CUSIP\nCOMPANY NAME DATE DATE B/S QTY PRICE GROSS COMM FEE NET
-    // The PDF text is concatenated so we need to find trade lines
-    const lines = text.split("\n").join(" ");
-    
-    // Find all trade entries - look for B or S followed by numbers
-    const symbolPattern = /([A-Z]{1,5})\s+-\s+[A-Z0-9]+\s+[\w\s&,.'()-]+?\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+(B|S)\s+(-?[\d,.]+)\s+([\d,.]+)\s+(-?[\d,.]+)\s+([\d,.]+)\s+(-?[\d,.]+)\s+(-?[\d,.]+)/g;
-    
-    let match;
-    while ((match = symbolPattern.exec(lines)) !== null) {
-      const [, symbol, tradeDate, , action, qty, price, gross, commission, feeTax, netAmount] = match;
-      const absQty = Math.abs(parseFloat(qty.replace(/,/g, "")));
-      const parsedPrice = parseFloat(price.replace(/,/g, ""));
-      const parsedFees = Math.abs(parseFloat(commission.replace(/,/g, ""))) + Math.abs(parseFloat(feeTax.replace(/,/g, "")));
-      const parsedNet = parseFloat(netAmount.replace(/,/g, ""));
-      
-      // Convert date from MM/DD/YYYY to YYYY-MM-DD
-      const [mm, dd, yyyy] = tradeDate.split("/");
-      const isoDate = `${yyyy}-${mm}-${dd}`;
-      
-      orders.push({
-        symbol,
-        date: isoDate,
-        action: action === "B" ? "Buy" : "Sell",
-        quantity: absQty,
-        price: parsedPrice,
-        fees: parsedFees,
-        netAmount: parsedNet,
-        gross: parseFloat(gross.replace(/,/g, ""))
-      });
+    const allLines = text.split("\n").map(l => l.trim()).filter(l => l);
+
+    // Find "SECURITIES TRADING ACTIVITY" section boundaries
+    let startIdx = -1, endIdx = allLines.length;
+    for (let i = 0; i < allLines.length; i++) {
+      if (allLines[i].includes("SECURITIES TRADING ACTIVITY")) startIdx = i;
+      if (startIdx > -1 && allLines[i] === "OPEN POSITIONS") { endIdx = i; break; }
+    }
+    if (startIdx === -1) return orders;
+
+    const lines = allLines.slice(startIdx, endIdx);
+    const dateRe = /^\d{2}\/\d{2}\/\d{4}$/;
+    // Stock: "SMCI - 86800U302"
+    const stockRe = /^([A-Z]{1,5})\s*-\s*[A-Z0-9]+$/;
+    // Option: "LOW 260220P00220000 -" or "SPXW 260107C06965000 -"
+    const optionRe = /^([A-Z]{1,5})\s+(\d{6}[CP]\d+)\s*-$/;
+    const actionRe = /^(B|S|BTC|BTO|STO|STC)$/;
+    const skipSet = new Set(["A","N","Y",""]);
+
+    let i = 0;
+    // Skip header lines until first trade
+    while (i < lines.length && !stockRe.test(lines[i]) && !optionRe.test(lines[i])) i++;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const stockM = stockRe.exec(line);
+      const optionM = optionRe.exec(line);
+
+      if (!stockM && !optionM) { i++; continue; }
+
+      let symbol, optionSymbol = null, isOption = false;
+
+      if (stockM) {
+        symbol = stockM[1];
+        i++; // skip company name line
+        i++; // now on trade date
+      } else {
+        symbol = optionM[1];
+        optionSymbol = `${optionM[1]} ${optionM[2]}`;
+        isOption = true;
+        i++; // now on trade date (no company name for options)
+      }
+
+      try {
+        const tradeDate = lines[i++];
+        const settleDate = lines[i++];
+        const action = lines[i++];
+        const qty = lines[i++];
+        const price = lines[i++];
+        const gross = lines[i++];
+        const comm = lines[i++];
+        const fee = lines[i++];
+        const net = lines[i++];
+        // Skip trailing flags (CAP=A, Overnight=N, Algorithm=N, Callable, Remarks)
+        while (i < lines.length && skipSet.has(lines[i])) i++;
+
+        if (!dateRe.test(tradeDate) || !actionRe.test(action)) continue;
+
+        const [mm, dd, yyyy] = tradeDate.split("/");
+        const isoDate = `${yyyy}-${mm}-${dd}`;
+        const absQty = Math.abs(parseFloat(qty.replace(/,/g, "")));
+        const parsedPrice = parseFloat(price.replace(/,/g, ""));
+        const parsedComm = Math.abs(parseFloat(comm.replace(/,/g, "")));
+        const parsedFee = Math.abs(parseFloat(fee.replace(/,/g, "")));
+        const parsedNet = parseFloat(net.replace(/,/g, ""));
+
+        if (isNaN(absQty) || isNaN(parsedPrice)) continue;
+
+        orders.push({
+          symbol,
+          optionSymbol,
+          isOption,
+          date: isoDate,
+          action: ["B","BTO","BTC"].includes(action) ? "Buy" : "Sell",
+          rawAction: action,
+          quantity: absQty,
+          price: parsedPrice,
+          fees: parsedComm + parsedFee,
+          netAmount: parsedNet,
+          gross: parseFloat(gross.replace(/,/g, ""))
+        });
+      } catch (e) { i++; continue; }
     }
     return orders;
   };
 
   const groupWebullTrades = (orders) => {
-    // Group by symbol + date
+    // Group by full symbol (option symbol or stock ticker) + date
     const groups = {};
     orders.forEach(o => {
-      const key = `${o.symbol}|${o.date}`;
-      if (!groups[key]) groups[key] = { symbol: o.symbol, date: o.date, buys: [], sells: [] };
+      const groupSymbol = o.optionSymbol || o.symbol;
+      const key = `${groupSymbol}|${o.date}`;
+      if (!groups[key]) groups[key] = { symbol: o.symbol, optionSymbol: o.optionSymbol, isOption: o.isOption, date: o.date, buys: [], sells: [] };
       if (o.action === "Buy") groups[key].buys.push(o);
       else groups[key].sells.push(o);
     });
@@ -8510,18 +8564,34 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
       const isClosed = totalBuyQty > 0 && totalSellQty > 0;
 
       if (qty > 0) {
-        const direction = g.buys[0]?.date <= g.sells[0]?.date ? "Long" : "Short";
+        // Determine direction from raw actions if available
+        const firstBuyAction = g.buys[0]?.rawAction || "B";
+        const firstSellAction = g.sells[0]?.rawAction || "S";
+        // BTO/B = opening long, STO = opening short
+        // If first action is STO/S and second is BTC/B, it's a short (credit) trade
+        const allOrders = [...g.buys, ...g.sells].sort((a, b) => a.date < b.date ? -1 : 1);
+        const firstAction = allOrders[0]?.rawAction || "B";
+        const direction = ["STO", "S"].includes(firstAction) ? "Short" : "Long";
+
         const entryPrice = direction === "Long" ? avgBuyPrice : avgSellPrice;
         const exitPrice = direction === "Long" ? avgSellPrice : avgBuyPrice;
+
+        // Options: P&L uses net amounts directly (already accounts for multiplier)
+        // Stocks: simple price × qty
+        const multiplier = g.isOption ? 100 : 1;
         const pnl = direction === "Long"
-          ? (exitPrice - entryPrice) * qty - totalFees
-          : (entryPrice - exitPrice) * qty - totalFees;
+          ? (exitPrice - entryPrice) * qty * multiplier - totalFees
+          : (entryPrice - exitPrice) * qty * multiplier - totalFees;
+
+        const assetType = g.isOption ? "Options" : "Stock";
+        const displayTicker = g.isOption ? g.symbol : g.symbol;
+        const noteDetail = g.optionSymbol ? ` (${g.optionSymbol})` : "";
 
         trades.push({
           id: Date.now() + Math.random(),
           date: g.date,
-          ticker: g.symbol,
-          assetType: "Stock",
+          ticker: displayTicker,
+          assetType,
           direction,
           status: isClosed ? "Closed" : "Open",
           entryPrice: entryPrice.toFixed(4),
@@ -8529,8 +8599,8 @@ function ImportExportManager({ trades, onSaveTrades, customFields, accountBalanc
           quantity: String(qty),
           fees: totalFees.toFixed(2),
           pnl: isClosed ? parseFloat(pnl.toFixed(2)) : null,
-          notes: `Webull import: ${g.buys.length} buy${g.buys.length !== 1 ? "s" : ""}, ${g.sells.length} sell${g.sells.length !== 1 ? "s" : ""}`,
-          strategy: "Day Trade",
+          notes: `Webull PDF${noteDetail}: ${g.buys.length} buy${g.buys.length !== 1 ? "s" : ""}, ${g.sells.length} sell${g.sells.length !== 1 ? "s" : ""}`,
+          strategy: assetType === "Options" ? "Options" : "Day Trade",
           timeframe: "Day Trade",
           account: targetAccount || "",
           tradeStrategy: "",
