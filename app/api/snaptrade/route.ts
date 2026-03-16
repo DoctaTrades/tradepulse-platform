@@ -289,9 +289,6 @@ export async function POST(req: NextRequest) {
         totalRaw: allActivities.length,
         orders,
         message: `Found ${orders.length} buy/sell transactions (${allActivities.length} total activities)`,
-        _debug_typeCounts: typeCounts,
-        _debug_sampleRaw: allActivities.slice(0, 3),
-        _debug_method: debugMethod,
       });
     }
 

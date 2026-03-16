@@ -9141,12 +9141,7 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
     try {
       const data = await snapFetch("import", { accountId: snapImportAccount, startDate: snapStartDate, endDate: snapEndDate });
       setSnapOrders(data.orders || []);
-      if ((data.orders || []).length === 0) {
-        const debugInfo = data._debug_typeCounts ? ` | Raw activities: ${data.totalRaw} | Types found: ${JSON.stringify(data._debug_typeCounts)}` : '';
-        const methodInfo = data._debug_method ? ` | Method: ${data._debug_method}` : '';
-        const sampleInfo = data._debug_sampleRaw?.length ? ` | Sample: ${JSON.stringify(data._debug_sampleRaw[0]).substring(0, 300)}` : '';
-        setSnapError(`No buy/sell transactions found for this date range. Try expanding the dates.${debugInfo}${methodInfo}${sampleInfo}`);
-      }
+      if ((data.orders || []).length === 0) setSnapError("No buy/sell transactions found for this date range. Same-day trades may take up to 24 hours to sync from your broker. Try expanding your date range or check back tomorrow.");
     } catch (e) { setSnapError(e.message); }
     setSnapImporting(false);
   };
@@ -9331,7 +9326,7 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
               </div>
 
               {/* Date range */}
-              <div style={{ display:"flex", gap:12, marginBottom:16 }}>
+              <div style={{ display:"flex", gap:12, marginBottom:8 }}>
                 <div>
                   <label style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>Start Date</label>
                   <input type="date" value={snapStartDate} onChange={e=>setSnapStartDate(e.target.value)} style={{ padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none" }}/>
@@ -9340,6 +9335,9 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
                   <label style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>End Date</label>
                   <input type="date" value={snapEndDate} onChange={e=>setSnapEndDate(e.target.value)} style={{ padding:"8px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none" }}/>
                 </div>
+              </div>
+              <div style={{ fontSize:10, color:"var(--tp-faintest)", marginBottom:16, lineHeight:1.5 }}>
+                ⏱ Same-day trades may take up to 24 hours to sync from your broker. If today's trades aren't showing, try again tomorrow or expand the date range.
               </div>
 
               {/* Fetch button */}
