@@ -204,9 +204,13 @@ export default function SectorExplorerModule() {
       {!selectedSector && !loading && sectors.length > 0 && (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
           {[...sectors]
-            .sort((a, b) => (b[perfMode] || 0) - (a[perfMode] || 0))
+            .sort((a, b) => {
+              const aVal = perfMode === 'weekChange' ? a.weekChange : perfMode === 'monthChange' ? a.monthChange : a.changePct;
+              const bVal = perfMode === 'weekChange' ? b.weekChange : perfMode === 'monthChange' ? b.monthChange : b.changePct;
+              return (bVal || 0) - (aVal || 0);
+            })
             .map(s => {
-              const val = s[perfMode] || 0;
+              const val = perfMode === 'weekChange' ? s.weekChange : perfMode === 'monthChange' ? s.monthChange : s.changePct;
               return (
                 <button
                   key={s.etf}
@@ -220,8 +224,8 @@ export default function SectorExplorerModule() {
                 >
                   <div className="font-mono text-[10px] font-bold tracking-wide" style={{ color: 'var(--text)' }}>{s.etf}</div>
                   <div className="font-mono text-[8px] mt-0.5 truncate" style={{ color: 'var(--text-dim)' }}>{s.label}</div>
-                  <div className="font-mono text-lg font-black mt-1" style={{ color: perfColor(val) }}>
-                    {val > 0 ? '+' : ''}{val.toFixed(2)}%
+                  <div className="font-mono text-lg font-black mt-1" style={{ color: perfColor(val || 0) }}>
+                    {(val || 0) > 0 ? '+' : ''}{(val || 0).toFixed(2)}%
                   </div>
                   <div className="flex gap-1.5 mt-1.5">
                     <span className="font-mono text-[8px] px-1.5 py-0.5 rounded" style={{ background: stratBg(s.dailyStrat), color: stratColor(s.dailyStrat), fontWeight: 700 }}>

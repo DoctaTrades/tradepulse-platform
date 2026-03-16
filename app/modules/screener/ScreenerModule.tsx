@@ -1085,7 +1085,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 <SelectField label="Scan Mode" value={equityFilter.showType} onChange={v => setEquityFilter(prev => ({ ...prev, showType: v }))}
                   options={[['topdown','🔻 Top-Down (Index→Sector→Ticker)'],['universe','📡 Selected Universe']]} />
                 <SelectField label="Sector" value={equityFilter.sectorFilter} onChange={v => setEquityFilter(prev => ({ ...prev, sectorFilter: v }))}
-                  options={[['all','All Sectors'],['XLK','🖥 Technology'],['XLE','⛽ Energy'],['XLF','🏦 Financials'],['XLV','🏥 Healthcare'],['XLY','🛍 Consumer Disc.'],['XLP','🛒 Consumer Staples'],['XLI','🏭 Industrials'],['XLB','⚒ Materials'],['XLRE','🏘 Real Estate'],['XLU','💡 Utilities'],['XLC','📡 Communication']]} />
+                  options={[['all','All Sectors'],['XLK','Technology - XLK'],['XLE','Energy - XLE'],['XLF','Financials - XLF'],['XLV','Healthcare - XLV'],['XLY','Consumer Disc. - XLY'],['XLP','Consumer Staples - XLP'],['XLI','Industrials - XLI'],['XLB','Materials - XLB'],['XLRE','Real Estate - XLRE'],['XLU','Utilities - XLU'],['XLC','Communication - XLC']]} />
                 <FilterField label="Min 5CR Candles" value={equityFilter.min5CR} onChange={v => setEquityFilter(prev => ({ ...prev, min5CR: +v }))} type="number" />
                 <FilterField label="Min Price ($)" value={equityFilter.minPrice} onChange={v => setEquityFilter(prev => ({ ...prev, minPrice: +v }))} type="number" />
                 <FilterField label="Max Price ($)" value={equityFilter.maxPrice} onChange={v => setEquityFilter(prev => ({ ...prev, maxPrice: +v }))} type="number" />

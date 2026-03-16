@@ -108,9 +108,10 @@ export async function GET(req: NextRequest) {
       // Get price history for each sector to calculate weekly/monthly change + strat
       const sectorData = await Promise.all(SECTORS.map(async (s) => {
         const q = quoteData[s.etf]?.quote;
-        const price = q?.lastPrice || q?.closePrice || 0;
+        const price = q?.lastPrice || q?.closePrice || q?.mark || 0;
         const change = q?.netChange || 0;
-        const changePct = q?.netPercentChangeInDouble || 0;
+        // Try multiple Schwab fields for % change
+        let changePct = q?.netPercentChangeInDouble || q?.percentChange || 0;
 
         // Get candles for strat + RSI
         let dailyStrat = '?', weeklyStrat = '?', rsi = 50;
@@ -128,6 +129,15 @@ export async function GET(req: NextRequest) {
           if (candles.length >= 2) {
             dailyStrat = getLastStrat(candles);
             rsi = calcRSI(candles);
+
+            // Fallback: calculate today's change from yesterday's close
+            if (!changePct && price > 0) {
+              const prevClose = candles[candles.length - 1]?.close || candles[candles.length - 2]?.close || 0;
+              if (prevClose > 0) {
+                changePct = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+              }
+            }
+
             // Weekly strat from aggregated candles
             const weekly = aggregateCandles(candles, 5);
             weeklyStrat = getLastStrat(weekly);
