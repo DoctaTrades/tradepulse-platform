@@ -1331,8 +1331,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
           <div className="space-y-4">
             <Panel title="🎯 SPX Radar — Structural Levels & Play Builder">
               <p className="font-mono text-[10px] mb-3" style={{ color: 'var(--text-dim)' }}>
-                Analyzes SPX option chain to find put/call walls, gamma exposure, and gamma flip zone.
-                Builds IC and credit spread plays placed at structural support/resistance levels.
+                Analyzes SPX option chain for put/call wall clusters, OI-weighted GEX, gamma flip zone, expected move, and P/C ratio.
+                Builds IC and credit spread plays at structural support/resistance with expected move validation.
               </p>
               <div className="flex items-center gap-3 flex-wrap">
                 <SelectField label="DTE Range" value={spxDTE} onChange={v => setSpxDTE(v)}
@@ -1349,48 +1349,150 @@ export default function ScreenerModule({ user }: { user?: any }) {
               </div>
             </Panel>
 
-            {spxData && !spxData.error && (
+            {spxData && !spxData.error && (() => {
+              const d = spxData;
+              const ds = d.dataSource === 'OI' ? 'OI' : 'Vol';
+              return (
               <>
-                {/* Key Levels */}
+                {/* ─── ROW 1: Price · Expected Move · Gamma Regime · P/C Ratio ─── */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
                     <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>SPX Price</div>
-                    <div className="font-display text-2xl font-bold" style={{ color: 'var(--blue3)' }}>${spxData.spxPrice?.toFixed(2)}</div>
-                    <div className="font-mono text-[10px] mt-1" style={{ color: spxData.dataSource === 'OI' ? 'var(--green)' : 'var(--gold)' }}>
-                      {spxData.dataSource === 'OI' ? '● Using Open Interest' : '● Using Volume (OI unavailable)'}
+                    <div className="font-display text-2xl font-bold" style={{ color: 'var(--blue3)' }}>${d.spxPrice?.toFixed(2)}</div>
+                    <div className="font-mono text-[10px] mt-1" style={{ color: d.dataSource === 'OI' ? 'var(--green)' : 'var(--gold)' }}>
+                      {d.dataSource === 'OI' ? '● Open Interest' : '● Volume (OI unavailable)'}
                     </div>
                   </div>
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Put Wall (Support)</div>
-                    <div className="font-display text-2xl font-bold" style={{ color: 'var(--green)' }}>${spxData.putWall?.strike}</div>
-                    <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                      {spxData.putWall?.activity?.toLocaleString()} {spxData.dataSource === 'OI' ? 'OI' : 'Vol'} · ${spxData.putWall?.distFromPrice} below
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Expected Move ({d.avgDTE || '?'}d)</div>
+                    <div className="font-display text-2xl font-bold" style={{ color: 'var(--purple)' }}>±${d.expectedMove}</div>
+                    <div className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-dim)' }}>
+                      {d.expectedMovePercent}% · ${d.expectedLow}—${d.expectedHigh}
                     </div>
                   </div>
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Call Wall (Resistance)</div>
-                    <div className="font-display text-2xl font-bold" style={{ color: 'var(--red)' }}>${spxData.callWall?.strike}</div>
-                    <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
-                      {spxData.callWall?.activity?.toLocaleString()} {spxData.dataSource === 'OI' ? 'OI' : 'Vol'} · ${spxData.callWall?.distFromPrice} above
-                    </div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Gamma Regime</div>
+                    <div className="font-display text-lg font-bold" style={{ color: d.totalGEX > 0 ? 'var(--green)' : 'var(--red)' }}>{d.regime}</div>
+                    <div className="font-mono text-[9px] mt-1 leading-tight" style={{ color: 'var(--text-dim)' }}>{d.regimeDescription}</div>
                   </div>
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Gamma Flip</div>
-                    <div className="font-display text-2xl font-bold" style={{ color: 'var(--gold)' }}>${spxData.gammaFlip?.toFixed(0)}</div>
-                    <div className="font-mono text-[10px]" style={{ color: spxData.totalGEX > 0 ? 'var(--green)' : 'var(--red)' }}>{spxData.regime}</div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Put/Call Ratio</div>
+                    <div className="font-display text-2xl font-bold" style={{ color: d.pcRatio > 1.5 ? 'var(--green)' : d.pcRatio < 0.7 ? 'var(--red)' : 'var(--gold)' }}>{d.pcRatio?.toFixed(2)}</div>
+                    <div className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-dim)' }}>
+                      {d.pcRatio > 1.5 ? 'Heavy put hedging (supportive)' : d.pcRatio < 0.7 ? 'Call-heavy (speculative)' : 'Balanced positioning'}
+                    </div>
                   </div>
                 </div>
 
-                {/* GEX Visualization */}
+                {/* ─── ROW 2: Clustered Walls + Gamma Flip ─── */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--green)' }}>Put Wall Cluster (Support)</div>
+                    {d.putWallCluster ? (<>
+                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--green)' }}>${d.putWallCluster.centerStrike}</div>
+                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        {d.putWallCluster.totalActivity?.toLocaleString()} {ds} · ${d.putWallCluster.distFromPrice} below
+                      </div>
+                      <div className="mt-2 space-y-0.5">
+                        {d.putWallCluster.strikes?.slice(0, 4).map((s: any, i: number) => (
+                          <div key={i} className="flex justify-between font-mono text-[9px]">
+                            <span style={{ color: i === 0 ? 'var(--green)' : 'var(--text-dim)' }}>${s.strike}</span>
+                            <span style={{ color: 'var(--text-dim)' }}>{s.activity?.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>) : <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>No put wall found</div>}
+                  </div>
+
+                  <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--gold)' }}>Gamma Flip Zone</div>
+                    <div className="font-display text-2xl font-bold" style={{ color: 'var(--gold)' }}>${d.gammaFlip?.toFixed(0)}</div>
+                    <div className="font-mono text-[10px] mt-1" style={{ color: 'var(--text-dim)' }}>
+                      {d.spxPrice > d.gammaFlip ? `Price $${Math.round(d.spxPrice - d.gammaFlip)} ABOVE flip` : `Price $${Math.round(d.gammaFlip - d.spxPrice)} BELOW flip`}
+                    </div>
+                    <div className="mt-2 rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                      <div className="font-mono text-[9px] leading-relaxed" style={{ color: 'var(--text-dim)' }}>
+                        {d.spxPrice > d.gammaFlip
+                          ? 'Above flip → positive gamma territory → dealers cushion moves'
+                          : 'Below flip → negative gamma territory → dealers amplify moves'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--red)' }}>Call Wall Cluster (Resistance)</div>
+                    {d.callWallCluster ? (<>
+                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--red)' }}>${d.callWallCluster.centerStrike}</div>
+                      <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        {d.callWallCluster.totalActivity?.toLocaleString()} {ds} · ${d.callWallCluster.distFromPrice} above
+                      </div>
+                      <div className="mt-2 space-y-0.5">
+                        {d.callWallCluster.strikes?.slice(0, 4).map((s: any, i: number) => (
+                          <div key={i} className="flex justify-between font-mono text-[9px]">
+                            <span style={{ color: i === 0 ? 'var(--red)' : 'var(--text-dim)' }}>${s.strike}</span>
+                            <span style={{ color: 'var(--text-dim)' }}>{s.activity?.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>) : <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>No call wall found</div>}
+                  </div>
+                </div>
+
+                {/* ─── STRUCTURAL RANGE MAP ─── */}
+                <Panel title="📐 Structural Range Map">
+                  {(() => {
+                    const low = d.putWallCluster?.centerStrike || d.putWall?.strike || d.spxPrice - 50;
+                    const high = d.callWallCluster?.centerStrike || d.callWall?.strike || d.spxPrice + 50;
+                    const rangeMin = Math.min(low, d.expectedLow || low) - 10;
+                    const rangeMax = Math.max(high, d.expectedHigh || high) + 10;
+                    const total = rangeMax - rangeMin;
+                    const pos = (v: number) => `${Math.max(0, Math.min(100, ((v - rangeMin) / total) * 100))}%`;
+                    return (
+                      <div className="relative h-16 rounded-lg overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                        {/* Expected move band */}
+                        <div className="absolute top-0 bottom-0 opacity-20 rounded" style={{ left: pos(d.expectedLow), width: `calc(${pos(d.expectedHigh)} - ${pos(d.expectedLow)})`, background: 'var(--purple)' }} />
+                        {/* Put wall */}
+                        <div className="absolute top-0 bottom-0 w-0.5" style={{ left: pos(low), background: 'var(--green)' }}>
+                          <div className="absolute -top-0 left-1 font-mono text-[8px] whitespace-nowrap" style={{ color: 'var(--green)' }}>PUT ${low}</div>
+                        </div>
+                        {/* Call wall */}
+                        <div className="absolute top-0 bottom-0 w-0.5" style={{ left: pos(high), background: 'var(--red)' }}>
+                          <div className="absolute -top-0 right-1 font-mono text-[8px] whitespace-nowrap text-right" style={{ color: 'var(--red)' }}>CALL ${high}</div>
+                        </div>
+                        {/* Gamma flip */}
+                        <div className="absolute top-0 bottom-0 w-0.5 border-l border-dashed" style={{ left: pos(d.gammaFlip), borderColor: 'var(--gold)' }}>
+                          <div className="absolute bottom-0 left-1 font-mono text-[8px] whitespace-nowrap" style={{ color: 'var(--gold)' }}>FLIP ${Math.round(d.gammaFlip)}</div>
+                        </div>
+                        {/* Current price */}
+                        <div className="absolute top-0 bottom-0 w-1 rounded" style={{ left: pos(d.spxPrice), background: 'var(--blue3)' }}>
+                          <div className="absolute top-1/2 -translate-y-1/2 left-2 font-mono text-[9px] font-bold whitespace-nowrap" style={{ color: 'var(--blue3)' }}>SPX ${d.spxPrice?.toFixed(0)}</div>
+                        </div>
+                        {/* Legend */}
+                        <div className="absolute bottom-1 right-2 flex items-center gap-3 font-mono text-[8px]">
+                          <span style={{ color: 'var(--purple)' }}>■ Expected Move</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </Panel>
+
+                {/* ─── GEX Visualization ─── */}
                 <Panel title="📊 Gamma Exposure by Strike (GEX)">
-                  <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
-                    {spxData.strikes?.filter((s: any) => Math.abs(s.netGEX) > 0).map((s: any) => {
-                      const maxGEX = Math.max(...spxData.strikes.map((x: any) => Math.abs(x.netGEX)));
+                  <div className="space-y-0.5 max-h-[340px] overflow-y-auto">
+                    {d.strikes?.filter((s: any) => Math.abs(s.netGEX) > 0).map((s: any) => {
+                      const maxGEX = Math.max(...d.strikes.map((x: any) => Math.abs(x.netGEX)));
                       const pct = maxGEX > 0 ? Math.abs(s.netGEX) / maxGEX * 100 : 0;
-                      const isCurrentPrice = Math.abs(s.strike - spxData.spxPrice) < 5;
+                      const isCurrentPrice = Math.abs(s.strike - d.spxPrice) < 5;
+                      const isPutWall = d.putWallCluster?.strikes?.some((w: any) => w.strike === s.strike);
+                      const isCallWall = d.callWallCluster?.strikes?.some((w: any) => w.strike === s.strike);
+                      const isGammaFlip = Math.abs(s.strike - d.gammaFlip) < 5;
+                      const isExpectedBound = Math.abs(s.strike - d.expectedLow) < 5 || Math.abs(s.strike - d.expectedHigh) < 5;
                       return (
-                        <div key={s.strike} className={`flex items-center gap-2 px-2 py-1 rounded ${isCurrentPrice ? 'ring-1 ring-blue-500/50' : ''}`}>
-                          <span className={`font-mono text-[10px] w-12 text-right ${isCurrentPrice ? 'text-blue-400 font-bold' : ''}`} style={{ color: isCurrentPrice ? 'var(--blue3)' : s.strike === spxData.putWall?.strike ? 'var(--green)' : s.strike === spxData.callWall?.strike ? 'var(--red)' : 'var(--text-dim)' }}>
+                        <div key={s.strike} className={`flex items-center gap-2 px-2 py-1 rounded ${isCurrentPrice ? 'ring-1 ring-blue-500/50' : ''}`}
+                          style={{ background: isPutWall ? 'rgba(16,185,129,0.06)' : isCallWall ? 'rgba(239,68,68,0.06)' : isGammaFlip ? 'rgba(240,180,41,0.06)' : 'transparent' }}>
+                          <span className="font-mono text-[10px] w-12 text-right font-medium" style={{
+                            color: isCurrentPrice ? 'var(--blue3)' : isPutWall ? 'var(--green)' : isCallWall ? 'var(--red)' : isGammaFlip ? 'var(--gold)' : isExpectedBound ? 'var(--purple)' : 'var(--text-dim)'
+                          }}>
                             {s.strike}
                           </span>
                           <div className="flex-1 h-3 rounded-sm overflow-hidden flex" style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -1403,86 +1505,174 @@ export default function ScreenerModule({ user }: { user?: any }) {
                           <span className="font-mono text-[9px] w-16 text-right" style={{ color: s.netGEX >= 0 ? 'var(--green)' : 'var(--red)' }}>
                             {s.netGEX >= 0 ? '+' : ''}{(s.netGEX / 1e6).toFixed(1)}M
                           </span>
-                          <span className="font-mono text-[9px] w-20 text-right" style={{ color: 'var(--text-dim)' }}>
+                          <span className="font-mono text-[9px] w-24 text-right" style={{ color: 'var(--text-dim)' }}>
                             P:{(s.putOI || s.putVolume || 0).toLocaleString()} C:{(s.callOI || s.callVolume || 0).toLocaleString()}
+                          </span>
+                          <span className="font-mono text-[9px] w-14 text-right" style={{ color: (s.netOIDelta || 0) > 0 ? 'var(--green)' : (s.netOIDelta || 0) < 0 ? 'var(--red)' : 'var(--text-dim)' }}>
+                            Δ{((s.netOIDelta || 0) / 1000).toFixed(1)}k
                           </span>
                         </div>
                       );
                     })}
                   </div>
+                  <div className="mt-2 flex gap-4 font-mono text-[8px] px-2" style={{ color: 'var(--text-dim)' }}>
+                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--green)' }}/>Put Wall</span>
+                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--red)' }}/>Call Wall</span>
+                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--gold)' }}/>Gamma Flip</span>
+                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--blue3)' }}/>Price</span>
+                    <span>ΔOI = Put OI − Call OI (+ = put heavy)</span>
+                  </div>
                 </Panel>
 
-                {/* Top OI Levels */}
+                {/* ─── Per-Expiration Breakdown ─── */}
+                {d.expirationSummary?.length > 1 && (
+                  <Panel title="📅 Activity by Expiration">
+                    <div className="space-y-1">
+                      {d.expirationSummary.map((exp: any) => (
+                        <div key={exp.expDate} className="flex items-center gap-3 px-2 py-1.5 rounded" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                          <span className="font-mono text-[10px] w-24 font-medium" style={{ color: 'var(--text)' }}>
+                            {exp.expDate} <span style={{ color: 'var(--text-dim)' }}>({exp.dte}d)</span>
+                          </span>
+                          <div className="flex-1 h-2.5 rounded-sm overflow-hidden flex" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                            <div className="h-full rounded-sm" style={{ width: `${exp.pctOfTotal}%`, background: exp.dte <= 2 ? 'var(--gold)' : 'var(--blue3)', opacity: 0.5 }} />
+                          </div>
+                          <span className="font-mono text-[9px] w-12 text-right" style={{ color: 'var(--text-mid)' }}>{exp.pctOfTotal}%</span>
+                          <span className="font-mono text-[9px] w-28 text-right" style={{ color: 'var(--text-dim)' }}>
+                            P:{exp.putActivity?.toLocaleString()} C:{exp.callActivity?.toLocaleString()}
+                          </span>
+                          <span className="font-mono text-[9px] w-10 text-right" style={{ color: exp.pcRatio > 1.5 ? 'var(--green)' : exp.pcRatio < 0.7 ? 'var(--red)' : 'var(--text-dim)' }}>
+                            {exp.pcRatio?.toFixed(1)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 px-2 font-mono text-[8px]" style={{ color: 'var(--text-dim)' }}>
+                      {d.expirationSummary.filter((e: any) => e.dte <= 2).reduce((s: number, e: any) => s + e.pctOfTotal, 0) > 50
+                        ? '⚠ Over 50% of activity is in 0-2 DTE — wall levels are mostly short-term and may not persist'
+                        : '✓ Activity is distributed across expirations — wall levels have multi-day persistence'}
+                    </div>
+                  </Panel>
+                )}
+
+                {/* ─── Top Walls (individual strikes) ─── */}
                 <div className="grid grid-cols-2 gap-4">
-                  <Panel title={`🟢 Top Put Walls (Support) — ${spxData.dataSource === 'OI' ? 'by OI' : 'by Volume'}`}>
-                    {spxData.topPutStrikes?.map((s: any, i: number) => (
-                      <DetailRow key={i} label={`$${s.strike}`} value={`${(s.activity || 0).toLocaleString()} ${spxData.dataSource === 'OI' ? 'OI' : 'Vol'}`} color={i === 0 ? 'var(--green)' : 'var(--text-mid)'} />
+                  <Panel title={`🟢 Top Put Strikes (Support)`}>
+                    {d.topPutStrikes?.map((s: any, i: number) => (
+                      <DetailRow key={i} label={`$${s.strike}`} value={`${(s.activity || 0).toLocaleString()} ${ds}`} color={i === 0 ? 'var(--green)' : 'var(--text-mid)'} />
                     ))}
                   </Panel>
-                  <Panel title={`🔴 Top Call Walls (Resistance) — ${spxData.dataSource === 'OI' ? 'by OI' : 'by Volume'}`}>
-                    {spxData.topCallStrikes?.map((s: any, i: number) => (
-                      <DetailRow key={i} label={`$${s.strike}`} value={`${(s.activity || 0).toLocaleString()} ${spxData.dataSource === 'OI' ? 'OI' : 'Vol'}`} color={i === 0 ? 'var(--red)' : 'var(--text-mid)'} />
+                  <Panel title={`🔴 Top Call Strikes (Resistance)`}>
+                    {d.topCallStrikes?.map((s: any, i: number) => (
+                      <DetailRow key={i} label={`$${s.strike}`} value={`${(s.activity || 0).toLocaleString()} ${ds}`} color={i === 0 ? 'var(--red)' : 'var(--text-mid)'} />
                     ))}
                   </Panel>
                 </div>
 
-                {/* Play Recommendations */}
-                <Panel title="🦅 Iron Condor at Walls">
-                  <p className="font-mono text-[10px] px-4 py-2" style={{ color: 'var(--text-dim)' }}>Short strikes placed at put wall (support) and call wall (resistance)</p>
-                  <div className="px-4 py-2 font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>Put Spread (downside protection at put wall)</div>
-                  <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                    <span><span className="font-bold text-red-400 mr-2">SELL</span> SPX ${spxData.plays?.ironCondor?.putShort?.strike}P</span>
-                    <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.ironCondor?.putShort?.bid?.toFixed(2)} · Δ{spxData.plays?.ironCondor?.putShort?.delta?.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                    <span><span className="font-bold text-green-400 mr-2">BUY</span> SPX ${spxData.plays?.ironCondor?.putLong?.strike}P</span>
-                    <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.ironCondor?.putLong?.bid?.toFixed(2)}</span>
-                  </div>
-                  <div className="px-4 py-2 font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>Call Spread (upside protection at call wall)</div>
-                  <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                    <span><span className="font-bold text-red-400 mr-2">SELL</span> SPX ${spxData.plays?.ironCondor?.callShort?.strike}C</span>
-                    <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.ironCondor?.callShort?.bid?.toFixed(2)} · Δ{spxData.plays?.ironCondor?.callShort?.delta?.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                    <span><span className="font-bold text-green-400 mr-2">BUY</span> SPX ${spxData.plays?.ironCondor?.callLong?.strike}C</span>
-                    <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.ironCondor?.callLong?.bid?.toFixed(2)}</span>
-                  </div>
-                  <DetailRow label="Total Credit" value={`$${spxData.plays?.ironCondor?.totalCredit?.toFixed(2)} ($${(spxData.plays?.ironCondor?.totalCredit * 100)?.toFixed(0)}/contract)`} color="var(--green)" />
-                  <DetailRow label="Max Loss" value={`$${spxData.plays?.ironCondor?.maxLoss?.toFixed(2)} ($${(spxData.plays?.ironCondor?.maxLoss * 100)?.toFixed(0)}/contract)`} color="var(--red)" />
-                  <DetailRow label="Breakeven Range" value={`$${spxData.plays?.ironCondor?.breakEvenLow?.toFixed(0)} — $${spxData.plays?.ironCondor?.breakEvenHigh?.toFixed(0)}`} color="var(--blue3)" />
-                  <DetailRow label="Return on Risk" value={`${spxData.plays?.ironCondor?.ror}%`} color={spxData.plays?.ironCondor?.ror >= 25 ? 'var(--green)' : 'var(--gold)'} />
-                </Panel>
+                {/* ─── IRON CONDOR ─── */}
+                {d.plays?.ironCondor && (
+                  <Panel title="🦅 Iron Condor at Wall Clusters">
+                    <p className="font-mono text-[10px] px-4 py-2" style={{ color: 'var(--text-dim)' }}>
+                      Short strikes at cluster centers — put wall (support) & call wall (resistance)
+                    </p>
 
+                    {/* Expected Move Validation */}
+                    <div className="mx-4 mb-3 rounded-lg p-3 flex items-start gap-3" style={{
+                      background: d.plays.ironCondor.isBreakevenSafe ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+                      border: `1px solid ${d.plays.ironCondor.isBreakevenSafe ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                    }}>
+                      <span className="text-lg">{d.plays.ironCondor.isBreakevenSafe ? '✅' : '⚠️'}</span>
+                      <div>
+                        <div className="font-mono text-[10px] font-bold" style={{ color: d.plays.ironCondor.isBreakevenSafe ? 'var(--green)' : 'var(--red)' }}>
+                          {d.plays.ironCondor.isBreakevenSafe ? 'BREAKEVENS OUTSIDE EXPECTED MOVE' : 'BREAKEVENS INSIDE EXPECTED MOVE'}
+                        </div>
+                        <div className="font-mono text-[9px] mt-1" style={{ color: 'var(--text-dim)' }}>
+                          IC Range: ${d.plays.ironCondor.breakEvenLow?.toFixed(0)}—${d.plays.ironCondor.breakEvenHigh?.toFixed(0)} · Expected: ${d.expectedLow}—${d.expectedHigh} (±${d.expectedMove})
+                        </div>
+                        {!d.plays.ironCondor.isBreakevenSafe && (
+                          <div className="font-mono text-[9px] mt-1" style={{ color: 'var(--red)' }}>
+                            Consider wider wings or a different DTE range for better protection
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="px-4 py-2 font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      Put Spread (short at put wall cluster{d.plays.ironCondor.putShortAtCluster ? ' ✓' : ''})
+                    </div>
+                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                      <span><span className="font-bold text-red-400 mr-2">SELL</span> SPX ${d.plays.ironCondor.putShort?.strike}P</span>
+                      <span style={{ color: 'var(--text-mid)' }}>${d.plays.ironCondor.putShort?.bid?.toFixed(2)} · Δ{d.plays.ironCondor.putShort?.delta?.toFixed(2)} · ${d.plays.ironCondor.putShortDistFromPrice} below</span>
+                    </div>
+                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                      <span><span className="font-bold text-green-400 mr-2">BUY</span> SPX ${d.plays.ironCondor.putLong?.strike}P</span>
+                      <span style={{ color: 'var(--text-mid)' }}>${d.plays.ironCondor.putLong?.ask?.toFixed(2)}</span>
+                    </div>
+
+                    <div className="px-4 py-2 font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      Call Spread (short at call wall cluster{d.plays.ironCondor.callShortAtCluster ? ' ✓' : ''})
+                    </div>
+                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                      <span><span className="font-bold text-red-400 mr-2">SELL</span> SPX ${d.plays.ironCondor.callShort?.strike}C</span>
+                      <span style={{ color: 'var(--text-mid)' }}>${d.plays.ironCondor.callShort?.bid?.toFixed(2)} · Δ{d.plays.ironCondor.callShort?.delta?.toFixed(2)} · ${d.plays.ironCondor.callShortDistFromPrice} above</span>
+                    </div>
+                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                      <span><span className="font-bold text-green-400 mr-2">BUY</span> SPX ${d.plays.ironCondor.callLong?.strike}C</span>
+                      <span style={{ color: 'var(--text-mid)' }}>${d.plays.ironCondor.callLong?.ask?.toFixed(2)}</span>
+                    </div>
+
+                    <DetailRow label="Total Credit" value={`$${d.plays.ironCondor.totalCredit?.toFixed(2)} ($${(d.plays.ironCondor.totalCredit * 100)?.toFixed(0)}/contract)`} color="var(--green)" />
+                    <DetailRow label="Max Loss" value={`$${d.plays.ironCondor.maxLoss?.toFixed(2)} ($${(d.plays.ironCondor.maxLoss * 100)?.toFixed(0)}/contract)`} color="var(--red)" />
+                    <DetailRow label="Breakeven Range" value={`$${d.plays.ironCondor.breakEvenLow?.toFixed(0)} — $${d.plays.ironCondor.breakEvenHigh?.toFixed(0)}`} color="var(--blue3)" />
+                    <DetailRow label="Return on Risk" value={`${d.plays.ironCondor.ror}%`} color={d.plays.ironCondor.ror >= 25 ? 'var(--green)' : 'var(--gold)'} />
+                  </Panel>
+                )}
+
+                {/* ─── INDIVIDUAL SPREADS ─── */}
                 <div className="grid grid-cols-2 gap-4">
-                  <Panel title="🟢 Bull Put at Put Wall">
-                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                      <span><span className="font-bold text-red-400 mr-2">SELL</span> ${spxData.plays?.bullPut?.shortStrike}P</span>
-                      <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.bullPut?.shortBid?.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                      <span><span className="font-bold text-green-400 mr-2">BUY</span> ${spxData.plays?.bullPut?.longStrike}P</span>
-                      <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.bullPut?.longAsk?.toFixed(2)}</span>
-                    </div>
-                    <DetailRow label="Net Credit" value={`$${spxData.plays?.bullPut?.netCredit?.toFixed(2)}`} color="var(--green)" />
-                    <DetailRow label="Max Loss" value={`$${spxData.plays?.bullPut?.maxLoss?.toFixed(2)}`} color="var(--red)" />
-                    <DetailRow label="RoR" value={`${spxData.plays?.bullPut?.ror}%`} />
-                  </Panel>
-                  <Panel title="🔴 Bear Call at Call Wall">
-                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                      <span><span className="font-bold text-red-400 mr-2">SELL</span> ${spxData.plays?.bearCall?.shortStrike}C</span>
-                      <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.bearCall?.shortBid?.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                      <span><span className="font-bold text-green-400 mr-2">BUY</span> ${spxData.plays?.bearCall?.longStrike}C</span>
-                      <span style={{ color: 'var(--text-mid)' }}>${spxData.plays?.bearCall?.longAsk?.toFixed(2)}</span>
-                    </div>
-                    <DetailRow label="Net Credit" value={`$${spxData.plays?.bearCall?.netCredit?.toFixed(2)}`} color="var(--green)" />
-                    <DetailRow label="Max Loss" value={`$${spxData.plays?.bearCall?.maxLoss?.toFixed(2)}`} color="var(--red)" />
-                    <DetailRow label="RoR" value={`${spxData.plays?.bearCall?.ror}%`} />
-                  </Panel>
+                  {d.plays?.bullPut && (
+                    <Panel title="🟢 Bull Put at Put Wall">
+                      <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                        <span><span className="font-bold text-red-400 mr-2">SELL</span> ${d.plays.bullPut.shortStrike}P</span>
+                        <span style={{ color: 'var(--text-mid)' }}>${d.plays.bullPut.shortBid?.toFixed(2)} · Δ{d.plays.bullPut.shortDelta?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                        <span><span className="font-bold text-green-400 mr-2">BUY</span> ${d.plays.bullPut.longStrike}P</span>
+                        <span style={{ color: 'var(--text-mid)' }}>${d.plays.bullPut.longAsk?.toFixed(2)}</span>
+                      </div>
+                      <DetailRow label="Net Credit" value={`$${d.plays.bullPut.netCredit?.toFixed(2)}`} color="var(--green)" />
+                      <DetailRow label="Max Loss" value={`$${d.plays.bullPut.maxLoss?.toFixed(2)}`} color="var(--red)" />
+                      <DetailRow label="RoR" value={`${d.plays.bullPut.ror}%`} />
+                      <div className="px-4 py-2 font-mono text-[9px]" style={{ color: d.plays.bullPut.isOutsideExpectedMove ? 'var(--green)' : 'var(--red)' }}>
+                        {d.plays.bullPut.isOutsideExpectedMove
+                          ? `✓ Short strike $${d.plays.bullPut.distFromExpectedLow} outside expected low`
+                          : `⚠ Short strike inside expected move range`}
+                      </div>
+                    </Panel>
+                  )}
+                  {d.plays?.bearCall && (
+                    <Panel title="🔴 Bear Call at Call Wall">
+                      <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-red-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                        <span><span className="font-bold text-red-400 mr-2">SELL</span> ${d.plays.bearCall.shortStrike}C</span>
+                        <span style={{ color: 'var(--text-mid)' }}>${d.plays.bearCall.shortBid?.toFixed(2)} · Δ{d.plays.bearCall.shortDelta?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] bg-green-500/5" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                        <span><span className="font-bold text-green-400 mr-2">BUY</span> ${d.plays.bearCall.longStrike}C</span>
+                        <span style={{ color: 'var(--text-mid)' }}>${d.plays.bearCall.longAsk?.toFixed(2)}</span>
+                      </div>
+                      <DetailRow label="Net Credit" value={`$${d.plays.bearCall.netCredit?.toFixed(2)}`} color="var(--green)" />
+                      <DetailRow label="Max Loss" value={`$${d.plays.bearCall.maxLoss?.toFixed(2)}`} color="var(--red)" />
+                      <DetailRow label="RoR" value={`${d.plays.bearCall.ror}%`} />
+                      <div className="px-4 py-2 font-mono text-[9px]" style={{ color: d.plays.bearCall.isOutsideExpectedMove ? 'var(--green)' : 'var(--red)' }}>
+                        {d.plays.bearCall.isOutsideExpectedMove
+                          ? `✓ Short strike $${d.plays.bearCall.distFromExpectedHigh} outside expected high`
+                          : `⚠ Short strike inside expected move range`}
+                      </div>
+                    </Panel>
+                  )}
                 </div>
               </>
-            )}
+              );
+            })()}
 
             {spxData?.error && (
               <div className="rounded-xl border p-5" style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.3)' }}>
@@ -1508,7 +1698,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
               <div className="text-center py-14">
                 <div className="w-10 h-10 rounded-full border-[3px] animate-spin mx-auto mb-4" style={{ borderColor: 'rgba(255,255,255,0.08)', borderTopColor: 'var(--gold)' }} />
                 <div className="font-display text-lg font-bold" style={{ color: 'var(--text)' }}>Analyzing SPX Chain...</div>
-                <div className="font-mono text-xs mt-2" style={{ color: 'var(--gold)' }}>Calculating GEX, walls, and gamma flip</div>
+                <div className="font-mono text-xs mt-2" style={{ color: 'var(--gold)' }}>Calculating GEX, walls, gamma flip, and expected move</div>
               </div>
             )}
           </div>
