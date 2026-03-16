@@ -1939,7 +1939,13 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
                 <DetailRow label="Annualized RoR" value={`${r.bestPut.annualizedRoR || '—'}%`} color="var(--gold)" />
                 <DetailRow label="Prob. of Profit" value={`~${r.bestPut.pop || Math.round((1 - Math.abs(r.bestPut.delta)) * 100)}%`} />
                 <DetailRow label="Value Score" value={`${r.bestPut.valueScore || '—'}`} color="var(--blue3)" />
-                <DetailRow label="Manage At" value="21 DTE or 50% profit" />
+                <DetailRow label="Manage At" value={
+                  r.bestPut.dte <= 14
+                    ? '50% profit or close by expiration week'
+                    : r.bestPut.dte <= 30
+                      ? `${Math.max(7, Math.round(r.bestPut.dte * 0.4))} DTE or 50% profit`
+                      : `21 DTE or 50% profit`
+                } />
               </DetailSection>
               {r.cspByDTE && r.cspByDTE.length > 1 && (
                 <DetailSection title="📊 Delta Range Comparison — Best Candidates Across DTE & Delta">
