@@ -11,6 +11,8 @@ interface EconomicEvent {
   estimate: number | null;
   prev: number | null;
   unit: string;
+  category?: string;
+  notes?: string;
 }
 
 interface EarningsEvent {
@@ -211,11 +213,13 @@ export default function MarketCalendarModule() {
                     )}
                     {events.map((e, j) => (
                       <div key={j} style={{ padding: '8px 6px', borderBottom: j < events.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 5px', borderRadius: 3, background: `${impactColor(e.impact)}20`, color: impactColor(e.impact), letterSpacing: 0.5 }}>{impactLabel(e.impact)}</span>
-                          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{e.date?.substring(11, 16) || ''}</span>
+                          {e.category && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', letterSpacing: 0.3 }}>{e.category}</span>}
+                          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{e.date?.substring(11, 16) || ''} ET</span>
                         </div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, marginBottom: 4 }}>{e.event}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, marginBottom: e.notes ? 2 : 4 }}>{e.event}</div>
+                        {e.notes && <div style={{ fontSize: 9, color: 'var(--text-dim)', marginBottom: 4 }}>{e.notes}</div>}
                         <div style={{ display: 'flex', gap: 8, fontSize: 10 }}>
                           {e.estimate !== null && <span style={{ color: 'var(--text-dim)' }}>Est: <span style={{ color: 'var(--blue3)' }}>{e.estimate}{e.unit ? ` ${e.unit}` : ''}</span></span>}
                           {e.prev !== null && <span style={{ color: 'var(--text-dim)' }}>Prev: <span style={{ color: 'var(--text-mid)' }}>{e.prev}{e.unit ? ` ${e.unit}` : ''}</span></span>}
@@ -289,7 +293,7 @@ export default function MarketCalendarModule() {
       )}
 
       <div style={{ textAlign: 'center', padding: '16px 0 4px', fontSize: 9, color: 'var(--text-dim)', letterSpacing: 0.5 }}>
-        Data provided by Finnhub · Updated every 15 minutes · Economic events filtered to US
+        Data provided by Finnhub (earnings) · Economic events from Fed/BLS/BEA official schedules
       </div>
     </div>
   );

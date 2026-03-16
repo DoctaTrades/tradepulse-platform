@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getEconomicEvents } from '@/app/lib/economic-calendar-2026';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
-const FMP_KEY = process.env.FMP_API_KEY || '';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
-const FMP_BASE = 'https://financialmodelingprep.com';
 
 // Simple in-memory cache
 const cache: Record<string, { data: any; ts: number }> = {};
@@ -35,72 +34,50 @@ export async function GET(req: NextRequest) {
   const { from, to } = getWeekRange(week);
 
   try {
-    // Fetch economic from FMP and earnings from Finnhub in parallel
-    const [fmpEconomic, finnhubEarnings] = await Promise.all([
-      FMP_KEY
-        ? (async () => {
-            // Try /stable first, then /api/v3
-            for (const base of [`${FMP_BASE}/stable`, `${FMP_BASE}/api/v3`]) {
-              try {
-                const data = await cachedFetch(`${base}/economic_calendar?from=${from}&to=${to}&apikey=${FMP_KEY}`);
-                if (Array.isArray(data) && data.length > 0) return data;
-              } catch (e: any) {
-                console.error(`FMP ${base} economic calendar:`, e.message);
-              }
-            }
-            return [];
-          })()
-        : Promise.resolve([]),
-      FINNHUB_KEY
-        ? cachedFetch(`${FINNHUB_BASE}/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`).catch(e => {
-            console.error('Finnhub earnings error:', e.message);
-            return { earningsCalendar: [] };
-          })
-        : Promise.resolve({ earningsCalendar: [] }),
-    ]);
+    // Economic events from static calendar (FOMC, CPI, NFP, GDP, PCE, Jobless Claims)
+    const economicEvents = getEconomicEvents(from, to).map(e => ({
+      event: e.event,
+      country: 'US',
+      date: `${e.date}T${e.time}:00`,
+      impact: e.impact,
+      actual: null,
+      estimate: null,
+      prev: null,
+      unit: '',
+      category: e.category,
+      notes: e.notes || '',
+    }));
 
-    // Process FMP economic events — filter to US
-    const rawEconomic = Array.isArray(fmpEconomic) ? fmpEconomic : [];
-    const economicEvents = rawEconomic
-      .filter((e: any) => {
-        const country = (e.country || '').toLowerCase();
-        return country === 'us' || country === 'united states' || country === 'usa';
-      })
-      .map((e: any) => ({
-        event: e.event || e.name || '',
-        country: 'US',
-        date: e.date || '',
-        impact: e.impact || (e.importance === 3 ? 'high' : e.importance === 2 ? 'medium' : 'low'),
-        actual: e.actual ?? e.actualValue ?? null,
-        estimate: e.estimate ?? e.consensus ?? e.forecast ?? null,
-        prev: e.previous ?? e.prev ?? null,
-        unit: e.unit || '',
-        change: e.change ?? null,
-        changePercentage: e.changePercentage ?? null,
-      }))
-      .filter((e: any) => e.event)
-      .sort((a: any, b: any) => (a.date || '').localeCompare(b.date || ''));
-
-    // Process Finnhub earnings
-    const earningsEvents = (finnhubEarnings?.earningsCalendar || [])
-      .map((e: any) => ({
-        symbol: e.symbol || '',
-        date: e.date || '',
-        epsEstimate: e.epsEstimate ?? null,
-        epsActual: e.epsActual ?? null,
-        revenueEstimate: e.revenueEstimate ?? null,
-        revenueActual: e.revenueActual ?? null,
-        hour: e.hour || '',
-        quarter: e.quarter ?? null,
-        year: e.year ?? null,
-      }))
-      .sort((a: any, b: any) => {
-        const dateCmp = (a.date || '').localeCompare(b.date || '');
-        if (dateCmp !== 0) return dateCmp;
-        if (a.hour === 'bmo' && b.hour !== 'bmo') return -1;
-        if (a.hour !== 'bmo' && b.hour === 'bmo') return 1;
-        return 0;
-      });
+    // Earnings from Finnhub
+    let earningsEvents: any[] = [];
+    if (FINNHUB_KEY) {
+      try {
+        const finnhubData = await cachedFetch(
+          `${FINNHUB_BASE}/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`
+        );
+        earningsEvents = (finnhubData?.earningsCalendar || [])
+          .map((e: any) => ({
+            symbol: e.symbol || '',
+            date: e.date || '',
+            epsEstimate: e.epsEstimate ?? null,
+            epsActual: e.epsActual ?? null,
+            revenueEstimate: e.revenueEstimate ?? null,
+            revenueActual: e.revenueActual ?? null,
+            hour: e.hour || '',
+            quarter: e.quarter ?? null,
+            year: e.year ?? null,
+          }))
+          .sort((a: any, b: any) => {
+            const dateCmp = (a.date || '').localeCompare(b.date || '');
+            if (dateCmp !== 0) return dateCmp;
+            if (a.hour === 'bmo' && b.hour !== 'bmo') return -1;
+            if (a.hour !== 'bmo' && b.hour === 'bmo') return 1;
+            return 0;
+          });
+      } catch (e: any) {
+        console.error('Finnhub earnings error:', e.message);
+      }
+    }
 
     return NextResponse.json({
       from, to, week,
@@ -108,8 +85,6 @@ export async function GET(req: NextRequest) {
       earnings: earningsEvents,
       economicCount: economicEvents.length,
       earningsCount: earningsEvents.length,
-      _debug_fmpRawCount: rawEconomic.length,
-      _debug_fmpSample: rawEconomic.slice(0, 2),
     });
 
   } catch (e: any) {
