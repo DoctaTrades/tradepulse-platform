@@ -88,23 +88,57 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Get SPX option chain ───
+    // Build date range from DTE
+    const today = new Date();
+    const fromDate = new Date(today);
+    fromDate.setDate(fromDate.getDate() + dteRange[0]);
+    const toDate = new Date(today);
+    toDate.setDate(toDate.getDate() + dteRange[1]);
+    const fmt = (d: Date) => d.toISOString().split('T')[0];
+
     let chain: any = null;
+    const chainErrors: string[] = [];
     for (const sym of ['$SPX', 'SPX', 'SPXW']) {
       try {
         chain = await schwabFetch('/chains', {
           symbol: sym,
           contractType: 'ALL',
           range: 'ALL',
-          strikeCount: '80',
+          fromDate: fmt(fromDate),
+          toDate: fmt(toDate),
           includeUnderlyingQuote: 'true',
         });
         if (chain.putExpDateMap && Object.keys(chain.putExpDateMap).length > 0) break;
+        chainErrors.push(`${sym}: empty putExpDateMap`);
         chain = null;
-      } catch { chain = null; }
+      } catch (err: any) {
+        chainErrors.push(`${sym}: ${err.message || 'unknown'}`);
+        chain = null;
+      }
+    }
+
+    // If date-filtered chain failed, try without date filters as fallback
+    if (!chain || !chain.putExpDateMap) {
+      for (const sym of ['$SPX', 'SPX', 'SPXW']) {
+        try {
+          chain = await schwabFetch('/chains', {
+            symbol: sym,
+            contractType: 'ALL',
+            range: 'ALL',
+            strikeCount: '80',
+            includeUnderlyingQuote: 'true',
+          });
+          if (chain.putExpDateMap && Object.keys(chain.putExpDateMap).length > 0) break;
+          chain = null;
+        } catch { chain = null; }
+      }
     }
 
     if (!chain || !chain.putExpDateMap) {
-      return NextResponse.json({ error: 'Could not fetch SPX option chain.', spxPrice }, { status: 500 });
+      return NextResponse.json({
+        error: `Could not fetch SPX option chain. Tried $SPX, SPX, SPXW with date range ${fmt(fromDate)} to ${fmt(toDate)}. ${chainErrors.length ? 'Errors: ' + chainErrors.join(' | ') : 'All returned empty.'}`,
+        spxPrice,
+      }, { status: 500 });
     }
 
     const putMap = chain.putExpDateMap || {};
