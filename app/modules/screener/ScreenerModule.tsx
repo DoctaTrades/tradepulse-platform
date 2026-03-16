@@ -80,8 +80,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const abortRef = useRef<AbortController | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [tickerSearch, setTickerSearch] = useState('');
-  const [cpShortDelta, setCpShortDelta] = useState(0.10);
-  const [cpDeltaMax, setCpDeltaMax] = useState(0.35);
   const [equityResults, setEquityResults] = useState<any[]>([]);
   const [equityLoading, setEquityLoading] = useState(false);
   const [equityLogs, setEquityLogs] = useState<string[]>([]);
@@ -221,6 +219,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
     minIVR: 25, minIV: 20, minVol: 200000, minOI: 50,
     minBid: 0.10, minRoR: 0, minRSI: 30, maxRSI: 75,
     emaTrend: 'any', targetDelta: 0.30, targetDTE: [25, 45] as [number, number],
+    cspDeltaMin: 0.10, cspDeltaMax: 0.35,
   });
 
   // Check Schwab connection status on load
@@ -277,7 +276,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           universe,
-          filters: { ...filters, cpShortDelta, cspDeltaMin: cpShortDelta, cspDeltaMax: cpDeltaMax },
+          filters: { ...filters, cpShortDelta: filters.cspDeltaMin },
           customTickers: tickerList,
           userId: user?.id,
           userEmail: user?.email,
@@ -848,6 +847,10 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 {/* Schwab-only filters */}
                 <FilterField label={schwabStatus.connected ? '🟢 Delta Target (0-1)' : '🔒 Delta Target'} value={filters.targetDelta}
                   onChange={v => updateFilter('targetDelta', +v)} type="number" step="0.01" disabled={!schwabStatus.connected} />
+                <FilterField label={schwabStatus.connected ? '🟢 Delta Min' : '🔒 Delta Min'} value={filters.cspDeltaMin}
+                  onChange={v => updateFilter('cspDeltaMin', +v)} type="number" step="0.01" disabled={!schwabStatus.connected} />
+                <FilterField label={schwabStatus.connected ? '🟢 Delta Max' : '🔒 Delta Max'} value={filters.cspDeltaMax}
+                  onChange={v => updateFilter('cspDeltaMax', +v)} type="number" step="0.01" disabled={!schwabStatus.connected} />
                 <SelectField label={schwabStatus.connected ? '🟢 DTE Range' : '🔒 DTE Range'} value={filters.targetDTE.join('-')}
                   onChange={v => updateFilter('targetDTE', v.split('-').map(Number))} disabled={!schwabStatus.connected}
                   options={[['7-14','7–14 DTE (weeklies)'],['25-45','25–45 DTE (standard)'],['45-60','45–60 DTE'],['60-90','60–90 DTE (diagonals)'],['90-120','90–120 DTE (longer term)']]} />
@@ -895,8 +898,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
             <Panel title="🔄 CSP / Wheel Filters">
               <p className="font-mono text-[10px] mb-3" style={{ color: 'var(--text-dim)' }}>Bullish trend + high IVR + affordable assignment + real premium. Stocks you'd be OK owning if assigned.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                <FilterField label="Delta Min" value={cpShortDelta} onChange={v => setCpShortDelta(+v)} type="number" step="0.05" />
-                <FilterField label="Delta Max" value={cpDeltaMax} onChange={v => setCpDeltaMax(+v)} type="number" step="0.05" />
                 <FilterField label="Min IVR (%)" value={stratFilters.csp.minIVR} onChange={v => updateStratFilter('csp','minIVR',+v)} type="number" />
                 <FilterField label="Min Bid ($)" value={stratFilters.csp.minBid} onChange={v => updateStratFilter('csp','minBid',+v)} type="number" step="0.05" />
                 <FilterField label="Min RoR (%)" value={stratFilters.csp.minRoR} onChange={v => updateStratFilter('csp','minRoR',+v)} type="number" step="0.5" />
