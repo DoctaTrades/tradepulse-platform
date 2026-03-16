@@ -88,6 +88,20 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Get SPX option chain ───
+    // SPX has hundreds of expirations (0DTE, dailies, weeklies, monthlies, quarterlies)
+    // We need to constrain the request to avoid Schwab 502 body overflow
+    // Use the actual DTE range from the user + a small buffer for GEX analysis
+    const today = new Date();
+    const fromDate = today.toISOString().split('T')[0];
+    const fetchDTEMax = Math.max(dteRange[1] + 7, 14); // buffer beyond user range for GEX context
+    const toDateCalc = new Date(today.getTime() + fetchDTEMax * 24 * 60 * 60 * 1000);
+    const toDate = toDateCalc.toISOString().split('T')[0];
+
+    // Scale strike count based on wing width — wider wings need more strikes
+    // SPX strikes are $5 apart, so $25 wing = 5 strikes out from short
+    // Wall might be 60-100 pts from price, wing goes further out
+    const baseStrikes = wingWidth >= 20 ? 50 : 40;
+
     let chain: any = null;
     const chainErrors: string[] = [];
     for (const sym of ['$SPX', 'SPX', 'SPXW']) {
@@ -95,8 +109,10 @@ export async function POST(req: NextRequest) {
         chain = await schwabFetch('/chains', {
           symbol: sym,
           contractType: 'ALL',
-          range: 'ALL',
-          strikeCount: '80',
+          range: 'NTM',
+          strikeCount: String(baseStrikes),
+          fromDate,
+          toDate,
           includeUnderlyingQuote: 'true',
         });
         if (chain.putExpDateMap && Object.keys(chain.putExpDateMap).length > 0) break;
@@ -105,6 +121,28 @@ export async function POST(req: NextRequest) {
       } catch (err: any) {
         chainErrors.push(`${sym}: ${err.message || 'unknown'}`);
         chain = null;
+      }
+    }
+
+    // Fallback: if NTM didn't work, try OTM with tighter strike count
+    if (!chain || !chain.putExpDateMap) {
+      for (const sym of ['$SPX', 'SPX']) {
+        try {
+          chain = await schwabFetch('/chains', {
+            symbol: sym,
+            contractType: 'ALL',
+            range: 'ALL',
+            strikeCount: '30',
+            fromDate,
+            toDate,
+            includeUnderlyingQuote: 'true',
+          });
+          if (chain.putExpDateMap && Object.keys(chain.putExpDateMap).length > 0) break;
+          chain = null;
+        } catch (err: any) {
+          chainErrors.push(`${sym} fallback: ${err.message || 'unknown'}`);
+          chain = null;
+        }
       }
     }
 
