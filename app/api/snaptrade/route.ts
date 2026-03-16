@@ -179,30 +179,61 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Not registered' }, { status: 400 });
       }
 
-      // Pull transactions (paginated, max 1000 per request)
+      // Pull transactions — try both endpoints
       const allActivities: any[] = [];
-      let offset = 0;
-      const limit = 1000;
-      let hasMore = true;
+      let debugMethod = '';
 
-      while (hasMore) {
+      // Method 1: Account-level activities (newer endpoint)
+      try {
         const res = await snaptrade.accountInformation.getAccountActivities({
           accountId,
           userId: snapUser.snap_user_id,
           userSecret: snapUser.user_secret,
           ...(startDate ? { startDate } : {}),
           ...(endDate ? { endDate } : {}),
-          offset,
-          limit,
         });
 
-        const activities = res.data?.activities || res.data || [];
-        if (Array.isArray(activities)) {
-          allActivities.push(...activities);
-          hasMore = activities.length === limit;
-          offset += limit;
+        // Response could be: res.data (array), res.data.activities (array), or paginated
+        const raw = res.data;
+        if (Array.isArray(raw)) {
+          allActivities.push(...raw);
+          debugMethod = `accountActivities (array, ${raw.length})`;
+        } else if (raw?.activities && Array.isArray(raw.activities)) {
+          allActivities.push(...raw.activities);
+          debugMethod = `accountActivities.activities (${raw.activities.length})`;
+        } else if (raw?.data && Array.isArray(raw.data)) {
+          allActivities.push(...raw.data);
+          debugMethod = `accountActivities.data (${raw.data.length})`;
         } else {
-          hasMore = false;
+          debugMethod = `accountActivities (unknown shape: ${JSON.stringify(raw).substring(0, 200)})`;
+        }
+      } catch (e: any) {
+        debugMethod = `accountActivities error: ${e.message}`;
+      }
+
+      // Method 2: If method 1 returned nothing, try transactionsAndReporting
+      if (allActivities.length === 0) {
+        try {
+          const res2 = await snaptrade.transactionsAndReporting.getActivities({
+            userId: snapUser.snap_user_id,
+            userSecret: snapUser.user_secret,
+            accounts: accountId,
+            ...(startDate ? { startDate } : {}),
+            ...(endDate ? { endDate } : {}),
+          });
+
+          const raw2 = res2.data;
+          if (Array.isArray(raw2)) {
+            allActivities.push(...raw2);
+            debugMethod += ` | txReporting (array, ${raw2.length})`;
+          } else if (raw2?.activities && Array.isArray(raw2.activities)) {
+            allActivities.push(...raw2.activities);
+            debugMethod += ` | txReporting.activities (${raw2.activities.length})`;
+          } else {
+            debugMethod += ` | txReporting (unknown: ${JSON.stringify(raw2).substring(0, 200)})`;
+          }
+        } catch (e: any) {
+          debugMethod += ` | txReporting error: ${e.message}`;
         }
       }
 
@@ -260,6 +291,7 @@ export async function POST(req: NextRequest) {
         message: `Found ${orders.length} buy/sell transactions (${allActivities.length} total activities)`,
         _debug_typeCounts: typeCounts,
         _debug_sampleRaw: allActivities.slice(0, 3),
+        _debug_method: debugMethod,
       });
     }
 

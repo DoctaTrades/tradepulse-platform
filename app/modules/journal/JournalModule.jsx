@@ -9143,8 +9143,9 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
       setSnapOrders(data.orders || []);
       if ((data.orders || []).length === 0) {
         const debugInfo = data._debug_typeCounts ? ` | Raw activities: ${data.totalRaw} | Types found: ${JSON.stringify(data._debug_typeCounts)}` : '';
-        const sampleInfo = data._debug_sampleRaw?.length ? ` | Sample: ${JSON.stringify(data._debug_sampleRaw[0]).substring(0, 200)}` : '';
-        setSnapError(`No buy/sell transactions found for this date range. Try expanding the dates.${debugInfo}${sampleInfo}`);
+        const methodInfo = data._debug_method ? ` | Method: ${data._debug_method}` : '';
+        const sampleInfo = data._debug_sampleRaw?.length ? ` | Sample: ${JSON.stringify(data._debug_sampleRaw[0]).substring(0, 300)}` : '';
+        setSnapError(`No buy/sell transactions found for this date range. Try expanding the dates.${debugInfo}${methodInfo}${sampleInfo}`);
       }
     } catch (e) { setSnapError(e.message); }
     setSnapImporting(false);
