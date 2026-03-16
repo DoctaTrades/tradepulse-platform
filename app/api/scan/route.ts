@@ -201,6 +201,8 @@ async function scanWithSchwab(tickers: string[], filters: any) {
     let cspByDTE: any[] = [];
     const targetDTE = filters.targetDTE || [25, 45];
     const targetDelta = filters.targetDelta || 0.30;
+    const deltaMin = filters.cspDeltaMin || 0.10;
+    const deltaMax = filters.cspDeltaMax || 0.35;
 
     try {
       const chain = await getOptionChain(ticker, {
@@ -242,8 +244,6 @@ async function scanWithSchwab(tickers: string[], filters: any) {
 
       // Find best put for CSP analysis
       // Search across multiple DTE buckets AND a delta range for optimal plays
-      const deltaMin = filters.cspDeltaMin || 0.10;
-      const deltaMax = filters.cspDeltaMax || 0.35;
       const dteBuckets: [string, number, number][] = [
         ['7-14d', 7, 14],
         ['25-45d', 25, 45],
@@ -405,7 +405,21 @@ async function scanWithSchwab(tickers: string[], filters: any) {
 
     // ─── PLAY BUILDER: Multi-leg strategies ──────────────
 
-    // Helper: find contract closest to target delta within DTE range
+    // Helper: find best contract within delta range and DTE range
+    // For strategies that should respect the user's delta min/max
+    const findContractInRange = (contracts: any[], dMin: number, dMax: number, dte: [number, number]) => {
+      const candidates = contracts.filter((c: any) => {
+        const d = c.daysToExpiration || 0;
+        const absDelta = Math.abs(c.delta || 0);
+        return d >= dte[0] && d <= dte[1] && absDelta >= dMin && absDelta <= dMax && (c.bid || 0) > 0;
+      });
+      if (!candidates.length) return null;
+      // Pick highest premium within range (best for credit collection)
+      candidates.sort((a: any, b: any) => (b.bid || 0) - (a.bid || 0));
+      return candidates[0];
+    };
+
+    // Helper: find contract closest to a specific delta (for strategies with fixed delta targets like PMCC, diagonals)
     const findContract = (contracts: any[], targetDelta: number, dte: [number, number]) => {
       const candidates = contracts.filter((c: any) => {
         const d = c.daysToExpiration || 0;
@@ -431,7 +445,7 @@ async function scanWithSchwab(tickers: string[], filters: any) {
     };
 
     // ── CREDIT SPREAD (Bull Put) ──
-    const shortPut = findContract(allPuts, targetDelta, targetDTE);
+    const shortPut = findContractInRange(allPuts, deltaMin, deltaMax, targetDTE);
     if (shortPut) {
       const width = price > 100 ? 10 : 5;
       const longPut = findWing(allPuts, shortPut.strike, -width, shortPut.expDate);
@@ -452,7 +466,7 @@ async function scanWithSchwab(tickers: string[], filters: any) {
     }
 
     // ── CREDIT SPREAD (Bear Call) ──
-    const shortCall = findContract(allCalls, 0.30, targetDTE);
+    const shortCall = findContractInRange(allCalls, deltaMin, deltaMax, targetDTE);
     if (shortCall) {
       const width = price > 100 ? 10 : 5;
       const longCall = findWing(allCalls, shortCall.strike, width, shortCall.expDate);
@@ -531,8 +545,8 @@ async function scanWithSchwab(tickers: string[], filters: any) {
     // Both strikes BELOW current price (both OTM)
     // Short strike > Long strike (short is closer to the money)
     // Capital required = spread width (short strike - long strike) × 100
-    const cpShortDelta = filters.cpShortDelta || 0.30;
-    const shortPutCP = findContract(allPuts, cpShortDelta, [3, 21]);
+    const cpShortDelta = (deltaMin + deltaMax) / 2; // midpoint for calendar press targeting
+    const shortPutCP = findContractInRange(allPuts, deltaMin, deltaMax, [3, 21]);
     if (shortPutCP && (shortPutCP.bid || 0) > 0 && shortPutCP.strike < price) {
       const weeklyCredit = shortPutCP.bid || 0;
       const shortStrike = shortPutCP.strike;

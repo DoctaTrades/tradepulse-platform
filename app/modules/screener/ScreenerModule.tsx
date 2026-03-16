@@ -845,8 +845,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 <SelectField label="EMA Trend" value={filters.emaTrend} onChange={v => updateFilter('emaTrend', v)}
                   options={[['any','Any'],['above20','Above 20 EMA'],['above50','Above 50 EMA'],['above200','Above 200 EMA'],['above_both','Above 50 & 200'],['above_all','Above 20/50/200'],['below20','Below 20 EMA']]} />
                 {/* Schwab-only filters */}
-                <FilterField label={schwabStatus.connected ? '🟢 Delta Target (0-1)' : '🔒 Delta Target'} value={filters.targetDelta}
-                  onChange={v => updateFilter('targetDelta', +v)} type="number" step="0.01" disabled={!schwabStatus.connected} />
                 <FilterField label={schwabStatus.connected ? '🟢 Delta Min' : '🔒 Delta Min'} value={filters.cspDeltaMin}
                   onChange={v => updateFilter('cspDeltaMin', +v)} type="number" step="0.01" disabled={!schwabStatus.connected} />
                 <FilterField label={schwabStatus.connected ? '🟢 Delta Max' : '🔒 Delta Max'} value={filters.cspDeltaMax}
