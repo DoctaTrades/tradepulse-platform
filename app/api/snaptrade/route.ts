@@ -192,7 +192,6 @@ export async function POST(req: NextRequest) {
           userSecret: snapUser.user_secret,
           ...(startDate ? { startDate } : {}),
           ...(endDate ? { endDate } : {}),
-          type: 'BUY,SELL',
           offset,
           limit,
         });
@@ -207,31 +206,47 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Debug: log raw activity types to identify what SnapTrade returns
+      const typeCounts: Record<string, number> = {};
+      allActivities.forEach((a: any) => {
+        const t = (a.type || a.action_type || a.side || 'UNKNOWN').toString().toUpperCase();
+        typeCounts[t] = (typeCounts[t] || 0) + 1;
+      });
+
       // Transform into a standardized format for TradePulse
       const orders = allActivities.map((a: any) => {
         const isOption = !!a.option_symbol;
-        const symbol = a.symbol?.symbol || a.symbol?.raw_symbol || '';
+        const symbol = a.symbol?.symbol || a.symbol?.raw_symbol || a.symbol?.ticker || (typeof a.symbol === 'string' ? a.symbol : '') || '';
+        const rawType = (a.type || a.action_type || a.side || '').toString().toUpperCase();
         const optionDetail = a.option_symbol ? {
           optionSymbol: a.option_symbol.description || a.option_symbol.ticker || '',
-          optionType: a.option_symbol.option_type || '', // CALL or PUT
+          optionType: a.option_symbol.option_type || '',
           strikePrice: a.option_symbol.strike_price || 0,
           expirationDate: a.option_symbol.expiration_date || '',
         } : null;
+
+        // Normalize type — SnapTrade may use BUY/SELL, buy/sell, or other variants
+        let normalizedType = '';
+        if (['BUY', 'BTO', 'BTC', 'PURCHASE'].includes(rawType)) normalizedType = 'BUY';
+        else if (['SELL', 'STO', 'STC', 'SALE'].includes(rawType)) normalizedType = 'SELL';
+        else if (rawType.includes('BUY')) normalizedType = 'BUY';
+        else if (rawType.includes('SELL')) normalizedType = 'SELL';
 
         return {
           id: a.id || `${a.trade_date}-${symbol}-${Math.random()}`,
           symbol,
           isOption,
           optionDetail,
-          date: a.trade_date ? a.trade_date.substring(0, 10) : '',
+          date: a.trade_date ? a.trade_date.substring(0, 10) : a.settlement_date ? a.settlement_date.substring(0, 10) : '',
           settlementDate: a.settlement_date ? a.settlement_date.substring(0, 10) : '',
-          type: a.type || '', // BUY, SELL, DIVIDEND, etc.
-          action: a.type === 'BUY' ? 'Buy' : a.type === 'SELL' ? 'Sell' : a.type,
-          quantity: Math.abs(a.units || 0),
+          type: normalizedType,
+          rawType,
+          action: normalizedType === 'BUY' ? 'Buy' : normalizedType === 'SELL' ? 'Sell' : rawType,
+          quantity: Math.abs(a.units || a.quantity || 0),
           price: Math.abs(a.price || 0),
           amount: a.amount || 0,
           fee: Math.abs(a.fee || 0),
-          currency: a.currency?.code || 'USD',
+          currency: a.currency?.code || a.currency || 'USD',
           description: a.description || '',
           institution: a.institution || '',
           externalRefId: a.external_reference_id || '',
@@ -242,7 +257,9 @@ export async function POST(req: NextRequest) {
         success: true,
         totalRaw: allActivities.length,
         orders,
-        message: `Found ${orders.length} buy/sell transactions`,
+        message: `Found ${orders.length} buy/sell transactions (${allActivities.length} total activities)`,
+        _debug_typeCounts: typeCounts,
+        _debug_sampleRaw: allActivities.slice(0, 3),
       });
     }
 
