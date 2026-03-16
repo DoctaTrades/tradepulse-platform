@@ -40,6 +40,7 @@ const ScreenerModule = dynamic(() => import('./modules/screener/ScreenerModule')
 const DiscoveryModule = dynamic(() => import('./modules/screener/DiscoveryModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading discovery</span></div> });
 const MarketPulseModule = dynamic(() => import('./modules/research/MarketPulseModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading market pulse</span></div> });
 const DeepDiveModule = dynamic(() => import('./modules/research/DeepDiveModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading deep dive</span></div> });
+const MarketCalendarModule = dynamic(() => import('./modules/calendar/MarketCalendarModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading calendar</span></div> });
 
 // ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }: { onAuth: (user: any) => void }) {
@@ -129,6 +130,7 @@ const SIDEBAR = [
     { id:"reports", icon:"fileText", name:"Reports" },
   ]},
   { label:"Research", items:[
+    { id:"calendar", icon:"crosshair", name:"Market Calendar" },
     { id:"screener", icon:"search", name:"Screener" },
     { id:"discovery", icon:"trendUp", name:"Discovery" },
     { id:"marketpulse", icon:"trendUp", name:"Market Pulse" },
@@ -293,6 +295,9 @@ export default function TradePulsePlatform() {
 
           {/* Deep Dive module */}
           {tab === "deepdive" && <DeepDiveModule/>}
+
+          {/* Market Calendar module */}
+          {tab === "calendar" && <MarketCalendarModule/>}
         </div>
       </div>
     </div>
