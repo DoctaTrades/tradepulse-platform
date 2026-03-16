@@ -122,6 +122,7 @@ async function scanWithSchwab(tickers: string[], filters: any) {
   
   // Batch quotes — up to 500 symbols in one call!
   logs.push(`⚡ Schwab: Fetching quotes for ${tickers.length} tickers in one call...`);
+  logs.push(`🎯 CSP Delta Range: ${filters.cspDeltaMin} — ${filters.cspDeltaMax}`);
   let allQuotes: any;
   try {
     allQuotes = await getQuotes(tickers);
