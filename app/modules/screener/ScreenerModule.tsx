@@ -1150,6 +1150,9 @@ export default function ScreenerModule({ user }: { user?: any }) {
                                   'bg-gray-500/10 text-gray-500'
                                 }`}>{r.relStrength >= 0 ? '+' : ''}{r.relStrength}% RS</span>
                               )}
+                              {/* Direction badges */}
+                              {r.hasBullish && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400">▲ BULL</span>}
+                              {r.hasBearish && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400">▼ BEAR</span>}
                               {/* Quick pattern summary when collapsed */}
                               {!isExpanded && (
                                 <div className="flex gap-1 ml-1">
@@ -1937,7 +1940,12 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
 
           {/* ── CREDIT SPREAD PLAY ── */}
           {(activeStrategy === 'credit') && r.creditSpread && schwabConnected && (
-            <DetailSection title="📉 Bull Put Credit Spread">
+            <DetailSection title="📈 Bull Put Credit Spread">
+              {r.hasBearish && !r.hasBullish && (
+                <div className="px-4 py-2 text-[10px] font-mono" style={{ background: 'rgba(239,68,68,0.06)', color: 'var(--gold)', borderBottom: '1px solid rgba(239,68,68,0.15)' }}>
+                  ⚠ Bearish equity pattern detected — consider Bear Call Spread below instead
+                </div>
+              )}
               <Leg label={`${r.ticker} Put`} strike={r.creditSpread.shortLeg.strike} bid={r.creditSpread.shortLeg.bid} ask={r.creditSpread.shortLeg.ask} delta={r.creditSpread.shortLeg.delta} type="sell" />
               <Leg label={`${r.ticker} Put`} strike={r.creditSpread.longLeg.strike} bid={r.creditSpread.longLeg.bid} ask={r.creditSpread.longLeg.ask} delta={r.creditSpread.longLeg.delta} type="buy" />
               <DetailRow label="Expiration" value={`${r.creditSpread.shortLeg.expDate} (${r.creditSpread.shortLeg.dte} DTE)`} />
@@ -1951,11 +1959,21 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
           )}
           {(activeStrategy === 'credit') && r.bearCallSpread && schwabConnected && (
             <DetailSection title="📉 Bear Call Credit Spread">
+              {r.hasBearish && (
+                <div className="px-4 py-2 text-[10px] font-mono" style={{ background: 'rgba(239,68,68,0.06)', color: 'var(--red)', borderBottom: '1px solid rgba(239,68,68,0.15)' }}>
+                  🔴 Bearish equity pattern detected — bear call aligns with directional bias
+                </div>
+              )}
               <Leg label={`${r.ticker} Call`} strike={r.bearCallSpread.shortLeg.strike} bid={r.bearCallSpread.shortLeg.bid} ask={r.bearCallSpread.shortLeg.ask} delta={r.bearCallSpread.shortLeg.delta} type="sell" />
               <Leg label={`${r.ticker} Call`} strike={r.bearCallSpread.longLeg.strike} bid={r.bearCallSpread.longLeg.bid} ask={r.bearCallSpread.longLeg.ask} delta={r.bearCallSpread.longLeg.delta} type="buy" />
+              <DetailRow label="Expiration" value={r.bearCallSpread.shortLeg.expDate || '—'} />
+              <DetailRow label="DTE" value={`${r.bearCallSpread.shortLeg.dte || '—'} days`} />
+              <DetailRow label="Width" value={`$${r.bearCallSpread.width?.toFixed(0) || '—'}`} />
               <DetailRow label="Net Credit" value={`$${r.bearCallSpread.netCredit.toFixed(2)} ($${(r.bearCallSpread.netCredit * 100).toFixed(0)}/contract)`} color="var(--green)" />
-              <DetailRow label="Max Loss" value={`$${r.bearCallSpread.maxLoss.toFixed(2)}`} color="var(--red)" />
+              <DetailRow label="Max Loss" value={`$${r.bearCallSpread.maxLoss.toFixed(2)} ($${(r.bearCallSpread.maxLoss * 100).toFixed(0)}/contract)`} color="var(--red)" />
               <DetailRow label="Return on Risk" value={`${r.bearCallSpread.rorSpread}%`} color={r.bearCallSpread.rorSpread >= 30 ? 'var(--green)' : 'var(--gold)'} />
+              <DetailRow label="Prob. of Profit" value={`~${r.bearCallSpread.pop}%`} />
+              <DetailRow label="Manage At" value="50% of credit or 21 DTE" />
             </DetailSection>
           )}
 
