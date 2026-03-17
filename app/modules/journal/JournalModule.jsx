@@ -1798,7 +1798,8 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
       const realizedPnL = acctTrades.reduce((s, t) => s + (parseFloat(t.pnl) || 0), 0);
 
       // Calculate unrealized P&L from open positions with current prices
-      const openTrades = trades.filter(t => t.account === name && t.status === "Open" && (!resetDate || t.date >= resetDate));
+      // NOTE: Open positions always count regardless of reset date — they're still in the account
+      const openTrades = trades.filter(t => t.account === name && t.status === "Open");
       let unrealizedPnL = 0;
       openTrades.forEach(t => {
         const curPrice = holdingPrices[t.ticker];
