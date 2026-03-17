@@ -166,7 +166,7 @@ export async function GET(req: NextRequest) {
           dailyStrat,
           weeklyStrat,
           rsi,
-          holdingsCount: s.holdings.length,
+          holdingsCount: s.tickers.length,
         };
       }));
 
@@ -188,12 +188,12 @@ export async function GET(req: NextRequest) {
       }
 
       // Optionally fetch fresh holdings from Finnhub
-      let tickers = [...sectorDef.holdings];
+      let tickers = [...sectorDef.tickers];
       if (useFinnhub) {
         const fhHoldings = await finnhubHoldings(sector);
         if (fhHoldings.length > 0) {
           // Merge: Finnhub top holdings + static fallbacks for any missing
-          const merged = [...new Set([...fhHoldings, ...sectorDef.holdings])].slice(0, 25);
+          const merged = [...new Set([...fhHoldings, ...sectorDef.tickers])];
           tickers = merged;
         }
       }

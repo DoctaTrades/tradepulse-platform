@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
+import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
 
 const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
@@ -14,22 +15,13 @@ async function schwabFetch(endpoint: string, params?: Record<string, string>) {
   return res.json();
 }
 
-// ─── SECTOR → TICKER MAPPINGS ────────────────────────────
+// ─── SECTOR → TICKER MAPPINGS (from shared sector-holdings) ────
 const INDICES = ['SPY', 'QQQ', 'IWM', 'DIA'];
 
-const SECTOR_ETFS: Record<string, { label: string; tickers: string[] }> = {
-  XLK: { label: 'Technology', tickers: ['AAPL','MSFT','NVDA','AVGO','ORCL','CRM','ADBE','AMD','INTC','CSCO','INTU','QCOM','TXN','AMAT','MU','NOW','LRCX','ADI','KLAC','SNPS','CDNS','MRVL','NXPI','ON','SMCI','ARM','CRWD','PANW','FTNT','ZS','NET','DDOG','MDB','SNOW','PLTR','DELL','HPE','HPQ','KEYS','ZBRA','EPAM','AKAM'] },
-  XLF: { label: 'Financials', tickers: ['BRK.B','JPM','V','MA','BAC','WFC','GS','MS','SPGI','BLK','AXP','C','SCHW','CB','MMC','PGR','ICE','CME','AON','MET','TRV','AIG','ALL','COIN','HOOD','SOFI','AFL','PRU','HIG','FI','FIS','GPN','NDAQ','MSCI','RJF','CFG','KEY','FITB','HBAN','RF'] },
-  XLV: { label: 'Healthcare', tickers: ['UNH','LLY','JNJ','ABBV','MRK','TMO','ABT','DHR','AMGN','PFE','ISRG','GILD','VRTX','REGN','BSX','MDT','SYK','CI','ELV','BDX','ZTS','DXCM','IDXX','ILMN','A','IQV','EW','HOLX','MTD','WST','ALGN','MRNA','BNTX','BIIB','BAX','GEHC','RMD','MOH','CNC','HCA'] },
-  XLY: { label: 'Consumer Disc.', tickers: ['AMZN','TSLA','HD','MCD','NKE','LOW','SBUX','TJX','BKNG','CMG','ORLY','ROST','DHI','LEN','GM','F','LULU','DRI','YUM','ABNB','DASH','UBER','LYFT','RIVN','LCID','NIO','XPEV','ETSY','W','DECK','POOL','BBY','KMX','GPC','AZO','ULTA','RCL','CCL','NCLH','WYNN'] },
-  XLP: { label: 'Consumer Staples', tickers: ['PG','KO','PEP','COST','WMT','PM','MDLZ','MO','CL','KMB','GIS','KHC','STZ','SJM','HSY','TSN','CAG','K','CHD','MKC','TGT','DG','DLTR','EL','CLX','MNST','TAP','BG','ADM','CASY','USFD','SFM'] },
-  XLE: { label: 'Energy', tickers: ['XOM','CVX','COP','SLB','EOG','MPC','PSX','VLO','OXY','WMB','KMI','HAL','HES','DVN','FANG','BKR','CTRA','MRO','APA','AR','EQT','TRGP','OVV','DEN','MGY','MTDR','SM','CHRD','PR','RRC'] },
-  XLI: { label: 'Industrials', tickers: ['CAT','GE','RTX','HON','UNP','BA','DE','LMT','UPS','ADP','ETN','ITW','NOC','WM','GD','CSX','MMM','FDX','NSC','EMR','CARR','TT','PCAR','SWK','ROK','CMI','JCI','DAL','UAL','LUV','AAL','FAST','ODFL','CTAS','PAYX','CPRT','AXON','TDG','HWM','XYL'] },
-  XLB: { label: 'Materials', tickers: ['LIN','APD','SHW','ECL','NEM','FCX','NUE','VMC','MLM','DOW','DD','PPG','CF','ALB','BALL','PKG','IFF','CE','EMN','FMC','STLD','RS','CLF','AA','MP','RGLD','WPM','GOLD'] },
-  XLRE: { label: 'Real Estate', tickers: ['PLD','AMT','EQIX','CCI','SPG','PSA','O','WELL','DLR','VICI','AVB','EQR','WY','ARE','MAA','UDR','KIM','REG','HST','IRM','SUI','CPT','INVH','CUBE','LSI','EXR'] },
-  XLU: { label: 'Utilities', tickers: ['NEE','SO','DUK','CEG','SRE','AEP','D','EXC','PEG','ED','XEL','WEC','ES','AWK','ETR','FE','AEE','CMS','PPL','EVRG','NRG','VST','AES','OGE','PNW','LNT','NI'] },
-  XLC: { label: 'Communication', tickers: ['META','GOOGL','GOOG','NFLX','DIS','CMCSA','TMUS','T','VZ','EA','TTWO','CHTR','OMC','IPG','FOXA','FOX','WBD','MTCH','LYV','PINS','SNAP','RBLX','ROKU','TTD','ZG','PARA','IMAX','SIRI'] },
-};
+const SECTOR_ETFS: Record<string, { label: string; tickers: string[] }> = {};
+for (const s of SECTOR_LIST) {
+  SECTOR_ETFS[s.etf] = { label: s.label, tickers: s.tickers };
+}
 
 // ─── CANDLE AGGREGATION ──────────────────────────────────
 
