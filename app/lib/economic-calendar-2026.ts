@@ -93,6 +93,81 @@ export const ECONOMIC_CALENDAR_2026: EconomicEvent[] = [
 
   // ═══ WEEKLY JOBLESS CLAIMS (every Thursday at 8:30 AM ET) ═══
   // Not listing all 52 — these are generated dynamically in the API route
+
+  // ═══ PPI (Producer Price Index) - typically mid-month at 8:30 AM ET ═══
+  // Leading indicator for CPI — wholesale inflation
+  { date: '2026-01-30', time: '08:30', event: 'PPI (Dec)', impact: 'medium', category: 'PPI' },
+  { date: '2026-02-27', time: '08:30', event: 'PPI (Jan)', impact: 'medium', category: 'PPI' },
+  { date: '2026-03-18', time: '08:30', event: 'PPI (Feb)', impact: 'medium', category: 'PPI' },
+  { date: '2026-04-15', time: '08:30', event: 'PPI (Mar)', impact: 'medium', category: 'PPI' },
+  { date: '2026-05-14', time: '08:30', event: 'PPI (Apr)', impact: 'medium', category: 'PPI' },
+  { date: '2026-06-12', time: '08:30', event: 'PPI (May)', impact: 'medium', category: 'PPI' },
+  { date: '2026-07-16', time: '08:30', event: 'PPI (Jun)', impact: 'medium', category: 'PPI' },
+  { date: '2026-08-14', time: '08:30', event: 'PPI (Jul)', impact: 'medium', category: 'PPI' },
+  { date: '2026-09-15', time: '08:30', event: 'PPI (Aug)', impact: 'medium', category: 'PPI' },
+  { date: '2026-10-15', time: '08:30', event: 'PPI (Sep)', impact: 'medium', category: 'PPI' },
+  { date: '2026-11-13', time: '08:30', event: 'PPI (Oct)', impact: 'medium', category: 'PPI' },
+  { date: '2026-12-11', time: '08:30', event: 'PPI (Nov)', impact: 'medium', category: 'PPI' },
+
+  // ═══ RETAIL SALES - typically mid-month at 8:30 AM ET ═══
+  // Consumer spending strength — ~70% of GDP
+  { date: '2026-01-16', time: '08:30', event: 'Retail Sales (Dec)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-02-14', time: '08:30', event: 'Retail Sales (Jan)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-03-17', time: '08:30', event: 'Retail Sales (Feb)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-04-16', time: '08:30', event: 'Retail Sales (Mar)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-05-15', time: '08:30', event: 'Retail Sales (Apr)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-06-16', time: '08:30', event: 'Retail Sales (May)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-07-16', time: '08:30', event: 'Retail Sales (Jun)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-08-14', time: '08:30', event: 'Retail Sales (Jul)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-09-16', time: '08:30', event: 'Retail Sales (Aug)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-10-16', time: '08:30', event: 'Retail Sales (Sep)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-11-17', time: '08:30', event: 'Retail Sales (Oct)', impact: 'medium', category: 'RETAIL' },
+  { date: '2026-12-16', time: '08:30', event: 'Retail Sales (Nov)', impact: 'medium', category: 'RETAIL' },
+
+  // ═══ ISM MANUFACTURING PMI - 1st business day of month at 10:00 AM ET ═══
+  // Above 50 = expansion, below 50 = contraction
+  { date: '2026-01-05', time: '10:00', event: 'ISM Manufacturing PMI (Dec)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-02-02', time: '10:00', event: 'ISM Manufacturing PMI (Jan)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-03-02', time: '10:00', event: 'ISM Manufacturing PMI (Feb)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-04-01', time: '10:00', event: 'ISM Manufacturing PMI (Mar)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-05-01', time: '10:00', event: 'ISM Manufacturing PMI (Apr)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-06-01', time: '10:00', event: 'ISM Manufacturing PMI (May)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-07-01', time: '10:00', event: 'ISM Manufacturing PMI (Jun)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-08-03', time: '10:00', event: 'ISM Manufacturing PMI (Jul)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-09-01', time: '10:00', event: 'ISM Manufacturing PMI (Aug)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-10-01', time: '10:00', event: 'ISM Manufacturing PMI (Sep)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-11-02', time: '10:00', event: 'ISM Manufacturing PMI (Oct)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+  { date: '2026-12-01', time: '10:00', event: 'ISM Manufacturing PMI (Nov)', impact: 'medium', category: 'ISM', notes: 'Above 50 = expansion' },
+
+  // ═══ ISM SERVICES PMI - 3rd business day of month at 10:00 AM ET ═══
+  // Services = ~77% of US economy
+  { date: '2026-01-07', time: '10:00', event: 'ISM Services PMI (Dec)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-02-04', time: '10:00', event: 'ISM Services PMI (Jan)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-03-04', time: '10:00', event: 'ISM Services PMI (Feb)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-04-03', time: '10:00', event: 'ISM Services PMI (Mar)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-05-05', time: '10:00', event: 'ISM Services PMI (Apr)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-06-03', time: '10:00', event: 'ISM Services PMI (May)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-07-02', time: '10:00', event: 'ISM Services PMI (Jun)', impact: 'medium', category: 'ISM', notes: '* Moved from July 6 due to July 4 holiday' },
+  { date: '2026-08-05', time: '10:00', event: 'ISM Services PMI (Jul)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-09-03', time: '10:00', event: 'ISM Services PMI (Aug)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-10-05', time: '10:00', event: 'ISM Services PMI (Sep)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-11-04', time: '10:00', event: 'ISM Services PMI (Oct)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+  { date: '2026-12-03', time: '10:00', event: 'ISM Services PMI (Nov)', impact: 'medium', category: 'ISM', notes: 'Services = ~77% of economy' },
+
+  // ═══ JOLTS (Job Openings & Labor Turnover) - ~5 weeks after reference month at 10:00 AM ET ═══
+  // Fed watches this closely for labor market tightness
+  { date: '2026-01-07', time: '10:00', event: 'JOLTS Job Openings (Nov)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-02-05', time: '10:00', event: 'JOLTS Job Openings (Dec)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-03-13', time: '10:00', event: 'JOLTS Job Openings (Jan)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-03-31', time: '10:00', event: 'JOLTS Job Openings (Feb)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-05-06', time: '10:00', event: 'JOLTS Job Openings (Mar)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-06-03', time: '10:00', event: 'JOLTS Job Openings (Apr)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-07-08', time: '10:00', event: 'JOLTS Job Openings (May)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-08-05', time: '10:00', event: 'JOLTS Job Openings (Jun)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-09-02', time: '10:00', event: 'JOLTS Job Openings (Jul)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-10-07', time: '10:00', event: 'JOLTS Job Openings (Aug)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-11-04', time: '10:00', event: 'JOLTS Job Openings (Sep)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+  { date: '2026-12-09', time: '10:00', event: 'JOLTS Job Openings (Oct)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
 ];
 
 // Generate weekly jobless claims for the full year (every Thursday)
