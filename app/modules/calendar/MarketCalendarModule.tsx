@@ -295,7 +295,7 @@ export default function MarketCalendarModule() {
       )}
 
       <div style={{ textAlign: 'center', padding: '16px 0 4px', fontSize: 9, color: 'var(--text-dim)', letterSpacing: 0.5 }}>
-        Data provided by Finnhub (earnings) · Economic events: {econSource === 'finnhub' ? '✅ Live from Finnhub' : '📋 Static schedule (Fed/BLS/BEA)'}
+        Data provided by Finnhub (earnings) · Economic events from Fed/BLS/BEA official schedules
       </div>
     </div>
   );
