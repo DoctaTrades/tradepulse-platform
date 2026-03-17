@@ -292,8 +292,10 @@ export default function TradePulsePlatform() {
             </div>
           )}
 
-          {/* Screener module */}
-          {tab === "screener" && <ScreenerModule user={user}/>}
+          {/* Screener module — always mounted, hidden when not active to preserve scan results */}
+          <div style={{ display: tab === "screener" ? "block" : "none" }}>
+            <ScreenerModule user={user}/>
+          </div>
 
           {/* Discovery module */}
           {tab === "discovery" && <DiscoveryModule user={user}/>}
