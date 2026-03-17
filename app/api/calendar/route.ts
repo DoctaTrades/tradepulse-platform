@@ -29,24 +29,91 @@ function getWeekRange(weekOffset: number = 0) {
   return { from: fmt(monday), to: fmt(friday) };
 }
 
+// Map Finnhub economic event to our format
+function mapFinnhubEconomicEvent(e: any) {
+  const event = e.event || '';
+  const eventLower = event.toLowerCase();
+
+  // Determine category
+  let category = 'OTHER';
+  if (eventLower.includes('fomc') || eventLower.includes('federal funds') || eventLower.includes('interest rate')) category = 'FOMC';
+  else if (eventLower.includes('consumer price') || eventLower.includes('cpi')) category = 'CPI';
+  else if (eventLower.includes('nonfarm') || eventLower.includes('non-farm') || eventLower.includes('payroll') || eventLower.includes('employment situation')) category = 'NFP';
+  else if (eventLower.includes('gdp') || eventLower.includes('gross domestic')) category = 'GDP';
+  else if (eventLower.includes('pce') || eventLower.includes('personal consumption') || eventLower.includes('personal income')) category = 'PCE';
+  else if (eventLower.includes('producer price') || eventLower.includes('ppi')) category = 'PPI';
+  else if (eventLower.includes('retail sales')) category = 'RETAIL';
+  else if (eventLower.includes('ism') || eventLower.includes('purchasing manager')) category = 'ISM';
+  else if (eventLower.includes('jolts') || eventLower.includes('job opening')) category = 'JOLTS';
+  else if (eventLower.includes('jobless') || eventLower.includes('unemployment claim')) category = 'JOBLESS';
+
+  // Determine impact
+  let impact = 'low';
+  if (['FOMC', 'CPI', 'NFP', 'GDP', 'PCE'].includes(category)) impact = 'high';
+  else if (['PPI', 'RETAIL', 'ISM', 'JOLTS', 'JOBLESS'].includes(category)) impact = 'medium';
+  // Also check Finnhub's own impact field if available
+  if (e.impact === 'high' || e.importance === 3) impact = 'high';
+  else if (e.impact === 'medium' || e.importance === 2) impact = 'medium';
+
+  return {
+    event: e.event || '',
+    country: e.country || 'US',
+    date: e.time || e.date || '',
+    impact,
+    actual: e.actual ?? null,
+    estimate: e.estimate ?? null,
+    prev: e.prev ?? null,
+    unit: e.unit || '',
+    category,
+    notes: '',
+  };
+}
+
 export async function GET(req: NextRequest) {
   const week = parseInt(req.nextUrl.searchParams.get('week') || '0');
   const { from, to } = getWeekRange(week);
 
   try {
-    // Economic events from static calendar (FOMC, CPI, NFP, GDP, PCE, Jobless Claims)
-    const economicEvents = getEconomicEvents(from, to).map(e => ({
-      event: e.event,
-      country: 'US',
-      date: `${e.date}T${e.time}:00`,
-      impact: e.impact,
-      actual: null,
-      estimate: null,
-      prev: null,
-      unit: '',
-      category: e.category,
-      notes: e.notes || '',
-    }));
+    let economicEvents: any[] = [];
+    let economicSource = 'static';
+
+    // Try Finnhub economic calendar first (live, accurate dates)
+    if (FINNHUB_KEY) {
+      try {
+        const finnhubEcon = await cachedFetch(
+          `${FINNHUB_BASE}/calendar/economic?from=${from}&to=${to}&token=${FINNHUB_KEY}`
+        );
+
+        const events = finnhubEcon?.economicCalendar || finnhubEcon?.result || [];
+        if (Array.isArray(events) && events.length > 0) {
+          // Filter to US events only
+          economicEvents = events
+            .filter((e: any) => !e.country || e.country === 'US' || e.country === 'United States')
+            .map(mapFinnhubEconomicEvent)
+            .sort((a: any, b: any) => (a.date || '').localeCompare(b.date || ''));
+          economicSource = 'finnhub';
+        }
+      } catch (e: any) {
+        console.error('Finnhub economic calendar error:', e.message);
+      }
+    }
+
+    // Fallback: static calendar if Finnhub returned nothing
+    if (economicEvents.length === 0) {
+      economicEvents = getEconomicEvents(from, to).map(e => ({
+        event: e.event,
+        country: 'US',
+        date: `${e.date}T${e.time}:00`,
+        impact: e.impact,
+        actual: null,
+        estimate: null,
+        prev: null,
+        unit: '',
+        category: e.category,
+        notes: e.notes || '',
+      }));
+      economicSource = 'static';
+    }
 
     // Earnings from Finnhub
     let earningsEvents: any[] = [];
@@ -85,6 +152,7 @@ export async function GET(req: NextRequest) {
       earnings: earningsEvents,
       economicCount: economicEvents.length,
       earningsCount: earningsEvents.length,
+      economicSource,
     });
 
   } catch (e: any) {

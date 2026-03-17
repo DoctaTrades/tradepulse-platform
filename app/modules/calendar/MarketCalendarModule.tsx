@@ -73,6 +73,7 @@ export default function MarketCalendarModule() {
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [activeView, setActiveView] = useState<'economic' | 'earnings'>('economic');
   const [impactFilter, setImpactFilter] = useState<'all' | 'high' | 'medium'>('all');
+  const [econSource, setEconSource] = useState('');
 
   const fetchCalendar = useCallback(async (w: number) => {
     setLoading(true); setError('');
@@ -83,6 +84,7 @@ export default function MarketCalendarModule() {
       setEconomic(data.economic || []);
       setEarnings(data.earnings || []);
       setDateRange({ from: data.from, to: data.to });
+      setEconSource(data.economicSource || 'static');
     } catch (e: any) {
       setError(e.message);
     }
@@ -293,7 +295,7 @@ export default function MarketCalendarModule() {
       )}
 
       <div style={{ textAlign: 'center', padding: '16px 0 4px', fontSize: 9, color: 'var(--text-dim)', letterSpacing: 0.5 }}>
-        Data provided by Finnhub (earnings) · Economic events from Fed/BLS/BEA official schedules
+        Data provided by Finnhub (earnings) · Economic events: {econSource === 'finnhub' ? '✅ Live from Finnhub' : '📋 Static schedule (Fed/BLS/BEA)'}
       </div>
     </div>
   );
