@@ -1333,16 +1333,16 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 {/* ─── ROW 2: Clustered Walls + Gamma Flip ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-dim)' }}>Put Wall Cluster (Support)</div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--green)' }}>Put Wall Cluster (Support)</div>
                     {d.putWallCluster ? (<>
-                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--text)' }}>${d.putWallCluster.centerStrike}</div>
+                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--green)' }}>${d.putWallCluster.centerStrike}</div>
                       <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
                         {d.putWallCluster.totalActivity?.toLocaleString()} {ds} · ${d.putWallCluster.distFromPrice} below
                       </div>
                       <div className="mt-2 space-y-0.5">
                         {d.putWallCluster.strikes?.slice(0, 4).map((s: any, i: number) => (
                           <div key={i} className="flex justify-between font-mono text-[9px]">
-                            <span style={{ color: 'var(--text-dim)' }}>${s.strike}</span>
+                            <span style={{ color: i === 0 ? 'var(--green)' : 'var(--text-dim)' }}>${s.strike}</span>
                             <span style={{ color: 'var(--text-dim)' }}>{s.activity?.toLocaleString()}</span>
                           </div>
                         ))}
@@ -1366,16 +1366,16 @@ export default function ScreenerModule({ user }: { user?: any }) {
                   </div>
 
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-dim)' }}>Call Wall Cluster (Resistance)</div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--red)' }}>Call Wall Cluster (Resistance)</div>
                     {d.callWallCluster ? (<>
-                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--text)' }}>${d.callWallCluster.centerStrike}</div>
+                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--red)' }}>${d.callWallCluster.centerStrike}</div>
                       <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
                         {d.callWallCluster.totalActivity?.toLocaleString()} {ds} · ${d.callWallCluster.distFromPrice} above
                       </div>
                       <div className="mt-2 space-y-0.5">
                         {d.callWallCluster.strikes?.slice(0, 4).map((s: any, i: number) => (
                           <div key={i} className="flex justify-between font-mono text-[9px]">
-                            <span style={{ color: 'var(--text-dim)' }}>${s.strike}</span>
+                            <span style={{ color: i === 0 ? 'var(--red)' : 'var(--text-dim)' }}>${s.strike}</span>
                             <span style={{ color: 'var(--text-dim)' }}>{s.activity?.toLocaleString()}</span>
                           </div>
                         ))}
