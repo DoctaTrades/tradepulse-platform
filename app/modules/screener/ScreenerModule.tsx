@@ -1333,16 +1333,16 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 {/* ─── ROW 2: Clustered Walls + Gamma Flip ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--green)' }}>Put Wall Cluster (Support)</div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-dim)' }}>Put Wall Cluster (Support)</div>
                     {d.putWallCluster ? (<>
-                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--green)' }}>${d.putWallCluster.centerStrike}</div>
+                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--text)' }}>${d.putWallCluster.centerStrike}</div>
                       <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
                         {d.putWallCluster.totalActivity?.toLocaleString()} {ds} · ${d.putWallCluster.distFromPrice} below
                       </div>
                       <div className="mt-2 space-y-0.5">
                         {d.putWallCluster.strikes?.slice(0, 4).map((s: any, i: number) => (
                           <div key={i} className="flex justify-between font-mono text-[9px]">
-                            <span style={{ color: i === 0 ? 'var(--green)' : 'var(--text-dim)' }}>${s.strike}</span>
+                            <span style={{ color: 'var(--text-dim)' }}>${s.strike}</span>
                             <span style={{ color: 'var(--text-dim)' }}>{s.activity?.toLocaleString()}</span>
                           </div>
                         ))}
@@ -1366,16 +1366,16 @@ export default function ScreenerModule({ user }: { user?: any }) {
                   </div>
 
                   <div className="rounded-xl border p-4" style={{ background: 'var(--navy2)', borderColor: 'var(--border)' }}>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--red)' }}>Call Wall Cluster (Resistance)</div>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-dim)' }}>Call Wall Cluster (Resistance)</div>
                     {d.callWallCluster ? (<>
-                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--red)' }}>${d.callWallCluster.centerStrike}</div>
+                      <div className="font-display text-2xl font-bold" style={{ color: 'var(--text)' }}>${d.callWallCluster.centerStrike}</div>
                       <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
                         {d.callWallCluster.totalActivity?.toLocaleString()} {ds} · ${d.callWallCluster.distFromPrice} above
                       </div>
                       <div className="mt-2 space-y-0.5">
                         {d.callWallCluster.strikes?.slice(0, 4).map((s: any, i: number) => (
                           <div key={i} className="flex justify-between font-mono text-[9px]">
-                            <span style={{ color: i === 0 ? 'var(--red)' : 'var(--text-dim)' }}>${s.strike}</span>
+                            <span style={{ color: 'var(--text-dim)' }}>${s.strike}</span>
                             <span style={{ color: 'var(--text-dim)' }}>{s.activity?.toLocaleString()}</span>
                           </div>
                         ))}
@@ -1435,9 +1435,9 @@ export default function ScreenerModule({ user }: { user?: any }) {
                       const isExpectedBound = Math.abs(s.strike - d.expectedLow) < 5 || Math.abs(s.strike - d.expectedHigh) < 5;
                       return (
                         <div key={s.strike} className={`flex items-center gap-2 px-2 py-1 rounded ${isCurrentPrice ? 'ring-1 ring-blue-500/50' : ''}`}
-                          style={{ background: isPutWall ? 'rgba(16,185,129,0.06)' : isCallWall ? 'rgba(239,68,68,0.06)' : isGammaFlip ? 'rgba(240,180,41,0.06)' : 'transparent' }}>
+                          style={{ background: isPutWall ? 'rgba(239,68,68,0.06)' : isCallWall ? 'rgba(16,185,129,0.06)' : isGammaFlip ? 'rgba(240,180,41,0.06)' : 'transparent' }}>
                           <span className="font-mono text-[10px] w-12 text-right font-medium" style={{
-                            color: isCurrentPrice ? 'var(--blue3)' : isPutWall ? 'var(--green)' : isCallWall ? 'var(--red)' : isGammaFlip ? 'var(--gold)' : isExpectedBound ? 'var(--purple)' : 'var(--text-dim)'
+                            color: isCurrentPrice ? 'var(--blue3)' : isPutWall ? 'var(--red)' : isCallWall ? 'var(--green)' : isGammaFlip ? 'var(--gold)' : isExpectedBound ? 'var(--purple)' : 'var(--text-dim)'
                           }}>
                             {s.strike}
                           </span>
@@ -1462,8 +1462,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
                     })}
                   </div>
                   <div className="mt-2 flex gap-4 font-mono text-[8px] px-2" style={{ color: 'var(--text-dim)' }}>
-                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--green)' }}/>Put Wall</span>
-                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--red)' }}/>Call Wall</span>
+                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--red)' }}/>Put Wall</span>
+                    <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--green)' }}/>Call Wall</span>
                     <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--gold)' }}/>Gamma Flip</span>
                     <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: 'var(--blue3)' }}/>Price</span>
                     <span>ΔOI = Put OI − Call OI (+ = put heavy)</span>
