@@ -472,17 +472,27 @@ async function scanWithSchwab(tickers: string[], filters: any) {
     const shortPut = findContractInRange(allPuts, deltaMin, deltaMax, targetDTE);
     if (shortPut) {
       const width = price > 100 ? 10 : 5;
-      const longPut = findWing(allPuts, shortPut.strike, -width, shortPut.expDate);
-      if (longPut) {
-        const netCredit = Math.round(((shortPut.bid || 0) - (longPut.ask || 0)) * 100) / 100;
-        const maxLoss = Math.round((Math.abs(shortPut.strike - longPut.strike) - netCredit) * 100) / 100;
+      // Try exact width first, then try tighter widths if no credit
+      let bestPutSpread: any = null;
+      for (const w of [width, width * 0.5, width * 1.5]) {
+        const longPut = findWing(allPuts, shortPut.strike, -w, shortPut.expDate);
+        if (longPut && longPut.strike < shortPut.strike && (longPut.ask || 0) > 0) {
+          const nc = Math.round(((shortPut.bid || 0) - (longPut.ask || 0)) * 100) / 100;
+          if (nc > 0 && (!bestPutSpread || nc > bestPutSpread.netCredit)) {
+            bestPutSpread = { longPut, netCredit: nc, width: Math.abs(shortPut.strike - longPut.strike) };
+          }
+        }
+      }
+      if (bestPutSpread) {
+        const { longPut, netCredit, width: spreadWidth } = bestPutSpread;
+        const maxLoss = Math.round((spreadWidth - netCredit) * 100) / 100;
         result.creditSpread = {
           type: 'BULL PUT',
           shortLeg: { strike: shortPut.strike, bid: shortPut.bid, ask: shortPut.ask, delta: shortPut.delta, dte: shortPut.daysToExpiration, expDate: shortPut.expDate?.split(':')[0] },
           longLeg: { strike: longPut.strike, bid: longPut.bid, ask: longPut.ask, delta: longPut.delta },
           netCredit,
           maxLoss,
-          width: Math.abs(shortPut.strike - longPut.strike),
+          width: spreadWidth,
           rorSpread: maxLoss > 0 ? Math.round((netCredit / maxLoss) * 100 * 100) / 100 : 0,
           pop: shortPut.delta ? Math.round((1 - Math.abs(shortPut.delta)) * 100) : 70,
           // OI wall proximity
@@ -496,17 +506,26 @@ async function scanWithSchwab(tickers: string[], filters: any) {
     const shortCall = findContractInRange(allCalls, deltaMin, deltaMax, targetDTE);
     if (shortCall) {
       const width = price > 100 ? 10 : 5;
-      const longCall = findWing(allCalls, shortCall.strike, width, shortCall.expDate);
-      if (longCall) {
-        const netCredit = Math.round(((shortCall.bid || 0) - (longCall.ask || 0)) * 100) / 100;
-        const maxLoss = Math.round((Math.abs(longCall.strike - shortCall.strike) - netCredit) * 100) / 100;
+      let bestCallSpread: any = null;
+      for (const w of [width, width * 0.5, width * 1.5]) {
+        const longCall = findWing(allCalls, shortCall.strike, w, shortCall.expDate);
+        if (longCall && longCall.strike > shortCall.strike && (longCall.ask || 0) > 0) {
+          const nc = Math.round(((shortCall.bid || 0) - (longCall.ask || 0)) * 100) / 100;
+          if (nc > 0 && (!bestCallSpread || nc > bestCallSpread.netCredit)) {
+            bestCallSpread = { longCall, netCredit: nc, width: Math.abs(longCall.strike - shortCall.strike) };
+          }
+        }
+      }
+      if (bestCallSpread) {
+        const { longCall, netCredit, width: spreadWidth } = bestCallSpread;
+        const maxLoss = Math.round((spreadWidth - netCredit) * 100) / 100;
         result.bearCallSpread = {
           type: 'BEAR CALL',
           shortLeg: { strike: shortCall.strike, bid: shortCall.bid, ask: shortCall.ask, delta: shortCall.delta, dte: shortCall.daysToExpiration, expDate: shortCall.expDate?.split(':')[0] },
           longLeg: { strike: longCall.strike, bid: longCall.bid, ask: longCall.ask, delta: longCall.delta },
           netCredit,
           maxLoss,
-          width: Math.abs(longCall.strike - shortCall.strike),
+          width: spreadWidth,
           rorSpread: maxLoss > 0 ? Math.round((netCredit / maxLoss) * 100 * 100) / 100 : 0,
           pop: shortCall.delta ? Math.round((1 - Math.abs(shortCall.delta)) * 100) : 70,
           // OI wall proximity
