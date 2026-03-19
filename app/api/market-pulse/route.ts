@@ -72,17 +72,26 @@ export async function GET(req: NextRequest) {
     const vixPrice = vixQuote?.lastPrice || vixQuote?.closePrice || 0;
     let vixChange = vixQuote?.netPercentChangeInDouble || 0;
 
-    // Fallback: calculate VIX change from price history
+    // Fallback: calculate VIX change from close vs last price or previous close
     if (!vixChange && vixPrice > 0) {
-      try {
-        const vixSym = quotes['$VIX.X'] ? '$VIX.X' : 'VIX';
-        const hist = await getPriceHistory(vixSym, { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
-        const candles = hist.candles || [];
-        if (candles.length >= 1) {
-          const prevClose = candles[candles.length - 1]?.close || 0;
-          if (prevClose > 0) vixChange = Math.round(((vixPrice - prevClose) / prevClose) * 10000) / 100;
+      // Try closePrice (previous session close) vs lastPrice
+      const prevClose = vixQuote?.closePrice || vixQuote?.previousClose || vixQuote?.regularMarketLastPrice || 0;
+      if (prevClose > 0 && prevClose !== vixPrice) {
+        vixChange = Math.round(((vixPrice - prevClose) / prevClose) * 10000) / 100;
+      }
+      // If still 0, try price history
+      if (!vixChange) {
+        for (const vixSym of ['$VIX.X', 'VIX', '$VIX']) {
+          try {
+            const hist = await getPriceHistory(vixSym, { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
+            const candles = hist.candles || [];
+            if (candles.length >= 1) {
+              const pc = candles[candles.length - 1]?.close || 0;
+              if (pc > 0) { vixChange = Math.round(((vixPrice - pc) / pc) * 10000) / 100; break; }
+            }
+          } catch {}
         }
-      } catch {}
+      }
     }
     
     // VIX context
