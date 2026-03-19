@@ -736,7 +736,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                       <button onClick={() => {
                         // Admin uses legacy auth (no userId) so tokens go to pr_tokens for all routes
                         const authUrl = isAdmin ? '/api/schwab/auth' : `/api/schwab/auth?userId=${user?.id}`;
-                        window.open(authUrl, '_blank', 'width=600,height=700');
+                        window.location.href = authUrl;
                       }} className="font-mono text-[9px] px-2 py-1 rounded cursor-pointer" style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '1px solid rgba(234,179,8,0.2)' }}>
                         ↻ Reconnect
                       </button>

@@ -240,7 +240,14 @@ export async function exchangeCodeForTokens(code: string, userId?: string): Prom
 export async function refreshAccessToken(userId?: string): Promise<SchwabTokens> {
   await ensureCacheLoaded(userId);
   const key = getCacheKey(userId);
-  const cached = tokenCacheMap[key];
+  let cached = tokenCacheMap[key];
+  
+  // If no refresh token in cache, try reloading from DB (another serverless instance may have updated it)
+  if (!cached?.refresh_token) {
+    cacheLoadedMap[key] = false;
+    await ensureCacheLoaded(userId);
+    cached = tokenCacheMap[key];
+  }
   if (!cached?.refresh_token) throw new Error('No refresh token available');
 
   if (userId) await getUserCredentials(userId);
@@ -259,6 +266,41 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
   });
 
   if (!res.ok) {
+    // Before clearing, try reloading from DB — a fresh token may have been saved by another instance
+    cacheLoadedMap[key] = false;
+    const freshTokens = await loadTokens(userId);
+    if (freshTokens && freshTokens.refresh_token && freshTokens.refresh_token !== cached.refresh_token) {
+      // DB has a newer token — retry refresh with it
+      tokenCacheMap[key] = freshTokens;
+      const retryRes = await fetch(SCHWAB_TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${getBasicAuth(creds)}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: freshTokens.refresh_token,
+        }),
+      });
+      if (retryRes.ok) {
+        const retryData = await retryRes.json();
+        const retryTokens: SchwabTokens = {
+          access_token: retryData.access_token,
+          refresh_token: retryData.refresh_token || freshTokens.refresh_token,
+          expires_at: Date.now() + (retryData.expires_in * 1000) - 60000,
+          token_type: retryData.token_type,
+        };
+        await saveTokens(userId, retryTokens);
+        if (userId) {
+          await saveTokens(undefined, retryTokens);
+          tokenCacheMap[getCacheKey(undefined)] = retryTokens;
+        }
+        tokenCacheMap[key] = retryTokens;
+        return retryTokens;
+      }
+    }
+    // Truly expired — clear and throw
     await clearTokensInternal(userId);
     throw new Error(`Token refresh failed: ${res.status}`);
   }
