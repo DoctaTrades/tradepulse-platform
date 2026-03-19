@@ -36,7 +36,7 @@ function pctChange(current: number, previous: number): number {
 }
 
 // ─── SYMBOLS ─────────────────────────────────────────────
-const MARKET_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', '$VIX.X'];
+const MARKET_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA'];
 
 const SECTOR_ETFS = [
   { symbol: 'XLK', name: 'Technology' },
@@ -67,52 +67,46 @@ export async function GET(req: NextRequest) {
     const allSymbols = [...MARKET_SYMBOLS, ...SECTOR_ETFS.map(s => s.symbol), ...BREADTH_SYMBOLS];
     const quotes = await getQuotes([...new Set(allSymbols)]);
 
-    // 2. Get VIX data — Schwab doesn't reliably return index quotes like VIX
-    // Try Schwab first with multiple symbol formats, then Finnhub as fallback
+    // 2. Get VIX data — Schwab doesn't return CBOE index quotes
+    // Use Finnhub as primary source for VIX
     let vixPrice = 0;
     let vixChange = 0;
-    
-    // Try Schwab quote (multiple symbol formats)
-    const vixQuote = quotes['$VIX.X']?.quote || quotes['$VIX']?.quote || quotes['VIX']?.quote;
-    if (vixQuote && (vixQuote.lastPrice || vixQuote.closePrice)) {
-      vixPrice = vixQuote.lastPrice || vixQuote.closePrice || 0;
-      vixChange = vixQuote.netPercentChangeInDouble || vixQuote.netChange || 0;
-    }
+    const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 
-    // Finnhub fallback for VIX
-    if (!vixPrice) {
-      const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
-      if (FINNHUB_KEY) {
+    // Try Finnhub first — ^VIX or CBOE VIX index
+    if (FINNHUB_KEY) {
+      for (const sym of ['^GSPC', 'VIX']) {
         try {
-          const fhRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=VIX&token=${FINNHUB_KEY}`);
+          const fhRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FINNHUB_KEY}`);
           if (fhRes.ok) {
             const fhData = await fhRes.json();
-            if (fhData.c > 0) {
-              vixPrice = Math.round(fhData.c * 100) / 100; // current price
-              const prevClose = fhData.pc || 0; // previous close
-              if (prevClose > 0) {
-                vixChange = Math.round(((vixPrice - prevClose) / prevClose) * 10000) / 100;
-              }
+            if (fhData.c > 0 && fhData.c < 100) { // VIX is typically 10-80
+              vixPrice = Math.round(fhData.c * 100) / 100;
+              const prevClose = fhData.pc || 0;
+              if (prevClose > 0) vixChange = Math.round(((vixPrice - prevClose) / prevClose) * 10000) / 100;
+              break;
             }
           }
         } catch {}
       }
     }
 
-    // Last resort: use VIXY ETF as a proxy indicator
+    // Schwab fallback — try multiple symbol formats
     if (!vixPrice) {
-      try {
-        const vixyQuotes = await getQuotes(['VIXY']);
-        const vixyQ = vixyQuotes['VIXY']?.quote;
-        if (vixyQ?.lastPrice) {
-          // VIXY tracks VIX futures, not VIX directly, but gives directional context
-          vixPrice = vixyQ.lastPrice;
-          vixChange = vixyQ.netPercentChangeInDouble || 0;
-          if (!vixChange && vixyQ.closePrice && vixyQ.closePrice !== vixyQ.lastPrice) {
-            vixChange = Math.round(((vixyQ.lastPrice - vixyQ.closePrice) / vixyQ.closePrice) * 10000) / 100;
+      for (const sym of ['$VIX', '$VIX.X', 'VIX']) {
+        try {
+          const vq = await getQuotes([sym]);
+          const q = vq[sym]?.quote;
+          if (q && (q.lastPrice || q.closePrice) && (q.lastPrice || q.closePrice) < 100) {
+            vixPrice = q.lastPrice || q.closePrice;
+            vixChange = q.netPercentChangeInDouble || 0;
+            if (!vixChange && q.closePrice && q.lastPrice && q.closePrice !== q.lastPrice) {
+              vixChange = Math.round(((q.lastPrice - q.closePrice) / q.closePrice) * 10000) / 100;
+            }
+            break;
           }
-        }
-      } catch {}
+        } catch {}
+      }
     }
     
     // VIX context
