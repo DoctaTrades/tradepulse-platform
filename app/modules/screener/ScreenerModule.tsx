@@ -233,13 +233,29 @@ export default function ScreenerModule({ user }: { user?: any }) {
           if (data.connected) {
             setSchwabStatus({ connected: true, expiresAt: data.expiresAt || Date.now() + 1800000, refreshExpiresEstimate: data.refreshExpiresEstimate || '~7 days' });
           } else if (isAdmin) {
-            // Admin fallback: try platform schwab
-            fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
+            // Admin fallback: try platform schwab — verify token actually works
+            fetch('/api/schwab/refresh').then(r => r.json()).then(data => {
+              if (data.connected) {
+                setSchwabStatus(data);
+              } else {
+                setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Token expired — click Reconnect' });
+              }
+            }).catch(() => {
+              setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Connection failed' });
+            });
           }
         })
         .catch(() => {
           if (isAdmin) {
-            fetch('/api/schwab/refresh').then(r => r.json()).then(setSchwabStatus).catch(() => {});
+            fetch('/api/schwab/refresh').then(r => r.json()).then(data => {
+              if (data.connected) {
+                setSchwabStatus(data);
+              } else {
+                setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Token expired — click Reconnect' });
+              }
+            }).catch(() => {
+              setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Connection failed' });
+            });
           }
         });
     }
@@ -715,7 +731,15 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 </div>
                 <div className="flex items-center gap-2">
                   {schwabStatus.connected ? (
-                    <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>● LIVE</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>● LIVE</span>
+                      <button onClick={() => {
+                        const authUrl = `/api/schwab/auth${user?.id ? `?userId=${user.id}` : ''}`;
+                        window.open(authUrl, '_blank', 'width=600,height=700');
+                      }} className="font-mono text-[9px] px-2 py-1 rounded cursor-pointer" style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '1px solid rgba(234,179,8,0.2)' }}>
+                        ↻ Reconnect
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-3">
                       <a href={`/api/schwab/auth${user?.id ? `?userId=${user.id}` : ''}`}
