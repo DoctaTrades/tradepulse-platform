@@ -149,11 +149,22 @@ export async function GET() {
       const weeklyCandles = aggregateCandles(candles, 5);
       const monthlyCandles = aggregateCandles(candles, 21);
 
+      const price = q?.lastPrice || q?.closePrice || 0;
+      let change = q?.netPercentChangeInDouble || 0;
+
+      // Fallback: calculate change from candle data if quote doesn't have it
+      if (!change && candles.length >= 2 && price > 0) {
+        const prevClose = candles[candles.length - 2]?.close || 0;
+        if (prevClose > 0) {
+          change = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+        }
+      }
+
       return {
         symbol: idx.symbol,
         label: idx.label,
-        price: q?.lastPrice || q?.closePrice || 0,
-        change: q?.netPercentChangeInDouble || 0,
+        price,
+        change,
         volume: q?.totalVolume || 0,
         high: q?.highPrice || 0,
         low: q?.lowPrice || 0,
@@ -174,11 +185,22 @@ export async function GET() {
       const candles = historyMap[sec.symbol] || [];
       const weeklyCandles = aggregateCandles(candles, 5);
 
+      const secPrice = q?.lastPrice || q?.closePrice || 0;
+      let secChange = q?.netPercentChangeInDouble || 0;
+
+      // Fallback: calculate change from candle data
+      if (!secChange && candles.length >= 2 && secPrice > 0) {
+        const prevClose = candles[candles.length - 2]?.close || 0;
+        if (prevClose > 0) {
+          secChange = Math.round(((secPrice - prevClose) / prevClose) * 10000) / 100;
+        }
+      }
+
       return {
         symbol: sec.symbol,
         label: sec.label,
-        price: q?.lastPrice || q?.closePrice || 0,
-        change: q?.netPercentChangeInDouble || 0,
+        price: secPrice,
+        change: secChange,
         volume: q?.totalVolume || 0,
         strat: {
           daily: getLastStrat(candles),
