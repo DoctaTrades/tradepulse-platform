@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
 
+export const dynamic = 'force-dynamic';
+
 const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
   const token = await getValidAccessToken();
   const url = new URL(`${SCHWAB_BASE}${endpoint}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` } });
+  const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store' });
   if (!res.ok) throw new Error(`Schwab API ${res.status}`);
   return res.json();
 }

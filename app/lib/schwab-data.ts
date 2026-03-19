@@ -34,6 +34,7 @@ async function schwabFetch(endpoint: string, params?: Record<string, string>) {
 
   const res = await fetch(url.toString(), {
     headers: { 'Authorization': `Bearer ${token}` },
+    cache: 'no-store',
   });
 
   if (!res.ok) {
@@ -68,6 +69,7 @@ async function tradierFetch(endpoint: string, token: string, sandbox: boolean, p
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), {
     headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+    cache: 'no-store',
   });
   if (!res.ok) throw new Error(`Tradier API ${res.status}: ${await res.text()}`);
   return res.json();
