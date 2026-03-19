@@ -223,6 +223,13 @@ export async function exchangeCodeForTokens(code: string, userId?: string): Prom
   };
 
   await saveTokens(userId, tokens);
+  // Also save to legacy pr_tokens so dashboard/sectors routes (which don't have userId) can access tokens
+  if (userId) {
+    await saveTokens(undefined, tokens);
+    const legacyKey = getCacheKey(undefined);
+    tokenCacheMap[legacyKey] = tokens;
+    cacheLoadedMap[legacyKey] = true;
+  }
   const key = getCacheKey(userId);
   tokenCacheMap[key] = tokens;
   cacheLoadedMap[key] = true;
@@ -265,6 +272,12 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
   };
 
   await saveTokens(userId, tokens);
+  // Keep legacy pr_tokens in sync for dashboard/sectors routes
+  if (userId) {
+    await saveTokens(undefined, tokens);
+    const legacyKey = getCacheKey(undefined);
+    tokenCacheMap[legacyKey] = tokens;
+  }
   tokenCacheMap[key] = tokens;
   return tokens;
 }
