@@ -444,6 +444,30 @@ async function scanWithSchwab(tickers: string[], filters: any) {
       return sameDTE[0];
     };
 
+    // ── OI WALL DETECTION ──
+    // Find highest OI clusters for puts (support) and calls (resistance) within DTE range
+    const detectOIWalls = (contracts: any[], dte: [number, number], count: number = 3) => {
+      // Aggregate OI by strike across expirations within DTE range
+      const oiByStrike: Record<number, number> = {};
+      contracts.forEach(c => {
+        const d = c.daysToExpiration || 0;
+        if (d >= dte[0] && d <= dte[1] && (c.openInterest || 0) > 0) {
+          const s = c.strike;
+          oiByStrike[s] = (oiByStrike[s] || 0) + (c.openInterest || 0);
+        }
+      });
+      // Sort by OI descending and take top N
+      return Object.entries(oiByStrike)
+        .map(([strike, oi]) => ({ strike: Number(strike), oi }))
+        .sort((a, b) => b.oi - a.oi)
+        .slice(0, count);
+    };
+
+    const putOIWalls = detectOIWalls(allPuts, targetDTE);
+    const callOIWalls = detectOIWalls(allCalls, targetDTE);
+    result.putOIWalls = putOIWalls;
+    result.callOIWalls = callOIWalls;
+
     // ── CREDIT SPREAD (Bull Put) ──
     const shortPut = findContractInRange(allPuts, deltaMin, deltaMax, targetDTE);
     if (shortPut) {
@@ -461,6 +485,9 @@ async function scanWithSchwab(tickers: string[], filters: any) {
           width: Math.abs(shortPut.strike - longPut.strike),
           rorSpread: maxLoss > 0 ? Math.round((netCredit / maxLoss) * 100 * 100) / 100 : 0,
           pop: shortPut.delta ? Math.round((1 - Math.abs(shortPut.delta)) * 100) : 70,
+          // OI wall proximity
+          nearestPutWall: putOIWalls.length > 0 ? putOIWalls.reduce((best, w) => Math.abs(w.strike - shortPut.strike) < Math.abs(best.strike - shortPut.strike) ? w : best) : null,
+          atWall: putOIWalls.some(w => w.strike === shortPut.strike),
         };
       }
     }
@@ -482,6 +509,9 @@ async function scanWithSchwab(tickers: string[], filters: any) {
           width: Math.abs(longCall.strike - shortCall.strike),
           rorSpread: maxLoss > 0 ? Math.round((netCredit / maxLoss) * 100 * 100) / 100 : 0,
           pop: shortCall.delta ? Math.round((1 - Math.abs(shortCall.delta)) * 100) : 70,
+          // OI wall proximity
+          nearestCallWall: callOIWalls.length > 0 ? callOIWalls.reduce((best, w) => Math.abs(w.strike - shortCall.strike) < Math.abs(best.strike - shortCall.strike) ? w : best) : null,
+          atWall: callOIWalls.some(w => w.strike === shortCall.strike),
         };
       }
     }

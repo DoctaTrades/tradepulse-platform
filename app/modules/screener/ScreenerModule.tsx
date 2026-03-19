@@ -1955,6 +1955,30 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Return on Risk" value={`${r.creditSpread.rorSpread}%`} color={r.creditSpread.rorSpread >= 30 ? 'var(--green)' : 'var(--gold)'} />
               <DetailRow label="Prob. of Profit" value={`~${r.creditSpread.pop}%`} />
               <DetailRow label="Manage At" value="50% of credit or 21 DTE" />
+              {/* OI Wall proximity */}
+              {r.creditSpread.nearestPutWall && (
+                <div className="px-4 py-2 mt-1 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Put OI Wall</div>
+                  {r.creditSpread.atWall ? (
+                    <div className="font-mono text-[10px]" style={{ color: 'var(--green)' }}>
+                      ✓ Short strike at put OI wall — {r.creditSpread.nearestPutWall.oi?.toLocaleString()} OI at ${r.creditSpread.nearestPutWall.strike}
+                    </div>
+                  ) : (
+                    <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                      Nearest put wall: ${r.creditSpread.nearestPutWall.strike} ({r.creditSpread.nearestPutWall.oi?.toLocaleString()} OI) — ${Math.abs(r.creditSpread.shortLeg.strike - r.creditSpread.nearestPutWall.strike).toFixed(1)} {r.creditSpread.shortLeg.strike > r.creditSpread.nearestPutWall.strike ? 'above' : 'below'} short strike
+                    </div>
+                  )}
+                  {r.putOIWalls?.length > 0 && (
+                    <div className="flex gap-3 mt-1 font-mono text-[9px]" style={{ color: 'var(--text-dim)' }}>
+                      {r.putOIWalls.map((w: any, i: number) => (
+                        <span key={i} style={{ color: w.strike === r.creditSpread.shortLeg.strike ? 'var(--green)' : 'var(--text-dim)' }}>
+                          ${w.strike}: {w.oi?.toLocaleString()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </DetailSection>
           )}
           {(activeStrategy === 'credit') && r.bearCallSpread && schwabConnected && (
@@ -1974,6 +1998,30 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Return on Risk" value={`${r.bearCallSpread.rorSpread}%`} color={r.bearCallSpread.rorSpread >= 30 ? 'var(--green)' : 'var(--gold)'} />
               <DetailRow label="Prob. of Profit" value={`~${r.bearCallSpread.pop}%`} />
               <DetailRow label="Manage At" value="50% of credit or 21 DTE" />
+              {/* OI Wall proximity */}
+              {r.bearCallSpread.nearestCallWall && (
+                <div className="px-4 py-2 mt-1 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-dim)' }}>Call OI Wall</div>
+                  {r.bearCallSpread.atWall ? (
+                    <div className="font-mono text-[10px]" style={{ color: 'var(--green)' }}>
+                      ✓ Short strike at call OI wall — {r.bearCallSpread.nearestCallWall.oi?.toLocaleString()} OI at ${r.bearCallSpread.nearestCallWall.strike}
+                    </div>
+                  ) : (
+                    <div className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                      Nearest call wall: ${r.bearCallSpread.nearestCallWall.strike} ({r.bearCallSpread.nearestCallWall.oi?.toLocaleString()} OI) — ${Math.abs(r.bearCallSpread.shortLeg.strike - r.bearCallSpread.nearestCallWall.strike).toFixed(1)} {r.bearCallSpread.shortLeg.strike < r.bearCallSpread.nearestCallWall.strike ? 'below' : 'above'} short strike
+                    </div>
+                  )}
+                  {r.callOIWalls?.length > 0 && (
+                    <div className="flex gap-3 mt-1 font-mono text-[9px]" style={{ color: 'var(--text-dim)' }}>
+                      {r.callOIWalls.map((w: any, i: number) => (
+                        <span key={i} style={{ color: w.strike === r.bearCallSpread.shortLeg.strike ? 'var(--green)' : 'var(--text-dim)' }}>
+                          ${w.strike}: {w.oi?.toLocaleString()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </DetailSection>
           )}
 
