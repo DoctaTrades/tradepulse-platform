@@ -67,31 +67,52 @@ export async function GET(req: NextRequest) {
     const allSymbols = [...MARKET_SYMBOLS, ...SECTOR_ETFS.map(s => s.symbol), ...BREADTH_SYMBOLS];
     const quotes = await getQuotes([...new Set(allSymbols)]);
 
-    // 2. Get VIX data
-    const vixQuote = quotes['$VIX.X']?.quote || quotes['VIX']?.quote;
-    const vixPrice = vixQuote?.lastPrice || vixQuote?.closePrice || 0;
-    let vixChange = vixQuote?.netPercentChangeInDouble || 0;
+    // 2. Get VIX data — Schwab doesn't reliably return index quotes like VIX
+    // Try Schwab first with multiple symbol formats, then Finnhub as fallback
+    let vixPrice = 0;
+    let vixChange = 0;
+    
+    // Try Schwab quote (multiple symbol formats)
+    const vixQuote = quotes['$VIX.X']?.quote || quotes['$VIX']?.quote || quotes['VIX']?.quote;
+    if (vixQuote && (vixQuote.lastPrice || vixQuote.closePrice)) {
+      vixPrice = vixQuote.lastPrice || vixQuote.closePrice || 0;
+      vixChange = vixQuote.netPercentChangeInDouble || vixQuote.netChange || 0;
+    }
 
-    // Fallback: calculate VIX change from close vs last price or previous close
-    if (!vixChange && vixPrice > 0) {
-      // Try closePrice (previous session close) vs lastPrice
-      const prevClose = vixQuote?.closePrice || vixQuote?.previousClose || vixQuote?.regularMarketLastPrice || 0;
-      if (prevClose > 0 && prevClose !== vixPrice) {
-        vixChange = Math.round(((vixPrice - prevClose) / prevClose) * 10000) / 100;
-      }
-      // If still 0, try price history
-      if (!vixChange) {
-        for (const vixSym of ['$VIX.X', 'VIX', '$VIX']) {
-          try {
-            const hist = await getPriceHistory(vixSym, { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
-            const candles = hist.candles || [];
-            if (candles.length >= 1) {
-              const pc = candles[candles.length - 1]?.close || 0;
-              if (pc > 0) { vixChange = Math.round(((vixPrice - pc) / pc) * 10000) / 100; break; }
+    // Finnhub fallback for VIX
+    if (!vixPrice) {
+      const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
+      if (FINNHUB_KEY) {
+        try {
+          const fhRes = await fetch(`https://finnhub.io/api/v1/quote?symbol=VIX&token=${FINNHUB_KEY}`);
+          if (fhRes.ok) {
+            const fhData = await fhRes.json();
+            if (fhData.c > 0) {
+              vixPrice = Math.round(fhData.c * 100) / 100; // current price
+              const prevClose = fhData.pc || 0; // previous close
+              if (prevClose > 0) {
+                vixChange = Math.round(((vixPrice - prevClose) / prevClose) * 10000) / 100;
+              }
             }
-          } catch {}
-        }
+          }
+        } catch {}
       }
+    }
+
+    // Last resort: use VIXY ETF as a proxy indicator
+    if (!vixPrice) {
+      try {
+        const vixyQuotes = await getQuotes(['VIXY']);
+        const vixyQ = vixyQuotes['VIXY']?.quote;
+        if (vixyQ?.lastPrice) {
+          // VIXY tracks VIX futures, not VIX directly, but gives directional context
+          vixPrice = vixyQ.lastPrice;
+          vixChange = vixyQ.netPercentChangeInDouble || 0;
+          if (!vixChange && vixyQ.closePrice && vixyQ.closePrice !== vixyQ.lastPrice) {
+            vixChange = Math.round(((vixyQ.lastPrice - vixyQ.closePrice) / vixyQ.closePrice) * 10000) / 100;
+          }
+        }
+      } catch {}
     }
     
     // VIX context
@@ -299,7 +320,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       vix: { price: vixPrice, change: vixChange, regime: vixRegime, context: vixContext },
-      _vixDebug: vixQuote ? Object.fromEntries(Object.entries(vixQuote).filter(([k,v]) => v !== null && v !== undefined && v !== 0 && v !== '')) : null,
       indices,
       sectors: sectorData,
       breadth: { rspChange, spyChange, divergence: breadthDivergence, signal: breadthSignal, context: breadthContext },
