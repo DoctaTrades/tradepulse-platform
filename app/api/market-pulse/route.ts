@@ -268,7 +268,7 @@ export async function GET(req: NextRequest) {
     
     // VIX component (inverted — low VIX = greed, high VIX = fear)
     const vixComponent = vixPrice < 15 ? 85 : vixPrice < 18 ? 70 : vixPrice < 22 ? 55 : vixPrice < 28 ? 35 : vixPrice < 35 ? 20 : 10;
-    fgComponents.push({ name: 'VIX Level', value: vixComponent, weight: 0.30 });
+    fgComponents.push({ name: 'VIX Sentiment', value: vixComponent, weight: 0.30 });
 
     // RSI component (high RSI = greed, low = fear)
     const spyRSI = spyTechnicals.rsi || 50;
