@@ -70,7 +70,20 @@ export async function GET(req: NextRequest) {
     // 2. Get VIX data
     const vixQuote = quotes['$VIX.X']?.quote || quotes['VIX']?.quote;
     const vixPrice = vixQuote?.lastPrice || vixQuote?.closePrice || 0;
-    const vixChange = vixQuote?.netPercentChangeInDouble || 0;
+    let vixChange = vixQuote?.netPercentChangeInDouble || 0;
+
+    // Fallback: calculate VIX change from price history
+    if (!vixChange && vixPrice > 0) {
+      try {
+        const vixSym = quotes['$VIX.X'] ? '$VIX.X' : 'VIX';
+        const hist = await getPriceHistory(vixSym, { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
+        const candles = hist.candles || [];
+        if (candles.length >= 1) {
+          const prevClose = candles[candles.length - 1]?.close || 0;
+          if (prevClose > 0) vixChange = Math.round(((vixPrice - prevClose) / prevClose) * 10000) / 100;
+        }
+      } catch {}
+    }
     
     // VIX context
     let vixRegime = 'unknown';
