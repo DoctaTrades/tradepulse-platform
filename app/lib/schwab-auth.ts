@@ -172,14 +172,23 @@ async function clearTokensInternal(userId?: string): Promise<void> {
   }
 }
 
-// ─── Ensure cache loaded ─────────────────────────────────
+// ─── Ensure cache loaded (with TTL to handle multi-instance Vercel deployments) ─────
 
-async function ensureCacheLoaded(userId?: string): Promise<void> {
+const cacheTimestamps: Record<string, number> = {};
+const CACHE_TTL_MS = 5 * 60 * 1000; // Reload from DB every 5 minutes
+
+async function ensureCacheLoaded(userId?: string, forceReload = false): Promise<void> {
   const key = getCacheKey(userId);
-  if (cacheLoadedMap[key]) return;
+  const now = Date.now();
+  const cacheAge = now - (cacheTimestamps[key] || 0);
+  
+  // Skip reload if cache is fresh and not forced
+  if (!forceReload && cacheLoadedMap[key] && cacheAge < CACHE_TTL_MS) return;
+  
   if (userId) await getUserCredentials(userId);
   tokenCacheMap[key] = await loadTokens(userId);
   cacheLoadedMap[key] = true;
+  cacheTimestamps[key] = now;
 }
 
 // ─── Public API ─────────────────────────────────────────
@@ -327,11 +336,19 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
 export async function getValidAccessToken(userId?: string): Promise<string> {
   await ensureCacheLoaded(userId);
   const key = getCacheKey(userId);
-  const cached = tokenCacheMap[key];
+  let cached = tokenCacheMap[key];
   if (!cached) throw new Error('NOT_AUTHENTICATED');
 
   if (Date.now() >= cached.expires_at - 120000) {
-    await refreshAccessToken(userId);
+    // Token expired or near-expiry — reload from DB first (another instance may have refreshed it)
+    await ensureCacheLoaded(userId, true);
+    cached = tokenCacheMap[key];
+    if (!cached) throw new Error('NOT_AUTHENTICATED');
+    
+    // If still expired after DB reload, do the actual refresh
+    if (Date.now() >= cached.expires_at - 120000) {
+      await refreshAccessToken(userId);
+    }
   }
 
   return tokenCacheMap[key]!.access_token;
