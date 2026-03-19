@@ -109,7 +109,34 @@ export async function GET() {
           frequencyType: 'daily',
           frequency: '1',
         });
-        historyMap[sym] = hist.candles || [];
+        let candles = hist.candles || [];
+
+        // Append today's candle from quote data if not already in history
+        // Schwab daily history often doesn't include the current/most recent session until overnight
+        const q = quoteData[sym]?.quote;
+        if (q && (q.openPrice || q.highPrice)) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const todayMs = today.getTime();
+          const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+          const lastCandleDate = lastCandle ? new Date(lastCandle.datetime) : null;
+          if (lastCandleDate) lastCandleDate.setHours(0, 0, 0, 0);
+          const lastCandleMs = lastCandleDate ? lastCandleDate.getTime() : 0;
+
+          // If the last candle is older than today, append today's data from the quote
+          if (lastCandleMs < todayMs && q.openPrice && q.highPrice && q.lowPrice && (q.lastPrice || q.closePrice)) {
+            candles.push({
+              datetime: todayMs,
+              open: q.openPrice,
+              high: q.highPrice,
+              low: q.lowPrice,
+              close: q.lastPrice || q.closePrice,
+              volume: q.totalVolume || 0,
+            });
+          }
+        }
+
+        historyMap[sym] = candles;
       } catch {
         historyMap[sym] = [];
       }

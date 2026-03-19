@@ -6,6 +6,29 @@ const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
 let _equityUserId: string | undefined;
 
+// Append today's candle from quote data if price history doesn't include it yet
+function appendTodayCandle(candles: any[], quote: any): any[] {
+  if (!quote || !candles.length) return candles;
+  if (!quote.openPrice || !quote.highPrice || !quote.lowPrice || !(quote.lastPrice || quote.closePrice)) return candles;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayMs = today.getTime();
+  const lastCandle = candles[candles.length - 1];
+  const lastDate = new Date(lastCandle.datetime);
+  lastDate.setHours(0, 0, 0, 0);
+  if (lastDate.getTime() < todayMs) {
+    return [...candles, {
+      datetime: todayMs,
+      open: quote.openPrice,
+      high: quote.highPrice,
+      low: quote.lowPrice,
+      close: quote.lastPrice || quote.closePrice,
+      volume: quote.totalVolume || 0,
+    }];
+  }
+  return candles;
+}
+
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
   const token = await getValidAccessToken(_equityUserId);
   const url = new URL(`${SCHWAB_BASE}${endpoint}`);
@@ -269,7 +292,7 @@ export async function POST(req: NextRequest) {
         frequencyType: 'daily',
         frequency: '1',
       });
-      sectorHistory[etf] = hist.candles || [];
+      sectorHistory[etf] = appendTodayCandle(hist.candles || [], allQuotes[etf]?.quote);
       sectorReturns[etf] = calcReturn(sectorHistory[etf], 20);
     } catch {
       sectorHistory[etf] = [];
@@ -297,7 +320,7 @@ export async function POST(req: NextRequest) {
           frequencyType: 'daily',
           frequency: '1',
         });
-        candles = hist.candles || [];
+        candles = appendTodayCandle(hist.candles || [], quote);
       } catch { continue; }
 
       if (candles.length < 30) continue;

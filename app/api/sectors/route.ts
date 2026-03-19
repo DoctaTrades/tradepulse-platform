@@ -25,6 +25,30 @@ function classifyStrat(candle: any, prev: any): string {
   return '1';
 }
 
+// Append today's candle from quote data if price history doesn't include it yet
+function appendTodayCandle(candles: any[], quote: any): any[] {
+  if (!quote || !candles.length) return candles;
+  const q = quote;
+  if (!q.openPrice || !q.highPrice || !q.lowPrice || !(q.lastPrice || q.closePrice)) return candles;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayMs = today.getTime();
+  const lastCandle = candles[candles.length - 1];
+  const lastDate = new Date(lastCandle.datetime);
+  lastDate.setHours(0, 0, 0, 0);
+  if (lastDate.getTime() < todayMs) {
+    return [...candles, {
+      datetime: todayMs,
+      open: q.openPrice,
+      high: q.highPrice,
+      low: q.lowPrice,
+      close: q.lastPrice || q.closePrice,
+      volume: q.totalVolume || 0,
+    }];
+  }
+  return candles;
+}
+
 function aggregateCandles(dailyCandles: any[], period: number): any[] {
   const result: any[] = [];
   for (let i = 0; i <= dailyCandles.length - period; i += period) {
@@ -125,7 +149,7 @@ export async function GET(req: NextRequest) {
             frequencyType: 'daily',
             frequency: '1',
           });
-          const candles = hist.candles || [];
+          const candles = appendTodayCandle(hist.candles || [], q);
           if (candles.length >= 2) {
             dailyStrat = getLastStrat(candles);
             rsi = calcRSI(candles);
@@ -236,7 +260,7 @@ export async function GET(req: NextRequest) {
             frequencyType: 'daily',
             frequency: '1',
           });
-          const candles = hist.candles || [];
+          const candles = appendTodayCandle(hist.candles || [], q);
           if (candles.length >= 2) {
             dailyStrat = getLastStrat(candles);
             rsi = calcRSI(candles);
