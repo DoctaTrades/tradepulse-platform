@@ -155,8 +155,8 @@ export async function GET(req: NextRequest) {
             rsi = calcRSI(candles);
 
             // Fallback: calculate today's change from yesterday's close
-            if (!changePct && price > 0) {
-              const prevClose = candles[candles.length - 1]?.close || candles[candles.length - 2]?.close || 0;
+            if (!changePct && price > 0 && candles.length >= 2) {
+              const prevClose = candles[candles.length - 2]?.close || 0;
               if (prevClose > 0) {
                 changePct = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
               }
@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
 
         const price = q.lastPrice || q.closePrice || 0;
         const change = q.netChange || 0;
-        const changePct = q.netPercentChangeInDouble || 0;
+        let changePct = q.netPercentChangeInDouble || 0;
         const volume = q.totalVolume || 0;
 
         let dailyStrat = '?', weeklyStrat = '?', rsi = 50;
@@ -270,6 +270,14 @@ export async function GET(req: NextRequest) {
             const recentVols = candles.slice(-20).map((c: any) => c.volume || 0);
             avgVolume = Math.round(recentVols.reduce((a: number, b: number) => a + b, 0) / recentVols.length);
             volRatio = avgVolume > 0 ? Math.round((volume / avgVolume) * 100) / 100 : 0;
+
+            // Fallback: calculate change from yesterday's close
+            if (!changePct && price > 0) {
+              const prevClose = candles[candles.length - 2]?.close || 0;
+              if (prevClose > 0) {
+                changePct = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+              }
+            }
           }
         } catch {}
 
