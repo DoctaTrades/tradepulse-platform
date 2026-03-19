@@ -298,8 +298,23 @@ export async function GET(req: NextRequest) {
 
         const fromHigh = wk52High > 0 ? Math.round(((price - wk52High) / wk52High) * 10000) / 100 : 0;
 
-        // Market cap — try fundamental fields
-        const mktCap = fund?.marketCap || fund?.mktCap || fund?.marketCapFloat || q?.marketCap || 0;
+        // Market cap — try multiple fields, calculate from shares outstanding as fallback
+        let mktCap = fund?.marketCap || fund?.mktCap || fund?.marketCapFloat || q?.marketCap || 0;
+        if (!mktCap && fund) {
+          // Try calculating: price × shares outstanding
+          const shares = fund?.sharesOutstanding || fund?.shares || fund?.float || 0;
+          if (shares > 0 && price > 0) mktCap = Math.round(price * shares);
+        }
+        // Finnhub fallback for market cap (only if we still don't have it and key exists)
+        if (!mktCap && FINNHUB_KEY) {
+          try {
+            const profileRes = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${FINNHUB_KEY}`);
+            if (profileRes.ok) {
+              const profile = await profileRes.json();
+              mktCap = profile?.marketCapitalization ? Math.round(profile.marketCapitalization * 1e6) : 0;
+            }
+          } catch {}
+        }
 
         return {
           ticker,

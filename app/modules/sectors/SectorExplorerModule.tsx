@@ -280,7 +280,7 @@ export default function SectorExplorerModule() {
                     <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2.5 text-left border-b cursor-pointer select-none" style={{ color: sortBy === 'volRatio' ? 'var(--blue3)' : 'var(--text-dim)', borderColor: 'var(--border)' }}
                       onClick={() => toggleSort('volRatio')}>Vol {sortBy === 'volRatio' && (sortDir === 'desc' ? '▼' : '▲')}</th>
                     <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2.5 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>Mkt Cap</th>
-                    <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2.5 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>From 52wH</th>
+                    <th className="font-mono text-[9px] uppercase tracking-wider px-3 py-2.5 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>From 3M High</th>
                   </tr>
                 </thead>
                 <tbody>
