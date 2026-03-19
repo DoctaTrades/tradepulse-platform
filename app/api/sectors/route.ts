@@ -251,6 +251,7 @@ export async function GET(req: NextRequest) {
 
         let dailyStrat = '?', weeklyStrat = '?', rsi = 50;
         let avgVolume = 0, volRatio = 0;
+        let candles: any[] = [];
 
         try {
           const hist = await schwabFetch('/pricehistory', {
@@ -260,7 +261,7 @@ export async function GET(req: NextRequest) {
             frequencyType: 'daily',
             frequency: '1',
           });
-          const candles = appendTodayCandle(hist.candles || [], q);
+          candles = appendTodayCandle(hist.candles || [], q);
           if (candles.length >= 2) {
             dailyStrat = getLastStrat(candles);
             rsi = calcRSI(candles);
@@ -281,10 +282,24 @@ export async function GET(req: NextRequest) {
           }
         } catch {}
 
-        // Trend: price vs EMAs (approximate from quote data)
-        const wk52High = q['52WkHigh'] || q.fiftyTwoWeekHigh || 0;
-        const wk52Low = q['52WkLow'] || q.fiftyTwoWeekLow || 0;
+        // 52-week high/low — try multiple Schwab field names + candle fallback
+        let wk52High = q['52WkHigh'] || q.fiftyTwoWeekHigh || q['52WeekHigh'] || q.yearHigh || 0;
+        let wk52Low = q['52WkLow'] || q.fiftyTwoWeekLow || q['52WeekLow'] || q.yearLow || 0;
+
+        // Fallback: calculate from candle data if quote doesn't have it
+        if (!wk52High && candles.length >= 2) {
+          const highs = candles.map((c: any) => c.high || 0);
+          wk52High = Math.max(...highs);
+        }
+        if (!wk52Low && candles.length >= 2) {
+          const lows = candles.filter((c: any) => c.low > 0).map((c: any) => c.low);
+          wk52Low = lows.length > 0 ? Math.min(...lows) : 0;
+        }
+
         const fromHigh = wk52High > 0 ? Math.round(((price - wk52High) / wk52High) * 10000) / 100 : 0;
+
+        // Market cap — try fundamental fields
+        const mktCap = fund?.marketCap || fund?.mktCap || fund?.marketCapFloat || q?.marketCap || 0;
 
         return {
           ticker,
@@ -297,7 +312,7 @@ export async function GET(req: NextRequest) {
           dailyStrat,
           weeklyStrat,
           rsi,
-          mktCap: fund?.marketCap || 0,
+          mktCap,
           fromHigh,
           wk52High: Math.round((wk52High || 0) * 100) / 100,
           wk52Low: Math.round((wk52Low || 0) * 100) / 100,
