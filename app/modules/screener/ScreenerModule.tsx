@@ -734,7 +734,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>● LIVE</span>
                       <button onClick={() => {
-                        const authUrl = `/api/schwab/auth${user?.id ? `?userId=${user.id}` : ''}`;
+                        // Admin uses legacy auth (no userId) so tokens go to pr_tokens for all routes
+                        const authUrl = isAdmin ? '/api/schwab/auth' : `/api/schwab/auth?userId=${user?.id}`;
                         window.open(authUrl, '_blank', 'width=600,height=700');
                       }} className="font-mono text-[9px] px-2 py-1 rounded cursor-pointer" style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '1px solid rgba(234,179,8,0.2)' }}>
                         ↻ Reconnect
