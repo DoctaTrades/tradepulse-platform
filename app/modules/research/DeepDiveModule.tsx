@@ -17,6 +17,7 @@ interface DeepDiveData {
   healthChecks: { name: string; value: string; score: 'green' | 'yellow' | 'red'; detail: string }[];
   tradingContext: string;
   rating: string | null;
+  sectorETFs?: { etf: string; label: string; color: string; tickerCount: number }[];
   error?: string;
 }
 
@@ -119,6 +120,22 @@ export default function DeepDiveModule() {
               </div>
             </div>
           </div>
+
+          {/* ═══ SECTOR ETF MEMBERSHIP ═══ */}
+          {data.sectorETFs && data.sectorETFs.length > 0 && (
+            <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+              {data.sectorETFs.map(s => (
+                <div key={s.etf} style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }} />
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', fontFamily: "'Rajdhani', sans-serif" }}>{s.etf}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>{s.label}</span>
+                  </div>
+                  <span style={{ fontSize: 9, color: 'var(--text-dim)', fontFamily: 'monospace' }}>({s.tickerCount} holdings)</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ═══ HEALTH CHECK + TRADING CONTEXT ═══ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>

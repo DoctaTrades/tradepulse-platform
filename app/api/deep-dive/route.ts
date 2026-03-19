@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSectorByTicker, SECTORS } from '@/app/lib/sector-holdings';
 
 export const dynamic = 'force-dynamic';
 
@@ -270,6 +271,11 @@ export async function GET(req: NextRequest) {
       healthChecks,
       tradingContext,
       rating: rating.ratingRecommendation || null,
+      // Sector ETF membership
+      sectorETFs: (() => {
+        const matches = SECTORS.filter(s => s.tickers.includes(ticker));
+        return matches.map(s => ({ etf: s.etf, label: s.label, color: s.color, tickerCount: s.tickers.length }));
+      })(),
     });
 
   } catch (e: any) {
