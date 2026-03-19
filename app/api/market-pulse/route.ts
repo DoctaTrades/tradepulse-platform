@@ -299,6 +299,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       vix: { price: vixPrice, change: vixChange, regime: vixRegime, context: vixContext },
+      _vixDebug: vixQuote ? Object.fromEntries(Object.entries(vixQuote).filter(([k,v]) => v !== null && v !== undefined && v !== 0 && v !== '')) : null,
       indices,
       sectors: sectorData,
       breadth: { rspChange, spyChange, divergence: breadthDivergence, signal: breadthSignal, context: breadthContext },
