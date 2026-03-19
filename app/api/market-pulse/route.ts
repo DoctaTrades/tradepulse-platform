@@ -165,8 +165,33 @@ export async function GET(req: NextRequest) {
     // 5. Breadth — RSP vs SPY divergence
     const rspQuote = quotes['RSP']?.quote;
     const spyQuote = quotes['SPY']?.quote;
-    const rspChange = rspQuote?.netPercentChangeInDouble || 0;
-    const spyChange = spyQuote?.netPercentChangeInDouble || 0;
+    let rspChange = rspQuote?.netPercentChangeInDouble || 0;
+    let spyChange = spyQuote?.netPercentChangeInDouble || 0;
+
+    // Fallback: calculate from price history if quote returns 0
+    if (!rspChange && rspQuote) {
+      try {
+        const hist = await getPriceHistory('RSP', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
+        const candles = hist.candles || [];
+        const price = rspQuote.lastPrice || rspQuote.closePrice || 0;
+        if (candles.length >= 1 && price > 0) {
+          const prevClose = candles[candles.length - 1]?.close || 0;
+          if (prevClose > 0) rspChange = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+        }
+      } catch {}
+    }
+    if (!spyChange && spyQuote) {
+      try {
+        const hist = await getPriceHistory('SPY', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
+        const candles = hist.candles || [];
+        const price = spyQuote.lastPrice || spyQuote.closePrice || 0;
+        if (candles.length >= 1 && price > 0) {
+          const prevClose = candles[candles.length - 1]?.close || 0;
+          if (prevClose > 0) spyChange = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+        }
+      } catch {}
+    }
+
     const breadthDivergence = Math.round((rspChange - spyChange) * 100) / 100;
     
     let breadthSignal = 'neutral';
