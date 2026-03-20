@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getTokenStatus, isAuthenticated, refreshAccessToken } from '@/app/lib/schwab-auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
-  return NextResponse.json(await getTokenStatus());
+  // Try to validate and refresh the token, then return status
+  try {
+    const authenticated = await isAuthenticated();
+    const status = await getTokenStatus();
+    return NextResponse.json({ ...status, connected: authenticated });
+  } catch {
+    return NextResponse.json({ connected: false, expiresAt: null, refreshExpiresEstimate: 'N/A', hasCredentials: false });
+  }
 }
 
 export async function POST() {

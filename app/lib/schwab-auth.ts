@@ -151,24 +151,28 @@ async function loadTokens(userId?: string): Promise<SchwabTokens | null> {
   }
 }
 
-async function clearTokensInternal(userId?: string): Promise<void> {
+async function clearTokensInternal(userId?: string, clearDB = false): Promise<void> {
   const key = getCacheKey(userId);
   tokenCacheMap[key] = null;
   cacheLoadedMap[key] = false;
 
-  if (userId) {
-    try {
-      await supabase
-        .from('user_schwab_credentials')
-        .update({ access_token: null, refresh_token: null, access_expires_at: null, refresh_expires_at: null, updated_at: new Date().toISOString() })
-        .eq('user_id', userId);
-    } catch {}
-  } else {
-    try {
-      await supabase
-        .from('pr_tokens')
-        .upsert({ id: 'schwab_tokens', access_token: null, refresh_token: null, access_expires_at: null, refresh_expires_at: null, updated_at: new Date().toISOString() });
-    } catch {}
+  // Only wipe DB tokens when explicitly requested (e.g. user disconnects)
+  // Don't wipe on refresh failures — the refresh token may still be valid for a retry
+  if (clearDB) {
+    if (userId) {
+      try {
+        await supabase
+          .from('user_schwab_credentials')
+          .update({ access_token: null, refresh_token: null, access_expires_at: null, refresh_expires_at: null, updated_at: new Date().toISOString() })
+          .eq('user_id', userId);
+      } catch {}
+    } else {
+      try {
+        await supabase
+          .from('pr_tokens')
+          .upsert({ id: 'schwab_tokens', access_token: null, refresh_token: null, access_expires_at: null, refresh_expires_at: null, updated_at: new Date().toISOString() });
+      } catch {}
+    }
   }
 }
 
@@ -355,13 +359,16 @@ export async function getValidAccessToken(userId?: string): Promise<string> {
 }
 
 export async function isAuthenticated(userId?: string): Promise<boolean> {
-  await ensureCacheLoaded(userId);
-  const key = getCacheKey(userId);
-  return tokenCacheMap[key] !== null && tokenCacheMap[key]!.access_token !== null;
+  try {
+    await getValidAccessToken(userId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function getTokenStatus(userId?: string): Promise<{ connected: boolean; expiresAt: number | null; refreshExpiresEstimate: string; hasCredentials: boolean }> {
-  await ensureCacheLoaded(userId);
+  await ensureCacheLoaded(userId, true); // Always reload from DB for status checks
   const key = getCacheKey(userId);
   const cached = tokenCacheMap[key];
   const hasUserCreds = userId ? !!(await getUserCredentials(userId)) : !!getLegacyCredentials();
