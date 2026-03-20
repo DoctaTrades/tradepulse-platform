@@ -168,6 +168,25 @@ export const ECONOMIC_CALENDAR_2026: EconomicEvent[] = [
   { date: '2026-10-07', time: '10:00', event: 'JOLTS Job Openings (Aug)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
   { date: '2026-11-04', time: '10:00', event: 'JOLTS Job Openings (Sep)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
   { date: '2026-12-09', time: '10:00', event: 'JOLTS Job Openings (Oct)', impact: 'medium', category: 'JOLTS', notes: 'Fed watches labor demand' },
+
+  // ═══ QUAD WITCHING (4x/year — third Friday of Mar, Jun, Sep, Dec) ═══
+  // Stock options, index options, index futures, single-stock futures all expire simultaneously
+  // Massive volume, volatility, and price pinning — especially in the last hour
+  { date: '2026-03-20', time: '16:00', event: 'Quad Witching', impact: 'high', category: 'OPEX', notes: 'Q1 — stock options, index options, index futures all expire. Expect heavy volume & volatility, especially last hour' },
+  { date: '2026-06-18', time: '16:00', event: 'Quad Witching', impact: 'high', category: 'OPEX', notes: 'Q2 — moved to Thursday (Juneteenth holiday Friday). Expect heavy volume & volatility' },
+  { date: '2026-09-18', time: '16:00', event: 'Quad Witching', impact: 'high', category: 'OPEX', notes: 'Q3 — stock options, index options, index futures all expire. Expect heavy volume & volatility, especially last hour' },
+  { date: '2026-12-18', time: '16:00', event: 'Quad Witching', impact: 'high', category: 'OPEX', notes: 'Q4 — stock options, index options, index futures all expire. Expect heavy volume & volatility, especially last hour' },
+
+  // ═══ MONTHLY OPEX (third Friday of non-quad months) ═══
+  // Standard monthly options expiration — elevated volume & gamma risk near close
+  { date: '2026-01-16', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
+  { date: '2026-02-20', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
+  { date: '2026-04-17', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
+  { date: '2026-05-15', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
+  { date: '2026-07-17', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
+  { date: '2026-08-21', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
+  { date: '2026-10-16', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
+  { date: '2026-11-20', time: '16:00', event: 'Monthly OPEX', impact: 'medium', category: 'OPEX', notes: 'Monthly options expiration — elevated volume, gamma risk near close' },
 ];
 
 // Generate weekly jobless claims for the full year (every Thursday)
