@@ -717,7 +717,7 @@ function CalendarLegRow({ leg, index, onChange, showRolls }) {
 }
 
 // ─── TRADE MODAL ──────────────────────────────────────────────────────────────
-function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields, playbooks, accountBalances }) {
+function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields, playbooks, accountBalances, onAssign }) {
   // Migrate old trades: convert pointValue to tickValue if needed
   const migratedTrade = editTrade ? {
     ...editTrade,
@@ -1048,12 +1048,48 @@ function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields,
         </div>
 
         {/* ── ACTIONS ── */}
-        <div style={{ display:"flex", justifyContent:"flex-end", gap:10 }}>
-          <button onClick={onClose} style={{ padding:"9px 20px", borderRadius:8, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:13 }}>Cancel</button>
-          <button onClick={handleSave} style={{ padding:"9px 24px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600, boxShadow:"0 4px 14px rgba(99,102,241,0.3)" }}>
-            {editTrade ? "Update Trade" : "Log Trade"}
-          </button>
-        </div>
+        {(() => {
+          // Detect if this is an open CSP (Single Leg Sell Put)
+          const isOpenCSP = editTrade && trade.status === "Open" && trade.assetType === "Options"
+            && (trade.optionsStrategyType === "Single Leg" || trade.optionsStrategyType === "Cash Secured Put")
+            && trade.legs?.length === 1 && trade.legs[0]?.action === "Sell" && trade.legs[0]?.type === "Put";
+          return (
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+              <div>
+                {isOpenCSP && onAssign && (
+                  <button onClick={() => {
+                    const leg = trade.legs[0];
+                    const contracts = parseInt(leg.contracts) || 1;
+                    const strike = parseFloat(leg.strike) || 0;
+                    const premium = parseFloat(leg.entryPremium) || 0;
+                    const shares = contracts * 100;
+                    const costBasis = strike - premium;
+                    if (confirm(`Mark as assigned?\n\nThis will:\n• Close this CSP trade\n• Add ${shares} shares of ${trade.ticker} to Holdings\n• Cost basis: $${costBasis.toFixed(2)}/share (strike $${strike} − premium $${premium})\n• Account: ${trade.account || "Default"}`)) {
+                      onAssign({
+                        optionsTrade: trade,
+                        ticker: trade.ticker,
+                        shares,
+                        costBasis,
+                        strike,
+                        premium,
+                        account: trade.account || "",
+                        expiry: leg.expiration || trade.date,
+                      });
+                    }
+                  }} style={{ padding:"9px 18px", borderRadius:8, border:"1px solid rgba(234,179,8,0.3)", background:"rgba(234,179,8,0.08)", color:"#eab308", cursor:"pointer", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
+                    📦 Mark Assigned ({(parseInt(trade.legs[0]?.contracts)||1)*100} shares)
+                  </button>
+                )}
+              </div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={onClose} style={{ padding:"9px 20px", borderRadius:8, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:13 }}>Cancel</button>
+                <button onClick={handleSave} style={{ padding:"9px 24px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600, boxShadow:"0 4px 14px rgba(99,102,241,0.3)" }}>
+                  {editTrade ? "Update Trade" : "Log Trade"}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -10175,6 +10211,50 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
     setShowTradeModal(false); setEditingTrade(null);
   }, []);
   const handleTradeDelete = useCallback(id => setTrades(prev=>prev.filter(t=>t.id!==id)), []);
+  const handleAssignment = useCallback(({ optionsTrade, ticker, shares, costBasis, strike, premium, account, expiry }) => {
+    // 1. Close the CSP options trade with P&L = premium collected (full profit since assigned at strike)
+    const closedTrade = {
+      ...optionsTrade,
+      status: "Closed",
+      exitDate: new Date().toISOString().split("T")[0],
+      notes: (optionsTrade.notes || "") + `\n📦 Assigned ${shares} shares @ $${strike} strike. Cost basis: $${costBasis.toFixed(2)}/share.`,
+    };
+    // Set exit premium to 0 (assigned, not bought back)
+    if (closedTrade.legs?.[0]) {
+      closedTrade.legs = [{ ...closedTrade.legs[0], exitPremium: "0" }];
+    }
+    closedTrade.pnl = calcPnL(closedTrade);
+
+    setTrades(prev => {
+      const idx = prev.findIndex(t => t.id === optionsTrade.id);
+      if (idx >= 0) { const u = [...prev]; u[idx] = closedTrade; return u; }
+      return prev;
+    });
+
+    // 2. Create stock holding for the assigned shares
+    const holdingId = `csp-assigned-${optionsTrade.id}`;
+    setTrades(prev => {
+      if (prev.find(t => t.id === holdingId)) return prev;
+      return [{
+        id: holdingId,
+        ticker,
+        date: expiry || new Date().toISOString().split("T")[0],
+        assetType: "Stocks",
+        direction: "Long",
+        status: "Open",
+        entryPrice: String(costBasis.toFixed(2)),
+        quantity: String(shares),
+        account,
+        timeframe: "Swing",
+        notes: `Assigned from CSP @ $${strike} strike. Premium received: $${premium.toFixed(2)}/share. Net cost basis: $${costBasis.toFixed(2)}/share.`,
+        tradeStrategy: "Wheel Strategy",
+        source: "csp-assignment",
+      }, ...prev];
+    });
+
+    setShowTradeModal(false);
+    setEditingTrade(null);
+  }, []);
   const promoteTrade = prefill => { setEditingTrade(emptyTrade(prefill)); setShowTradeModal(true); };
 
 
@@ -10221,7 +10301,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
       {tab==="log" && <TradeLog trades={trades} onEdit={t=>{setEditingTrade(t);setShowTradeModal(true);}} onDelete={handleTradeDelete} theme={theme} prefs={prefs}/>}
       {tab==="reports" && <ReportsTab trades={trades} wheelTrades={wheelTrades} accountBalances={accountBalances} customFields={customFields} theme={theme} prefs={prefs}/>}
       {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances}/>}
-      {showTradeModal && <TradeModal onSave={handleTradeSave} onClose={()=>{setShowTradeModal(false);setEditingTrade(null);}} editTrade={editingTrade} futuresSettings={futuresSettings} customFields={customFields} playbooks={playbooks} theme={theme} accountBalances={accountBalances}/>}
+      {showTradeModal && <TradeModal onSave={handleTradeSave} onClose={()=>{setShowTradeModal(false);setEditingTrade(null);}} editTrade={editingTrade} futuresSettings={futuresSettings} customFields={customFields} playbooks={playbooks} theme={theme} accountBalances={accountBalances} onAssign={handleAssignment}/>}
       {showMigration && <MigrationPrompt onMigrate={handleMigrate} onSkip={()=>setShowMigration(false)}/>}
     </>
   );
