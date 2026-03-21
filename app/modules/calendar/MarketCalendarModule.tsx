@@ -70,6 +70,7 @@ export default function MarketCalendarModule() {
   const [error, setError] = useState('');
   const [economic, setEconomic] = useState<EconomicEvent[]>([]);
   const [earnings, setEarnings] = useState<EarningsEvent[]>([]);
+  const [candleOpens, setCandleOpens] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [activeView, setActiveView] = useState<'economic' | 'earnings'>('economic');
   const [impactFilter, setImpactFilter] = useState<'all' | 'high' | 'medium'>('all');
@@ -83,6 +84,7 @@ export default function MarketCalendarModule() {
       if (data.error) throw new Error(data.error);
       setEconomic(data.economic || []);
       setEarnings(data.earnings || []);
+      setCandleOpens(data.candleOpens || []);
       setDateRange({ from: data.from, to: data.to });
       setEconSource(data.economicSource || 'static');
     } catch (e: any) {
@@ -210,6 +212,30 @@ export default function MarketCalendarModule() {
                     <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>{dayDates[i] || ''}</div>
                   </div>
                   <div style={{ padding: 8, minHeight: 100 }}>
+                    {/* Candle Opens */}
+                    {(() => {
+                      const dayDate = dayDates[i];
+                      const opens = candleOpens.find((c: any) => c.date === dayDate);
+                      if (!opens) return null;
+                      const hasMonthly = opens.monthly?.length > 0;
+                      const hasWeekly = opens.weekly?.length > 0;
+                      return (
+                        <div style={{ padding: '6px 6px 8px', marginBottom: 6, borderBottom: '1px solid rgba(99,102,241,0.12)', background: hasMonthly ? 'rgba(168,85,247,0.06)' : hasWeekly ? 'rgba(99,102,241,0.04)' : 'transparent', borderRadius: 6 }}>
+                          <div style={{ fontSize: 8, fontWeight: 700, color: hasMonthly ? '#c084fc' : '#818cf8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>🕯 New Candles</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                            {opens.monthly?.map((n: number) => (
+                              <span key={`m${n}`} style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: 'rgba(168,85,247,0.2)', color: '#c084fc' }}>{n}M</span>
+                            ))}
+                            {opens.weekly?.map((n: number) => (
+                              <span key={`w${n}`} style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: 'rgba(59,130,246,0.2)', color: '#93c5fd' }}>{n}W</span>
+                            ))}
+                            {opens.daily?.filter((n: number) => n > 1).map((n: number) => (
+                              <span key={`d${n}`} style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: n >= 6 ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.06)', color: n >= 6 ? '#fbbf24' : 'var(--text-dim)' }}>{n}D</span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {events.length === 0 && (
                       <div style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic', padding: '12px 4px', textAlign: 'center' }}>No events</div>
                     )}

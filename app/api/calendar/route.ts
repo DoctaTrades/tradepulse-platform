@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEconomicEvents } from '@/app/lib/economic-calendar-2026';
+import { getCandleOpens } from '@/app/lib/candle-opens-2026';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
@@ -146,10 +147,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Candle opens for the week
+    const candleOpens = getCandleOpens(from, to);
+
     return NextResponse.json({
       from, to, week,
       economic: economicEvents,
       earnings: earningsEvents,
+      candleOpens,
       economicCount: economicEvents.length,
       earningsCount: earningsEvents.length,
       economicSource,
