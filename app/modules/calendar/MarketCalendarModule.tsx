@@ -131,12 +131,14 @@ export default function MarketCalendarModule() {
 
   // Get dates for each day
   const dayDates: string[] = [];
+  const dayISO: string[] = [];
   if (dateRange.from) {
     const start = new Date(dateRange.from + 'T12:00:00');
     for (let i = 0; i < 5; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       dayDates.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+      dayISO.push(d.toISOString().split('T')[0]);
     }
   }
 
@@ -214,7 +216,7 @@ export default function MarketCalendarModule() {
                   <div style={{ padding: 8, minHeight: 100 }}>
                     {/* Candle Opens */}
                     {(() => {
-                      const dayDate = dayDates[i];
+                      const dayDate = dayISO[i];
                       const opens = candleOpens.find((c: any) => c.date === dayDate);
                       if (!opens) return null;
                       const hasMonthly = opens.monthly?.length > 0;
