@@ -28,6 +28,7 @@ export default function DeepDiveModule() {
   const [error, setError] = useState('');
   const [stratMatrix, setStratMatrix] = useState<any>(null);
   const [matrixLoading, setMatrixLoading] = useState(false);
+  const [matrixCollapsed, setMatrixCollapsed] = useState(false);
 
   const loadData = useCallback(async (sym?: string) => {
     const t = (sym || ticker).toUpperCase().trim();
@@ -157,10 +158,13 @@ export default function DeepDiveModule() {
           )}
           {stratMatrix && (
             <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
-              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>Multi-Timeframe Strat Matrix</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{stratMatrix.summary.totalSetups} setups across {stratMatrix.matrix.length} timeframes</div>
+              <div onClick={() => setMatrixCollapsed(c => !c)} style={{ padding: '14px 18px', borderBottom: matrixCollapsed ? 'none' : '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', transition: 'transform 0.2s', transform: matrixCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+                  <div>
+                    <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>Multi-Timeframe Strat Matrix</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{stratMatrix.summary.totalSetups} setups across {stratMatrix.matrix.length} timeframes</div>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {stratMatrix.summary.bullishSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>▲ {stratMatrix.summary.bullishSetups} Bull</span>}
@@ -169,6 +173,7 @@ export default function DeepDiveModule() {
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: stratMatrix.summary.bias === 'BULLISH' ? 'rgba(74,222,128,0.12)' : stratMatrix.summary.bias === 'BEARISH' ? 'rgba(248,113,113,0.12)' : 'rgba(255,255,255,0.06)', color: stratMatrix.summary.bias === 'BULLISH' ? '#4ade80' : stratMatrix.summary.bias === 'BEARISH' ? '#f87171' : 'var(--text-dim)' }}>Bias: {stratMatrix.summary.bias}</span>
                 </div>
               </div>
+              {!matrixCollapsed && (<>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
@@ -244,6 +249,7 @@ export default function DeepDiveModule() {
                 <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(99,102,241,0.3)', marginRight: 3 }}/>3 (outside)</span>
                 <span style={{ marginLeft: 'auto' }}>↑↓ = breakout triggers</span>
               </div>
+              </>)}
             </div>
           )}
 
