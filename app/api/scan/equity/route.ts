@@ -189,8 +189,10 @@ function detectStratSetups(candles: any[]): any[] {
 function scanTicker(ticker: string, dailyCandles: any[], min5CR: number): any {
   // Define timeframes: [label, aggregation period in days]
   const timeframes: [string, number][] = [
-    ['1D', 1], ['2D', 2], ['3D', 3], ['5D', 5], ['10D', 10],
-    ['1W', 5], ['2W', 10], ['3W', 15],
+    ['1D', 1], ['2D', 2], ['3D', 3], ['4D', 4], ['5D', 5],
+    ['6D', 6], ['7D', 7], ['8D', 8], ['9D', 9], ['10D', 10],
+    ['11D', 11], ['12D', 12],
+    ['1W', 5], ['2W', 10], ['3W', 15], ['4W', 20],
     ['1M', 21], ['2M', 42], ['3M', 63],
   ];
 

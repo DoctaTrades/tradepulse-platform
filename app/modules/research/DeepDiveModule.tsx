@@ -26,6 +26,8 @@ export default function DeepDiveModule() {
   const [data, setData] = useState<DeepDiveData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [stratMatrix, setStratMatrix] = useState<any>(null);
+  const [matrixLoading, setMatrixLoading] = useState(false);
 
   const loadData = useCallback(async (sym?: string) => {
     const t = (sym || ticker).toUpperCase().trim();
@@ -33,6 +35,7 @@ export default function DeepDiveModule() {
     setLoading(true);
     setError('');
     setData(null);
+    setStratMatrix(null);
     try {
       const res = await fetch(`/api/deep-dive?ticker=${t}`);
       const d = await res.json();
@@ -42,6 +45,15 @@ export default function DeepDiveModule() {
       setError(e.message);
     }
     setLoading(false);
+
+    // Also fetch Strat matrix (independent of FMP)
+    setMatrixLoading(true);
+    try {
+      const mRes = await fetch(`/api/strat-matrix?ticker=${t}`);
+      const mData = await mRes.json();
+      if (!mData.error) setStratMatrix(mData);
+    } catch {}
+    setMatrixLoading(false);
   }, [ticker]);
 
   const fmtB = (n: number) => {
@@ -134,6 +146,104 @@ export default function DeepDiveModule() {
                   <span style={{ fontSize: 9, color: 'var(--text-dim)', fontFamily: 'monospace' }}>({s.tickerCount} holdings)</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ═══ STRAT MATRIX ═══ */}
+          {matrixLoading && (
+            <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', marginBottom: 14, textAlign: 'center' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Loading Strat matrix...</div>
+            </div>
+          )}
+          {stratMatrix && (
+            <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>Multi-Timeframe Strat Matrix</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{stratMatrix.summary.totalSetups} setups across {stratMatrix.matrix.length} timeframes</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {stratMatrix.summary.bullishSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>▲ {stratMatrix.summary.bullishSetups} Bull</span>}
+                  {stratMatrix.summary.bearishSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>▼ {stratMatrix.summary.bearishSetups} Bear</span>}
+                  {stratMatrix.summary.neutralSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(234,179,8,0.12)', color: '#eab308' }}>● {stratMatrix.summary.neutralSetups} Building</span>}
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: stratMatrix.summary.bias === 'BULLISH' ? 'rgba(74,222,128,0.12)' : stratMatrix.summary.bias === 'BEARISH' ? 'rgba(248,113,113,0.12)' : 'rgba(255,255,255,0.06)', color: stratMatrix.summary.bias === 'BULLISH' ? '#4ade80' : stratMatrix.summary.bias === 'BEARISH' ? '#f87171' : 'var(--text-dim)' }}>Bias: {stratMatrix.summary.bias}</span>
+                </div>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <th style={{ textAlign: 'left', padding: '7px 12px', fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)', width: 50 }}>TF</th>
+                      <th style={{ textAlign: 'center', padding: '7px 12px', fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)', width: 45 }}>Strat</th>
+                      <th style={{ textAlign: 'left', padding: '7px 12px', fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)' }}>Sequence (last 5)</th>
+                      <th style={{ textAlign: 'left', padding: '7px 12px', fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)' }}>Setup</th>
+                      <th style={{ textAlign: 'right', padding: '7px 12px', fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)', width: 90 }}>Trigger</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {['daily', 'weekly', 'monthly'].map(group => {
+                      const rows = stratMatrix.matrix.filter((m: any) => m.group === group);
+                      if (rows.length === 0) return null;
+                      return [
+                        <tr key={`h-${group}`} style={{ background: 'rgba(99,102,241,0.03)' }}>
+                          <td colSpan={5} style={{ padding: '5px 12px', fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{group}</td>
+                        </tr>,
+                        ...rows.map((m: any) => {
+                          const stratColor = m.strat === '2U' ? { bg: 'rgba(74,222,128,0.12)', text: '#4ade80' } :
+                            m.strat === '2D' ? { bg: 'rgba(248,113,113,0.12)', text: '#f87171' } :
+                            m.strat === '1' ? { bg: 'rgba(234,179,8,0.12)', text: '#eab308' } :
+                            m.strat === '3' ? { bg: 'rgba(99,102,241,0.12)', text: '#a5b4fc' } :
+                            { bg: 'rgba(255,255,255,0.05)', text: 'var(--text-dim)' };
+                          const hasSetup = m.setups.length > 0;
+                          return (
+                            <tr key={m.timeframe} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: hasSetup ? 'rgba(99,102,241,0.02)' : 'transparent' }}>
+                              <td style={{ padding: '5px 12px', fontWeight: 600, color: 'var(--text)', fontFamily: 'monospace', fontSize: 11 }}>{m.timeframe}</td>
+                              <td style={{ textAlign: 'center', padding: '5px 12px' }}>
+                                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: stratColor.bg, color: stratColor.text }}>{m.strat}</span>
+                              </td>
+                              <td style={{ padding: '5px 12px', fontFamily: 'monospace', fontSize: 10, color: 'var(--text-dim)' }}>
+                                {m.sequence.map((s: string, j: number) => (
+                                  <span key={j}>
+                                    {j > 0 && <span style={{ color: 'var(--text-dim)', opacity: 0.4 }}> → </span>}
+                                    <span style={{ fontWeight: j === m.sequence.length - 1 ? 700 : 400, color: s === '2U' ? '#4ade80' : s === '2D' ? '#f87171' : s === '1' ? '#eab308' : s === '3' ? '#a5b4fc' : 'var(--text-dim)' }}>{s}</span>
+                                  </span>
+                                ))}
+                              </td>
+                              <td style={{ padding: '5px 12px' }}>
+                                {m.setups.map((s: any, j: number) => (
+                                  <span key={j} style={{ display: 'inline-block', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 3, marginRight: 4, background: s.direction === 'BULLISH' ? 'rgba(74,222,128,0.12)' : s.direction === 'BEARISH' ? 'rgba(248,113,113,0.12)' : 'rgba(99,102,241,0.1)', color: s.direction === 'BULLISH' ? '#4ade80' : s.direction === 'BEARISH' ? '#f87171' : '#a5b4fc' }}>{s.pattern}</span>
+                                ))}
+                                {m.setups.length === 0 && <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>—</span>}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '5px 12px', fontFamily: 'monospace', fontSize: 10 }}>
+                                {m.strat === '1' || m.setups.some((s: any) => s.type === 'building' || s.type === 'coiling') ? (
+                                  <div>
+                                    <div style={{ color: '#4ade80' }}>↑ ${m.triggerHigh}</div>
+                                    <div style={{ color: '#f87171' }}>↓ ${m.triggerLow}</div>
+                                  </div>
+                                ) : m.setups.some((s: any) => s.direction === 'BULLISH') ? (
+                                  <div style={{ color: '#4ade80' }}>↑ ${m.triggerHigh}</div>
+                                ) : m.setups.some((s: any) => s.direction === 'BEARISH') ? (
+                                  <div style={{ color: '#f87171' }}>↓ ${m.triggerLow}</div>
+                                ) : (
+                                  <span style={{ color: 'var(--text-dim)' }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ];
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 14, fontSize: 9, color: 'var(--text-dim)' }}>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(74,222,128,0.3)', marginRight: 3 }}/>2U</span>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(248,113,113,0.3)', marginRight: 3 }}/>2D</span>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(234,179,8,0.3)', marginRight: 3 }}/>1 (inside)</span>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(99,102,241,0.3)', marginRight: 3 }}/>3 (outside)</span>
+                <span style={{ marginLeft: 'auto' }}>↑↓ = breakout triggers</span>
+              </div>
             </div>
           )}
 
