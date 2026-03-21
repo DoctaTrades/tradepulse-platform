@@ -158,6 +158,14 @@ export default function TradePulsePlatform() {
   const [tab, setTab] = useState("dashboard");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [schwabDisconnected, setSchwabDisconnected] = useState(false);
+
+  // Global Schwab connection check on mount
+  useEffect(() => {
+    fetch('/api/schwab/refresh').then(r => r.json()).then(d => {
+      setSchwabDisconnected(!d.connected);
+    }).catch(() => setSchwabDisconnected(true));
+  }, []);
   const [prefs, setPrefs] = useState({ theme: "dark" });
   const isDark = prefs.theme !== "light";
 
@@ -269,6 +277,21 @@ export default function TradePulsePlatform() {
         </div>
 
         <div className="tp-content" style={{ flex:1, overflowY:"auto", padding: tab === "screener" || tab === "discovery" ? "0" : "24px 28px" }}>
+          {/* Schwab reconnect banner */}
+          {schwabDisconnected && (
+            <div style={{ margin: tab === "screener" || tab === "discovery" ? "12px 16px" : "0 0 16px 0", padding:"12px 18px", borderRadius:10, background:"rgba(234,179,8,0.08)", border:"1px solid rgba(234,179,8,0.2)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:16 }}>⚠️</span>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#eab308" }}>Schwab connection expired</div>
+                  <div style={{ fontSize:11, color:"#a3870d", marginTop:2 }}>Market data, screener, and live quotes require an active Schwab connection.</div>
+                </div>
+              </div>
+              <button onClick={() => { window.location.href = '/api/schwab/auth'; }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
+                🔐 Reconnect Schwab
+              </button>
+            </div>
+          )}
           {/* Journal module handles all journal tabs */}
           {JOURNAL_TABS.includes(tab) && (
             <div className="tp-journal-module">
