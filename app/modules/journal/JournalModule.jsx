@@ -2651,11 +2651,11 @@ function TradeLog({ trades, onEdit, onDelete, prefs }) {
 
 // ─── WATCHLIST TICKER MODAL ───────────────────────────────────────────────────
 function TickerModal({ onSave, onClose, editItem }) {
-  const [item, setItem] = useState(editItem || { id:Date.now(), ticker:"", assetType:"Stock", direction:"Long", entryCriteria:"", exitCriteria:"", notes:"", priority:"Medium" });
+  const [item, setItem] = useState(editItem || { id:Date.now(), ticker:"", assetType:"Stock", direction:"Long", bullishThesis:"", bearishThesis:"", entryCriteria:"", exitCriteria:"", notes:"", priority:"Medium" });
   const set = k => v => setItem(p=>({...p,[k]:v}));
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, backdropFilter:"blur(3px)" }}>
-      <div style={{ background:"var(--tp-sel-bg)", borderRadius:16, width:"min(96vw, 520px)", padding:28, border:"1px solid var(--tp-border-l)", boxShadow:"0 24px 60px rgba(0,0,0,0.4)" }}>
+      <div style={{ background:"var(--tp-sel-bg)", borderRadius:16, width:"min(96vw, 520px)", maxHeight:"92vh", overflowY:"auto", padding:28, border:"1px solid var(--tp-border-l)", boxShadow:"0 24px 60px rgba(0,0,0,0.4)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22 }}>
           <h3 style={{ color:"var(--tp-text)", fontSize:17, fontWeight:600, margin:0 }}>{editItem?"Edit Ticker Plan":"Add Ticker"}</h3>
           <button onClick={onClose} style={{ background:"none", border:"none", color:"var(--tp-faint)", cursor:"pointer" }}><X size={20}/></button>
@@ -2667,12 +2667,20 @@ function TickerModal({ onSave, onClose, editItem }) {
           <Input label="Priority" value={item.priority} onChange={set("priority")} options={["High","Medium","Low"]}/>
         </div>
         <div style={{ marginBottom:12 }}>
+          <label style={{ fontSize:11, color:"#4ade80", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:5, fontWeight:600 }}>🐂 Bullish Thesis</label>
+          <textarea value={item.bullishThesis} onChange={e=>set("bullishThesis")(e.target.value)} placeholder="e.g. Strong earnings momentum, sector tailwinds, key support holding…" rows={3} style={{ width:"100%", padding:"10px 12px", background:"rgba(74,222,128,0.05)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}/>
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <label style={{ fontSize:11, color:"#f87171", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:5, fontWeight:600 }}>🐻 Bearish Thesis</label>
+          <textarea value={item.bearishThesis} onChange={e=>set("bearishThesis")(e.target.value)} placeholder="e.g. Overextended RSI, resistance at $200, macro headwinds…" rows={3} style={{ width:"100%", padding:"10px 12px", background:"rgba(248,113,113,0.05)", border:"1px solid rgba(248,113,113,0.2)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}/>
+        </div>
+        <div style={{ marginBottom:12 }}>
           <label style={{ fontSize:11, color:"#4ade80", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:5, fontWeight:600 }}>📈 Entry Criteria</label>
-          <textarea value={item.entryCriteria} onChange={e=>set("entryCriteria")(e.target.value)} placeholder="e.g. Price breaks above $180 with volume confirmation…" rows={3} style={{ width:"100%", padding:"10px 12px", background:"rgba(74,222,128,0.05)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}/>
+          <textarea value={item.entryCriteria} onChange={e=>set("entryCriteria")(e.target.value)} placeholder="e.g. Price breaks above $180 with volume confirmation…" rows={2} style={{ width:"100%", padding:"10px 12px", background:"rgba(74,222,128,0.03)", border:"1px solid rgba(74,222,128,0.15)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}/>
         </div>
         <div style={{ marginBottom:12 }}>
           <label style={{ fontSize:11, color:"#f87171", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:5, fontWeight:600 }}>📉 Exit Criteria</label>
-          <textarea value={item.exitCriteria} onChange={e=>set("exitCriteria")(e.target.value)} placeholder="e.g. Take profit at $195. Stop loss at $172…" rows={3} style={{ width:"100%", padding:"10px 12px", background:"rgba(248,113,113,0.05)", border:"1px solid rgba(248,113,113,0.2)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}/>
+          <textarea value={item.exitCriteria} onChange={e=>set("exitCriteria")(e.target.value)} placeholder="e.g. Take profit at $195. Stop loss at $172…" rows={2} style={{ width:"100%", padding:"10px 12px", background:"rgba(248,113,113,0.03)", border:"1px solid rgba(248,113,113,0.15)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}/>
         </div>
         <div style={{ marginBottom:20 }}>
           <label style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:5 }}>Additional Notes</label>
@@ -2764,6 +2772,8 @@ function Watchlist({ watchlists, onSave, onPromoteTrade }) {
                       </div>
                       <span style={{ fontSize:9, fontWeight:600, color:priorityColor(item.priority), background:priorityBg(item.priority), padding:"2px 8px", borderRadius:10, textTransform:"uppercase" }}>{item.priority}</span>
                     </div>
+                    {item.bullishThesis && <div style={{ marginBottom:8 }}><div style={{ fontSize:9, color:"#4ade80", textTransform:"uppercase", letterSpacing:0.6, fontWeight:600, marginBottom:3 }}>🐂 Bullish Thesis</div><div style={{ fontSize:12, color:"#c0c4cf", lineHeight:1.5, whiteSpace:"pre-wrap" }}>{item.bullishThesis}</div></div>}
+                    {item.bearishThesis && <div style={{ marginBottom:8 }}><div style={{ fontSize:9, color:"#f87171", textTransform:"uppercase", letterSpacing:0.6, fontWeight:600, marginBottom:3 }}>🐻 Bearish Thesis</div><div style={{ fontSize:12, color:"#c0c4cf", lineHeight:1.5, whiteSpace:"pre-wrap" }}>{item.bearishThesis}</div></div>}
                     {item.entryCriteria && <div style={{ marginBottom:8 }}><div style={{ fontSize:9, color:"#4ade80", textTransform:"uppercase", letterSpacing:0.6, fontWeight:600, marginBottom:3 }}>📈 Entry</div><div style={{ fontSize:12, color:"#c0c4cf", lineHeight:1.5 }}>{item.entryCriteria}</div></div>}
                     {item.exitCriteria && <div style={{ marginBottom:8 }}><div style={{ fontSize:9, color:"#f87171", textTransform:"uppercase", letterSpacing:0.6, fontWeight:600, marginBottom:3 }}>📉 Exit</div><div style={{ fontSize:12, color:"#c0c4cf", lineHeight:1.5 }}>{item.exitCriteria}</div></div>}
                     {item.notes && <div style={{ fontSize:11, color:"var(--tp-faint)", borderTop:"1px solid var(--tp-border)", paddingTop:8, marginTop:4, lineHeight:1.5 }}>{item.notes}</div>}
