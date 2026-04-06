@@ -50,6 +50,70 @@ for (const [etf, data] of Object.entries(SECTOR_ETFS)) {
   }
 }
 
+// Compute Timeframe Continuity (TFC) — direction of current D/W/M/Q candles
+// Uses the most recent candle (which includes today's in-progress data when market is open)
+// For W/M/Q: derives period-open from the first trading day within the current period
+//            and period-close from the latest candle's close (= current price during market hours)
+function computeTFC(candles: any[]): { d: 'up' | 'down'; w: 'up' | 'down'; m: 'up' | 'down'; q: 'up' | 'down' } | null {
+  if (!candles || candles.length === 0) return null;
+  const latest = candles[candles.length - 1];
+  if (!latest || typeof latest.open !== 'number' || typeof latest.close !== 'number') return null;
+
+  // Parse the latest candle's date to determine current period boundaries
+  // Candles have a datetime field (ms epoch) from Schwab; fall back to date if present
+  const getDate = (c: any): Date | null => {
+    if (typeof c.datetime === 'number') return new Date(c.datetime);
+    if (c.date) return new Date(c.date);
+    return null;
+  };
+
+  const latestDate = getDate(latest);
+  if (!latestDate) return null;
+
+  const latestClose = latest.close;
+
+  // DAILY: use the most recent candle's own open vs close
+  const dailyUp = latestClose >= latest.open;
+
+  // WEEKLY: find candles from the start of this week (Monday) to now
+  // JS getDay(): 0=Sun, 1=Mon, ..., 6=Sat — we want to rewind to Monday
+  const dayOfWeek = latestDate.getDay();
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sun→6, Mon→0, Tue→1, ...
+  const weekStart = new Date(latestDate);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - daysFromMonday);
+
+  // MONTHLY: first day of this month
+  const monthStart = new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
+
+  // QUARTERLY: first day of this quarter (Jan/Apr/Jul/Oct)
+  const quarterMonth = Math.floor(latestDate.getMonth() / 3) * 3;
+  const quarterStart = new Date(latestDate.getFullYear(), quarterMonth, 1);
+
+  // Find the first candle in each period and use its open
+  // If period contains only the latest candle, open is latest.open
+  const findPeriodOpen = (periodStart: Date): number => {
+    for (const c of candles) {
+      const d = getDate(c);
+      if (d && d >= periodStart) {
+        return c.open;
+      }
+    }
+    return latest.open; // fallback: latest candle is the only one in period
+  };
+
+  const weekOpen = findPeriodOpen(weekStart);
+  const monthOpen = findPeriodOpen(monthStart);
+  const quarterOpen = findPeriodOpen(quarterStart);
+
+  return {
+    d: dailyUp ? 'up' : 'down',
+    w: latestClose >= weekOpen ? 'up' : 'down',
+    m: latestClose >= monthOpen ? 'up' : 'down',
+    q: latestClose >= quarterOpen ? 'up' : 'down',
+  };
+}
+
 // Calculate return over N days from candles
 function calcReturn(candles: any[], days: number): number {
   if (candles.length < days + 1) return 0;
@@ -373,6 +437,9 @@ export async function POST(req: NextRequest) {
         const sectorReturn20d = sectorETF ? (sectorReturns[sectorETF] || 0) : 0;
         const relStrength = sectorETF ? Math.round((tickerReturn20d - sectorReturn20d) * 100) / 100 : null;
 
+        // Timeframe Continuity (D/W/M/Q candle direction)
+        const tfc = computeTFC(candles);
+
         results.push({
           ticker,
           price,
@@ -394,6 +461,7 @@ export async function POST(req: NextRequest) {
           tickerReturn20d,
           sectorReturn20d,
           relStrength,
+          tfc,
         });
 
         const tfLabels = tfResults.map((t: any) => t.timeframe).join(', ');

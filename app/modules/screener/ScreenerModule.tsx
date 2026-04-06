@@ -1102,18 +1102,45 @@ export default function ScreenerModule({ user }: { user?: any }) {
                                   'bg-gray-500/10 text-gray-500'
                                 }`}>{r.relStrength >= 0 ? '+' : ''}{r.relStrength}% RS</span>
                               )}
-                              {/* Direction badges */}
-                              {r.hasBullish && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/20 text-green-400">▲ BULL</span>}
-                              {r.hasBearish && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400">▼ BEAR</span>}
-                              {/* Quick pattern summary when collapsed */}
-                              {!isExpanded && (
-                                <div className="flex gap-1 ml-1">
-                                  {r.timeframes?.slice(0, 4).map((tf: any, i: number) => (
-                                    <span key={i} className="px-1.5 py-0.5 rounded text-[8px] font-bold" style={{ background: 'rgba(30,79,216,0.1)', color: 'var(--blue3)' }}>{tf.timeframe}</span>
-                                  ))}
-                                  {r.timeframes?.length > 4 && <span className="text-[8px]" style={{ color: 'var(--text-dim)' }}>+{r.timeframes.length - 4}</span>}
-                                </div>
-                              )}
+                              {/* Timeframe Continuity (TFC) — D/W/M/Q candle direction */}
+                              {r.tfc && (() => {
+                                const allUp = r.tfc.d === 'up' && r.tfc.w === 'up' && r.tfc.m === 'up' && r.tfc.q === 'up';
+                                const allDown = r.tfc.d === 'down' && r.tfc.w === 'down' && r.tfc.m === 'down' && r.tfc.q === 'down';
+                                const fullContinuity = allUp || allDown;
+                                const tfs: Array<[string, 'up' | 'down']> = [
+                                  ['Q', r.tfc.q],
+                                  ['M', r.tfc.m],
+                                  ['W', r.tfc.w],
+                                  ['D', r.tfc.d],
+                                ];
+                                return (
+                                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded ml-1" style={{
+                                    background: allUp ? 'rgba(34,197,94,0.15)' : allDown ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.03)',
+                                    border: `1px solid ${allUp ? 'rgba(34,197,94,0.5)' : allDown ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.06)'}`,
+                                    boxShadow: fullContinuity ? (allUp ? '0 0 8px rgba(34,197,94,0.3)' : '0 0 8px rgba(239,68,68,0.3)') : 'none',
+                                  }}>
+                                    {tfs.map(([label, dir]) => (
+                                      <span key={label} className="flex items-center gap-0.5 font-mono text-[9px] font-bold">
+                                        <span style={{ color: 'var(--text-dim)' }}>{label}</span>
+                                        <span style={{
+                                          display: 'inline-block',
+                                          width: 6,
+                                          height: 6,
+                                          borderRadius: '50%',
+                                          background: dir === 'up' ? 'var(--green)' : 'var(--red)',
+                                        }} />
+                                      </span>
+                                    ))}
+                                    {fullContinuity && (
+                                      <span className="font-mono text-[9px] font-bold ml-1" style={{
+                                        color: allUp ? 'var(--green)' : 'var(--red)',
+                                      }}>
+                                        🔥 FULL {allUp ? 'BULL' : 'BEAR'}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <span className="px-2 py-1 rounded font-mono text-[10px] font-bold" style={{ background: r.confluenceScore >= 3 ? 'rgba(34,197,94,0.15)' : r.confluenceScore >= 2 ? 'rgba(240,180,41,0.15)' : 'rgba(255,255,255,0.05)', color: r.confluenceScore >= 3 ? 'var(--green)' : r.confluenceScore >= 2 ? 'var(--gold)' : 'var(--text-dim)' }}>
                               {r.confluenceScore} TF · {r.totalPatterns} patterns
