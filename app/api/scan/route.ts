@@ -1,64 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { getQuotes, getOptionChain, getPriceHistory } from '@/app/lib/schwab-data';
+import { UNIVERSE_TICKERS as UNIVERSES } from '@/app/lib/ticker-universes';
 
-// ─── TICKER UNIVERSES ─────────────────────────────────────
-const UNIVERSES: Record<string, string[]> = {
-  core: [
-    // Tier 1 — Mega-liquid premium machines
-    'SPY','QQQ','IWM','AAPL','TSLA','NVDA','AMD','META','AMZN','GOOGL','MSFT','NFLX',
-    // Tier 2 — High IV / high volume
-    'COIN','MSTR','MARA','RIOT','SOFI','HOOD','RIVN',
-    'SHOP','SQ','PLTR','ROKU','DKNG','SNAP','UBER','ABNB',
-    // Tier 3 — Blue chip premium
-    'JPM','BAC','GS','DIS','HD','WMT','COST','KO','PEP',
-    'JNJ','PG','XOM','CVX','BA','CAT','DE','AVGO','CRM','ABBV',
-    // Tier 4 — Sector ETFs
-    'XLE','XLF','XLK','XLV','GLD','SLV','TLT','EEM','SMH','ARKK'
-  ],
-  sp500: [
-    'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','LLY','JPM',
-    'V','UNH','XOM','MA','JNJ','PG','COST','HD','MRK','ABBV','CRM','AMD',
-    'CVX','BAC','NFLX','KO','PEP','TMO','WMT','ACN','LIN','MCD','ABT',
-    'CSCO','TXN','DHR','NEE','NKE','PM','MS','AMGN','RTX','SCHW','ISRG',
-    'GS','SPGI','LOW','BKNG','INTU','GE','DE','CAT','AMAT','REGN','BMY',
-    'SYK','VRTX','ADI','GILD','C','AXP','MDLZ','PLD','MO','ETN','BSX',
-    'BLK','CB','LRCX','ZTS','AMT','SO','DUK','COP','CI','SHW','MMC',
-    'TGT','WM','FCX','HON','MMM','ITW','EMR','PH','GD','NOC','LMT',
-    'OXY','PSX','VLO','MPC','SLB','HAL','BKR','WFC','USB','PNC',
-    'AIG','PRU','MET','AFL','ALL','PGR','TRV','ORCL','ADBE','NOW',
-    'PYPL','INTC','QCOM','MU','KLAC','SNPS','CDNS','MRVL','ON','NXPI',
-    'CMG','SBUX','YUM','DPZ','ORLY','AZO','ROST','TJX','LULU','NKE',
-    'UPS','FDX','DAL','UAL','AAL','LUV','ABNB','BKNG','MAR','HLT',
-    'PFE','MRNA','BIIB','ILMN','DXCM','ZBH','EW','MDT','BDX',
-    'NEE','AEP','D','SRE','EXC','XEL','ED','WEC','ES','AEE',
-    'PSA','O','WELL','EQR','AVB','SPG','DLR','CCI','AMT','EQIX'
-  ],
-  highIV: [
-    // Stocks that consistently have elevated IV — premium selling targets
-    'TSLA','NVDA','AMD','COIN','MSTR','MARA','RIOT','SOFI','HOOD','RIVN',
-    'SHOP','SQ','PLTR','ROKU','DKNG','SNAP','RBLX','U','NET','CRWD',
-    'SNOW','OKTA','MDB','PANW','ZS','DDOG','BILL','HUBS','CFLT',
-    'UPST','AFRM','LCID','NIO','XPEV','LI','SMCI','ARM','IONQ',
-    'GME','AMC','BBBY','SPCE','MRNA','BNTX','ENPH','SEDG',
-    'ARKK','TQQQ','SQQQ','UVXY','SOXL','SOXS'
-  ],
-  etf: [
-    'SPY','QQQ','IWM','DIA','RSP','MDY','GLD','SLV','TLT','IEF',
-    'HYG','LQD','EEM','EFA','VWO','FXI','EWJ','EWZ',
-    'XLE','XLF','XLK','XLV','XLI','XLP','XLU','XLB','XLY','XLRE','XLC',
-    'XBI','IBB','ARKK','ARKG','ARKW',
-    'SOXX','SMH','HACK','KWEB','BITO',
-    'GDX','GDXJ','USO','UNG',
-    'UVXY','TQQQ','SQQQ','SPXU','UPRO','TNA','TZA','SOXL','SOXS'
-  ],
-  megaCap: [
-    // Top 30 by market cap — most liquid options in the market
-    'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','LLY','JPM',
-    'V','UNH','XOM','MA','JNJ','PG','COST','HD','MRK','ABBV',
-    'CRM','AMD','CVX','BAC','NFLX','KO','PEP','TMO','WMT','ORCL'
-  ],
-};
+// UNIVERSES imported from shared lib/ticker-universes.ts — single source of truth
 
 // ─── TECHNICAL CALCULATIONS ───────────────────────────────
 function calcEMA(prices: number[], period: number): number | null {

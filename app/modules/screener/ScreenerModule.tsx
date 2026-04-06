@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { polygonScan } from '../../lib/polygon-scan';
+import { UNIVERSES } from '../../lib/ticker-universes';
 
 // ─── TYPES ────────────────────────────────────────────────
 interface ScanResult {
@@ -145,80 +146,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const ADMIN_EMAILS = ['risethediver@gmail.com'];
   const isAdmin = (user?.id && ADMIN_IDS.includes(user.id)) || (user?.email && ADMIN_EMAILS.includes(user.email?.toLowerCase()));
 
-  // ─── UNIVERSE DEFINITIONS (client-side for preview) ────
-  const UNIVERSES: Record<string, { label: string; desc: string; tickers: string[]; primary?: boolean }> = {
-    core: {
-      label: '⚡ Pulse Core', primary: true,
-      desc: 'Curated premium-selling universe — mega-liquid + high IV + blue chips + sector ETFs',
-      tickers: ['SPY','QQQ','IWM','AAPL','TSLA','NVDA','AMD','META','AMZN','GOOGL','MSFT','NFLX','COIN','MSTR','MARA','RIOT','SOFI','HOOD','RIVN','SHOP','SQ','PLTR','ROKU','DKNG','SNAP','UBER','ABNB','JPM','BAC','GS','DIS','HD','WMT','COST','KO','PEP','JNJ','PG','XOM','CVX','BA','CAT','DE','AVGO','CRM','ABBV','XLE','XLF','XLK','XLV','GLD','SLV','TLT','EEM','SMH','ARKK'],
-    },
-    megaCap: {
-      label: '🏛 Mega Cap',
-      desc: 'Top 30 by market cap — most liquid options in the market',
-      tickers: ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','LLY','JPM','V','UNH','XOM','MA','JNJ','PG','COST','HD','MRK','ABBV','CRM','AMD','CVX','BAC','NFLX','KO','PEP','TMO','WMT','ORCL'],
-    },
-    sp500: {
-      label: '📈 S&P 500',
-      desc: 'Top ~150 most optionable S&P 500 names (full 500 coming soon)',
-      tickers: ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','LLY','JPM','V','UNH','XOM','MA','JNJ','PG','COST','HD','MRK','ABBV','CRM','AMD','CVX','BAC','NFLX','KO','PEP','TMO','WMT','ACN','LIN','MCD','ABT','CSCO','TXN','DHR','NEE','NKE','PM','MS','AMGN','RTX','SCHW','ISRG','GS','SPGI','LOW','BKNG','INTU','GE','DE','CAT','AMAT','REGN','BMY','SYK','VRTX','ADI','GILD','C','AXP','MDLZ','PLD','MO','ETN','BSX','BLK','CB','LRCX','ZTS','AMT','SO','DUK','COP','CI','SHW','MMC','TGT','WM','FCX','HON','MMM','ITW','EMR','PH','GD','NOC','LMT','OXY','PSX','VLO','MPC','SLB','HAL','BKR','WFC','USB','PNC','AIG','PRU','MET','AFL','ALL','PGR','TRV','ORCL','ADBE','NOW','PYPL','INTC','QCOM','MU','KLAC','SNPS','CDNS','MRVL','ON','NXPI','CMG','SBUX','YUM','DPZ','ORLY','AZO','ROST','TJX','LULU','NKE','UPS','FDX','DAL','UAL','AAL','LUV','ABNB','BKNG','MAR','HLT','PFE','MRNA','BIIB','DXCM','MDT','NEE','AEP','D','SRE','PSA','O','WELL','EQR','SPG','DLR','CCI','AMT','EQIX'],
-    },
-    ndx100: {
-      label: '💻 Nasdaq 100',
-      desc: 'Nasdaq 100 index — heavy tech/growth, typically higher IV',
-      tickers: ['AAPL','MSFT','NVDA','AMZN','META','GOOGL','TSLA','AVGO','COST','NFLX','AMD','INTU','QCOM','TXN','AMAT','MU','LRCX','SNPS','CDNS','ADI','MRVL','KLAC','ASML','INTC','ORCL','CRM','ADBE','NOW','WDAY','ZS','CRWD','PANW','FTNT','NET','DDOG','MDB','SNOW','OKTA','TEAM','HUBS','SHOP','PYPL','SQ','COIN','MSTR','RBLX','SNAP','PINS','UBER','LYFT','ABNB','BKNG','DIS','CMCSA','TMUS','T','VZ','EA','TTWO','PEP','KO','SBUX','CMG','LULU','ROST','MNST','AZN','AMGN','GILD','REGN','VRTX','BIIB','MRNA','ISRG','DXCM','ILMN','IDXX','ON','NXPI','ARM','SMCI','DASH','CPRT','CTAS','ODFL','PAYX','FAST','CSX','HON','PDD','JD','BIDU'],
-    },
-    dow30: {
-      label: '🏦 Dow 30',
-      desc: 'Dow Jones Industrial Average — 30 blue chips, lower IV, great for Wheel/CSP',
-      tickers: ['AAPL','MSFT','NVDA','AMZN','JPM','V','UNH','HD','PG','JNJ','MRK','CVX','KO','DIS','MCD','WMT','IBM','GS','CAT','BA','AXP','MMM','TRV','HON','AMGN','CSCO','NKE','DOW','CRM','INTC'],
-    },
-    highIV: {
-      label: '🔥 High IV',
-      desc: 'Consistently elevated IV — meme stocks, crypto-adjacent, biotech, leveraged ETFs',
-      tickers: ['TSLA','NVDA','AMD','COIN','MSTR','MARA','RIOT','SOFI','HOOD','RIVN','SHOP','SQ','PLTR','ROKU','DKNG','SNAP','RBLX','U','NET','CRWD','SNOW','OKTA','MDB','PANW','ZS','DDOG','BILL','HUBS','UPST','AFRM','LCID','NIO','XPEV','SMCI','ARM','IONQ','GME','AMC','MRNA','BNTX','ENPH','SEDG','ARKK','TQQQ','SQQQ','UVXY','SOXL','SOXS'],
-    },
-    etf: {
-      label: '📊 ETFs',
-      desc: 'Broad market, sector, commodity, and leveraged ETFs',
-      tickers: ['SPY','QQQ','IWM','DIA','RSP','MDY','GLD','SLV','TLT','IEF','HYG','LQD','EEM','EFA','VWO','FXI','EWJ','EWZ','XLE','XLF','XLK','XLV','XLI','XLP','XLU','XLB','XLY','XLRE','XLC','XBI','IBB','ARKK','ARKG','ARKW','SOXX','SMH','HACK','KWEB','BITO','GDX','GDXJ','USO','UNG','UVXY','TQQQ','SQQQ','SPXU','UPRO','TNA','TZA','SOXL','SOXS'],
-    },
-    fullMarket: {
-      label: '🌐 Full Market',
-      desc: '~400 most liquid US equities across all sectors — best for equity pattern scanning',
-      tickers: [
-        // Indices
-        'SPY','QQQ','IWM','DIA',
-        // Technology
-        'AAPL','MSFT','NVDA','AVGO','ORCL','CRM','ADBE','AMD','INTC','CSCO','INTU','QCOM','TXN','AMAT','MU','NOW','LRCX','ADI','KLAC','SNPS','CDNS','MRVL','NXPI','ON','SMCI','ARM','CRWD','PANW','FTNT','ZS','NET','DDOG','MDB','SNOW','PLTR','DELL','SHOP','PYPL','SQ',
-        // Financials
-        'JPM','V','MA','BAC','WFC','GS','MS','SPGI','BLK','AXP','C','SCHW','CB','MMC','PGR','ICE','CME','AON','MET','COIN','HOOD','SOFI','AFL','PRU','TRV','AIG',
-        // Healthcare
-        'UNH','LLY','JNJ','ABBV','MRK','TMO','ABT','DHR','AMGN','PFE','ISRG','GILD','VRTX','REGN','BSX','MDT','SYK','CI','ELV','BDX','ZTS','DXCM','IDXX','MRNA','BIIB','HCA',
-        // Consumer Discretionary
-        'AMZN','TSLA','HD','MCD','NKE','LOW','SBUX','TJX','BKNG','CMG','ORLY','ROST','DHI','LEN','GM','F','LULU','DRI','YUM','ABNB','DASH','UBER','LYFT','RIVN','NIO','ETSY','BBY','AZO','ULTA','RCL','CCL','WYNN',
-        // Consumer Staples
-        'PG','KO','PEP','COST','WMT','PM','MDLZ','MO','CL','KMB','GIS','KHC','STZ','HSY','TSN','MNST','TGT','DG','DLTR','EL',
-        // Energy
-        'XOM','CVX','COP','SLB','EOG','MPC','PSX','VLO','OXY','WMB','KMI','HAL','DVN','FANG','BKR','CTRA','MRO','APA','EQT','AR',
-        // Industrials
-        'CAT','GE','RTX','HON','UNP','BA','DE','LMT','UPS','ADP','ETN','ITW','NOC','WM','GD','CSX','FDX','NSC','EMR','DAL','UAL','LUV','AAL','FAST','ODFL','CTAS','AXON','TDG',
-        // Materials
-        'LIN','APD','SHW','ECL','NEM','FCX','NUE','VMC','MLM','DOW','DD','PPG','CF','ALB','STLD','CLF','AA','GOLD',
-        // Real Estate
-        'PLD','AMT','EQIX','CCI','SPG','PSA','O','WELL','DLR','VICI',
-        // Utilities
-        'NEE','SO','DUK','CEG','SRE','AEP','D','EXC','VST','NRG',
-        // Communication
-        'META','GOOGL','NFLX','DIS','CMCSA','TMUS','T','VZ','EA','TTWO','PINS','SNAP','RBLX','ROKU','TTD',
-        // High IV / Meme / Crypto-adjacent
-        'MSTR','MARA','RIOT','DKNG','GME','AMC','UPST','AFRM','LCID','XPEV','IONQ','U','ENPH','SEDG',
-        // Sector ETFs
-        'XLE','XLF','XLK','XLV','XLI','XLP','XLU','XLB','XLY','XLRE','XLC',
-        // Other popular ETFs
-        'GLD','SLV','TLT','SMH','ARKK','SOXX','XBI','GDX','BITO',
-      ],
-    },
-  };
+  // UNIVERSES now imported from shared lib/ticker-universes.ts — single source of truth
 
   // Filters
   const [universe, setUniverse] = useState('core');

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { UNIVERSE_SUMMARIES } from '../../lib/ticker-universes';
 
 interface DiscoveryResult {
   ticker: string; price: number; change: number; vol: number;
@@ -52,15 +53,8 @@ const DISCOVERY_PRESETS = [
   { id: 'oversold', name: 'Oversold bounce', icon: '⚡', desc: 'RSI under 30, extreme fear — potential snap-back', filters: { ...DEFAULT_FILTERS, minRSI: 10, maxRSI: 30, minPrice: 10 } },
 ];
 
-const UNIVERSES = [
-  { id: 'core', name: '⚡ Pulse Core', count: 56 },
-  { id: 'sp500', name: '📈 S&P 500', count: 150 },
-  { id: 'megaCap', name: '🏛 Mega Cap', count: 30 },
-  { id: 'ndx100', name: '💻 Nasdaq 100', count: 90 },
-  { id: 'highIV', name: '🔥 High IV', count: 48 },
-  { id: 'etf', name: '📊 ETFs', count: 52 },
-  { id: 'fullMarket', name: '🌐 Full Market', count: 400 },
-];
+// UNIVERSES now imported from shared lib/ticker-universes.ts — single source of truth
+const UNIVERSES = UNIVERSE_SUMMARIES;
 
 export default function DiscoveryModule({ user }: { user?: any }) {
   const [activePreset, setActivePreset] = useState<string | null>(null);

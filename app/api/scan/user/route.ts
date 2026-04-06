@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { scanTickerWithTradier } from '@/app/lib/tradier-data';
+import { UNIVERSE_TICKERS as UNIVERSES } from '@/app/lib/ticker-universes';
 
 const supabaseUrl = process.env.SUPABASE_URL || 'https://odpgrgyiivbcbbqcdkxm.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
 const supabase = supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
-const UNIVERSES: Record<string, string[]> = {
-  core: ['SPY','QQQ','IWM','AAPL','TSLA','NVDA','AMD','META','AMZN','GOOGL','MSFT','NFLX','COIN','MSTR','MARA','RIOT','SOFI','HOOD','RIVN','SHOP','SQ','PLTR','ROKU','DKNG','SNAP','UBER','ABNB','JPM','BAC','GS','DIS','HD','WMT','COST','KO','PEP','JNJ','PG','XOM','CVX','BA','CAT','DE','AVGO','CRM','ABBV','XLE','XLF','XLK','XLV','GLD','SLV','TLT','EEM','SMH','ARKK'],
-};
+// UNIVERSES imported from shared lib/ticker-universes.ts — single source of truth
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
