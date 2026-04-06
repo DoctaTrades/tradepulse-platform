@@ -1,3 +1,4 @@
+import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { getQuotes, getPriceHistory } from '@/app/lib/schwab-data';
@@ -56,7 +57,8 @@ const SECTOR_ETFS = [
 const BREADTH_SYMBOLS = ['RSP', 'SPY']; // RSP = equal-weight S&P, SPY = cap-weighted
 
 export async function GET(req: NextRequest) {
-  const useSchwab = await isAuthenticated();
+  const { userId } = await verifyAuth(req);
+  const useSchwab = await isAuthenticated(userId);
   
   if (!useSchwab) {
     return NextResponse.json({ error: 'Schwab not connected. Market Pulse requires Schwab API.' });
@@ -65,7 +67,7 @@ export async function GET(req: NextRequest) {
   try {
     // 1. Fetch all quotes in one batch
     const allSymbols = [...MARKET_SYMBOLS, ...SECTOR_ETFS.map(s => s.symbol), ...BREADTH_SYMBOLS];
-    const quotes = await getQuotes([...new Set(allSymbols)]);
+    const quotes = await getQuotes([...new Set(allSymbols)], userId);
 
     // 2. Get VIX data — Schwab doesn't return CBOE index quotes
     // Use Finnhub as primary source for VIX
@@ -95,7 +97,7 @@ export async function GET(req: NextRequest) {
     if (!vixPrice) {
       for (const sym of ['$VIX', '$VIX.X', 'VIX']) {
         try {
-          const vq = await getQuotes([sym]);
+          const vq = await getQuotes([sym], userId);
           const q = vq[sym]?.quote;
           if (q && (q.lastPrice || q.closePrice) && (q.lastPrice || q.closePrice) < 100) {
             vixPrice = q.lastPrice || q.closePrice;
@@ -130,7 +132,7 @@ export async function GET(req: NextRequest) {
         try {
           const hist = await getPriceHistory(sym, {
             periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1,
-          });
+          }, userId);
           const candles = hist.candles || [];
           if (candles.length >= 2) {
             // Use second-to-last candle as previous close (last may be today's partial)
@@ -166,7 +168,7 @@ export async function GET(req: NextRequest) {
       try {
         const hist = await getPriceHistory(sector.symbol, {
           periodType: 'month', period: 3, frequencyType: 'daily', frequency: 1,
-        });
+        }, userId);
         const candles = hist.candles || [];
         if (candles.length > 5) {
           const closes = candles.map((c: any) => c.close);
@@ -208,7 +210,7 @@ export async function GET(req: NextRequest) {
     // Fallback: calculate from price history if quote returns 0
     if (!rspChange && rspQuote) {
       try {
-        const hist = await getPriceHistory('RSP', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
+        const hist = await getPriceHistory('RSP', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 }, userId);
         const candles = hist.candles || [];
         const price = rspQuote.lastPrice || rspQuote.closePrice || 0;
         if (candles.length >= 1 && price > 0) {
@@ -219,7 +221,7 @@ export async function GET(req: NextRequest) {
     }
     if (!spyChange && spyQuote) {
       try {
-        const hist = await getPriceHistory('SPY', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
+        const hist = await getPriceHistory('SPY', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 }, userId);
         const candles = hist.candles || [];
         const price = spyQuote.lastPrice || spyQuote.closePrice || 0;
         if (candles.length >= 1 && price > 0) {
@@ -242,7 +244,7 @@ export async function GET(req: NextRequest) {
     try {
       const hist = await getPriceHistory('SPY', {
         periodType: 'year', period: 1, frequencyType: 'daily', frequency: 1,
-      });
+      }, userId);
       const candles = hist.candles || [];
       if (candles.length > 20) {
         const closes = candles.map((c: any) => c.close);

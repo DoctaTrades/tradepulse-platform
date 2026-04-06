@@ -1,17 +1,13 @@
+import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
+import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 
 export const dynamic = 'force-dynamic';
 
-const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
-
+let _matrixUserId: string | undefined;
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  const token = await getValidAccessToken();
-  const url = new URL(`${SCHWAB_BASE}${endpoint}`);
-  if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store' });
-  if (!res.ok) throw new Error(`Schwab API ${res.status}`);
-  return res.json();
+  return _schwabFetchBase(endpoint, params, _matrixUserId);
 }
 
 // Aggregate daily candles into N-day candles
@@ -85,8 +81,10 @@ function detectSetups(sequence: string[]): { pattern: string; direction: string;
 export async function GET(req: NextRequest) {
   const ticker = req.nextUrl.searchParams.get('ticker')?.toUpperCase();
   if (!ticker) return NextResponse.json({ error: 'Missing ticker parameter' });
+  const { userId } = await verifyAuth(req);
+  _matrixUserId = userId;
 
-  if (!await isAuthenticated()) {
+  if (!await isAuthenticated(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
 

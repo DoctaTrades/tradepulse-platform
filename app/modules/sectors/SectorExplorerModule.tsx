@@ -76,7 +76,7 @@ function formatVol(n: number) {
   return String(n);
 }
 
-export default function SectorExplorerModule() {
+export default function SectorExplorerModule({ user }: { user?: any }) {
   const [sectors, setSectors] = useState<SectorOverview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -91,11 +91,17 @@ export default function SectorExplorerModule() {
   const [sortBy, setSortBy] = useState<'changePct' | 'rsi' | 'volRatio' | 'dailyStrat'>('changePct');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  const userHeaders: Record<string, string> = {};
+  if (user?.id) userHeaders['x-user-id'] = user.id;
+  // Auth headers are added at fetch time via getAuthHeaders
+
   const fetchOverview = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/sectors?mode=overview');
+      const headers = { ...userHeaders };
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
+      const res = await fetch('/api/sectors?mode=overview', { headers });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setSectors(data.sectors || []);
@@ -103,12 +109,12 @@ export default function SectorExplorerModule() {
       setError(e.message || 'Failed to load sectors');
     }
     setLoading(false);
-  }, []);
+  }, [user?.id]);
 
   const fetchDrillDown = useCallback(async (etf: string) => {
     setDrillLoading(true);
     try {
-      const res = await fetch(`/api/sectors?mode=drilldown&sector=${etf}`);
+      const res = await fetch(`/api/sectors?mode=drilldown&sector=${etf}`, { headers: userHeaders });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setHoldings(data.holdings || []);

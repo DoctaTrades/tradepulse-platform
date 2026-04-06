@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
+import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
-
-const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
 let _equityUserId: string | undefined;
 
@@ -30,12 +29,7 @@ function appendTodayCandle(candles: any[], quote: any): any[] {
 }
 
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  const token = await getValidAccessToken(_equityUserId);
-  const url = new URL(`${SCHWAB_BASE}${endpoint}`);
-  if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store' });
-  if (!res.ok) throw new Error(`Schwab API ${res.status}`);
-  return res.json();
+  return _schwabFetchBase(endpoint, params, _equityUserId);
 }
 
 // ─── SECTOR → TICKER MAPPINGS (from shared sector-holdings) ────

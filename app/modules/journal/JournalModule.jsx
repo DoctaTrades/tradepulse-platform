@@ -3609,7 +3609,7 @@ function WheelTradeModal({ ticker, onSave, onClose, editTrade, accounts, default
 }
 // ─── DAILY GOAL TRACKER ─────────────────────────────────────────────────────
 function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
-  const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {} };
+  const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {}, weeklyGoalOverride: null, monthlyGoalOverride: null, weeklyLossLimit: null, withdrawals: [] };
 
   // Migrate old flat structure → per-account structure
   const goalsData = useMemo(() => {
@@ -3641,6 +3641,11 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
   const [projectionDays, setProjectionDays] = useState(30);
   const [showBacklog, setShowBacklog] = useState(false);
   const [backlogDate, setBacklogDate] = useState("");
+  const [weeklyGoalOverride, setWeeklyGoalOverride] = useState(g.weeklyGoalOverride || null);
+  const [monthlyGoalOverride, setMonthlyGoalOverride] = useState(g.monthlyGoalOverride || null);
+  const [weeklyLossLimit, setWeeklyLossLimit] = useState(g.weeklyLossLimit || null);
+  const [withdrawals, setWithdrawals] = useState(g.withdrawals || []);
+  const [showWithdrawalForm, setShowWithdrawalForm] = useState(false);
 
   // Sync when account changes
   useEffect(() => {
@@ -3649,11 +3654,15 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
     setProfitPct(acctGoal.profitPct || 2);
     setStopPct(acctGoal.stopPct || 1);
     setDailyLog(acctGoal.dailyLog || {});
+    setWeeklyGoalOverride(acctGoal.weeklyGoalOverride || null);
+    setMonthlyGoalOverride(acctGoal.monthlyGoalOverride || null);
+    setWeeklyLossLimit(acctGoal.weeklyLossLimit || null);
+    setWithdrawals(acctGoal.withdrawals || []);
   }, [selectedAccount, goalsData]);
 
   // Save per-account
   const saveGoals = useCallback((overrides = {}) => {
-    const acctData = { startingBalance, profitPct, stopPct, dailyLog, ...overrides };
+    const acctData = { startingBalance, profitPct, stopPct, dailyLog, weeklyGoalOverride, monthlyGoalOverride, weeklyLossLimit, withdrawals, ...overrides };
     const updated = {
       ...goalsData,
       selectedAccount,
@@ -3690,6 +3699,50 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
   const todayStop = currentBalance * (stopPct / 100);
   const todayStr = new Date().toISOString().split("T")[0];
   const todayEntry = dailyLog[todayStr];
+
+  // Weekly/Monthly goal calculations
+  const weeklyGoalPct = weeklyGoalOverride !== null ? weeklyGoalOverride : profitPct * 5;
+  const weeklyGoalDollar = currentBalance * (weeklyGoalPct / 100);
+  const weeklyLossLimitDollar = weeklyLossLimit !== null ? currentBalance * (weeklyLossLimit / 100) : currentBalance * (stopPct * 5 / 100);
+  const monthlyGoalPct = monthlyGoalOverride !== null ? monthlyGoalOverride : weeklyGoalPct * 4.33;
+  const monthlyGoalDollar = currentBalance * (monthlyGoalPct / 100);
+
+  // Current week P&L (Mon-Fri)
+  const weekPnL = useMemo(() => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const monStr = monday.toISOString().split("T")[0];
+    return sortedDays.filter(d => d >= monStr && d <= todayStr).reduce((s, d) => s + (dailyLog[d]?.pnl || 0), 0);
+  }, [sortedDays, dailyLog, todayStr]);
+
+  const weekPnLPct = currentBalance > 0 ? (weekPnL / (currentBalance - weekPnL)) * 100 : 0;
+  const weekProgress = weeklyGoalDollar > 0 ? (weekPnL / weeklyGoalDollar) * 100 : 0;
+  const weekHitTarget = weekPnL >= weeklyGoalDollar;
+  const weekHitLossLimit = weekPnL <= -weeklyLossLimitDollar;
+
+  // Current month P&L
+  const monthPnL = useMemo(() => {
+    const monthStr = todayStr.slice(0, 7);
+    return sortedDays.filter(d => d.startsWith(monthStr)).reduce((s, d) => s + (dailyLog[d]?.pnl || 0), 0);
+  }, [sortedDays, dailyLog, todayStr]);
+
+  const monthProgress = monthlyGoalDollar > 0 ? (monthPnL / monthlyGoalDollar) * 100 : 0;
+
+  // Withdrawal helpers
+  const totalWithdrawn = withdrawals.reduce((s, w) => s + (w.amount || 0), 0);
+  const monthWithdrawn = withdrawals.filter(w => w.date?.startsWith(todayStr.slice(0, 7))).reduce((s, w) => s + (w.amount || 0), 0);
+  const addWithdrawal = (amount, date, note) => {
+    const updated = [...withdrawals, { id: Date.now(), amount, date, note }];
+    setWithdrawals(updated);
+    saveGoals({ withdrawals: updated });
+  };
+  const removeWithdrawal = (id) => {
+    const updated = withdrawals.filter(w => w.id !== id);
+    setWithdrawals(updated);
+    saveGoals({ withdrawals: updated });
+  };
 
   // Auto-pull trades for a specific date (filtered by account + reset date)
   const getTradesForDate = useCallback((dateStr) => {
@@ -3748,7 +3801,7 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <Target size={20} color="#4ade80"/>
-          <span style={{ fontSize:20, fontWeight:700, color:"var(--tp-text)" }}>Daily Goal Tracker</span>
+          <span style={{ fontSize:20, fontWeight:700, color:"var(--tp-text)" }}>Goal Tracker</span>
         </div>
       </div>
 
@@ -3919,6 +3972,132 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Weekly & Monthly Goals */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+        {/* Weekly Progress */}
+        <div style={{ background:"var(--tp-panel)", border:`1px solid ${weekHitTarget ? "rgba(74,222,128,0.2)" : weekHitLossLimit ? "rgba(248,113,113,0.2)" : "var(--tp-panel-b)"}`, borderRadius:14, padding:"20px 22px" }}>
+          <div style={{ fontSize:12, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <span>📅 This Week</span>
+            {weekHitTarget && <span style={{ fontSize:10, padding:"3px 8px", borderRadius:5, background:"rgba(74,222,128,0.1)", color:"#4ade80", fontWeight:700 }}>TARGET HIT</span>}
+            {weekHitLossLimit && <span style={{ fontSize:10, padding:"3px 8px", borderRadius:5, background:"rgba(248,113,113,0.1)", color:"#f87171", fontWeight:700 }}>LOSS LIMIT</span>}
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:12 }}>
+            <div>
+              <div style={{ fontSize:24, fontWeight:800, color:weekPnL>=0?"#4ade80":"#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{weekPnL>=0?"+":""}${weekPnL.toFixed(2)}</div>
+              <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:2 }}>{weekPnLPct>=0?"+":""}{weekPnLPct.toFixed(1)}% this week</div>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:11, color:"var(--tp-faint)" }}>Goal: <span style={{ color:"#4ade80", fontWeight:600 }}>+${weeklyGoalDollar.toFixed(0)}</span></div>
+              <div style={{ fontSize:11, color:"var(--tp-faint)" }}>Loss limit: <span style={{ color:"#f87171", fontWeight:600 }}>-${weeklyLossLimitDollar.toFixed(0)}</span></div>
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div style={{ height:8, borderRadius:4, background:"var(--tp-input)", overflow:"hidden", marginBottom:8 }}>
+            <div style={{ height:"100%", borderRadius:4, width:`${Math.min(100, Math.max(0, weekProgress))}%`, background: weekPnL >= 0 ? "linear-gradient(90deg,#4ade80,#22c55e)" : "#f87171", transition:"width 0.4s" }}/>
+          </div>
+          <div style={{ fontSize:10, color:"var(--tp-faintest)", textAlign:"center" }}>{Math.round(weekProgress)}% of weekly goal</div>
+
+          {/* Weekly goal settings */}
+          <div style={{ marginTop:12, paddingTop:10, borderTop:"1px solid var(--tp-border)", display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            <div>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Weekly target %</div>
+              <input type="number" step="0.5" value={weeklyGoalOverride !== null ? weeklyGoalOverride : profitPct * 5} onChange={e=>{const v=parseFloat(e.target.value)||0;setWeeklyGoalOverride(v);}} onBlur={()=>saveGoals({weeklyGoalOverride})} style={{ ...inputStyle, width:"100%", fontSize:12, padding:"5px 8px" }}/>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Weekly loss limit %</div>
+              <input type="number" step="0.5" value={weeklyLossLimit !== null ? weeklyLossLimit : stopPct * 5} onChange={e=>{const v=parseFloat(e.target.value)||0;setWeeklyLossLimit(v);}} onBlur={()=>saveGoals({weeklyLossLimit})} style={{ ...inputStyle, width:"100%", fontSize:12, padding:"5px 8px" }}/>
+            </div>
+          </div>
+        </div>
+
+        {/* Monthly Progress */}
+        <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 22px" }}>
+          <div style={{ fontSize:12, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:14 }}>📆 This Month</div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:12 }}>
+            <div>
+              <div style={{ fontSize:24, fontWeight:800, color:monthPnL>=0?"#4ade80":"#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{monthPnL>=0?"+":""}${monthPnL.toFixed(2)}</div>
+              <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:2 }}>{new Date().toLocaleDateString("en-US",{month:"long",year:"numeric"})}</div>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:11, color:"var(--tp-faint)" }}>Goal: <span style={{ color:"#4ade80", fontWeight:600 }}>+${monthlyGoalDollar.toFixed(0)}</span></div>
+              <div style={{ fontSize:11, color:"var(--tp-faint)" }}>Withdrawn: <span style={{ color:"#a5b4fc", fontWeight:600 }}>${monthWithdrawn.toFixed(0)}</span></div>
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div style={{ height:8, borderRadius:4, background:"var(--tp-input)", overflow:"hidden", marginBottom:8 }}>
+            <div style={{ height:"100%", borderRadius:4, width:`${Math.min(100, Math.max(0, monthProgress))}%`, background: monthPnL >= 0 ? "linear-gradient(90deg,#6366f1,#8b5cf6)" : "#f87171", transition:"width 0.4s" }}/>
+          </div>
+          <div style={{ fontSize:10, color:"var(--tp-faintest)", textAlign:"center" }}>{Math.round(monthProgress)}% of monthly goal</div>
+
+          {/* Monthly goal settings */}
+          <div style={{ marginTop:12, paddingTop:10, borderTop:"1px solid var(--tp-border)" }}>
+            <div>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Monthly target %</div>
+              <input type="number" step="1" value={monthlyGoalOverride !== null ? monthlyGoalOverride : Math.round(weeklyGoalPct * 4.33 * 10) / 10} onChange={e=>{const v=parseFloat(e.target.value)||0;setMonthlyGoalOverride(v);}} onBlur={()=>saveGoals({monthlyGoalOverride})} style={{ ...inputStyle, width:"100%", fontSize:12, padding:"5px 8px" }}/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Withdrawal / Payout Tracker */}
+      <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 22px", marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+          <div style={{ fontSize:12, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8 }}>💰 Withdrawals / Pay Yourself</div>
+          <button onClick={()=>setShowWithdrawalForm(!showWithdrawalForm)} style={{ padding:"4px 12px", borderRadius:6, border:"1px solid rgba(99,102,241,0.2)", background:"rgba(99,102,241,0.06)", color:"#a5b4fc", cursor:"pointer", fontSize:10, fontWeight:600 }}>{showWithdrawalForm ? "Cancel" : "+ Log Withdrawal"}</button>
+        </div>
+
+        {/* Summary */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginBottom:14 }}>
+          <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Total withdrawn</div>
+            <div style={{ fontSize:18, fontWeight:700, color:"#a5b4fc", fontFamily:"'JetBrains Mono', monospace" }}>${totalWithdrawn.toFixed(0)}</div>
+          </div>
+          <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>This month</div>
+            <div style={{ fontSize:18, fontWeight:700, color:"#a5b4fc", fontFamily:"'JetBrains Mono', monospace" }}>${monthWithdrawn.toFixed(0)}</div>
+          </div>
+          <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Net earned (after payouts)</div>
+            <div style={{ fontSize:18, fontWeight:700, color:totalPnL-totalWithdrawn>=0?"#4ade80":"#f87171", fontFamily:"'JetBrains Mono', monospace" }}>${(totalPnL - totalWithdrawn).toFixed(0)}</div>
+          </div>
+        </div>
+
+        {/* Add withdrawal form */}
+        {showWithdrawalForm && (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:8, marginBottom:12, alignItems:"end" }}>
+            <div>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Amount</div>
+              <input id="withdrawal-amount" type="number" step="0.01" placeholder="500" style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px" }}/>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Date</div>
+              <input id="withdrawal-date" type="date" defaultValue={todayStr} style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px" }}/>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Note</div>
+              <input id="withdrawal-note" type="text" placeholder="Payout, transfer..." style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px", fontFamily:"inherit" }}/>
+            </div>
+            <button onClick={()=>{const amt=parseFloat(document.getElementById("withdrawal-amount")?.value)||0;const dt=document.getElementById("withdrawal-date")?.value||todayStr;const note=document.getElementById("withdrawal-note")?.value||"";if(amt>0){addWithdrawal(amt,dt,note);setShowWithdrawalForm(false);}}} style={{ padding:"7px 16px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }}>Save</button>
+          </div>
+        )}
+
+        {/* Withdrawal history */}
+        {withdrawals.length > 0 && (
+          <div>
+            {[...withdrawals].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(w => (
+              <div key={w.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"var(--tp-card)", borderRadius:6, marginBottom:3, fontSize:11 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ color:"var(--tp-faintest)", fontFamily:"'JetBrains Mono', monospace" }}>{w.date}</span>
+                  <span style={{ color:"#a5b4fc", fontWeight:600, fontFamily:"'JetBrains Mono', monospace" }}>-${w.amount.toFixed(2)}</span>
+                  {w.note && <span style={{ color:"var(--tp-faint)" }}>{w.note}</span>}
+                </div>
+                <button onClick={()=>removeWithdrawal(w.id)} style={{ background:"none", border:"none", color:"var(--tp-faintest)", cursor:"pointer", padding:0 }}><Trash2 size={11}/></button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Projection toggle */}
@@ -9126,9 +9305,10 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
 
   // ── SnapTrade API helpers ──
   const snapFetch = async (actionName, extra = {}) => {
+    const headers = { "Content-Type": "application/json", "x-user-id": user?.id || "" };
+    try { const { getAuthHeaders } = await import("@/app/lib/auth-fetch"); Object.assign(headers, await getAuthHeaders()); } catch {}
     const res = await fetch("/api/snaptrade", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-id": user?.id || "" },
+      method: "POST", headers,
       body: JSON.stringify({ action: actionName, ...extra }),
     });
     const data = await res.json();

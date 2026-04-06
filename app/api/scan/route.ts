@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
-import { getQuotes, getOptionChain, getPriceHistory, setActiveUser } from '@/app/lib/schwab-data';
+import { getQuotes, getOptionChain, getPriceHistory } from '@/app/lib/schwab-data';
 
 // ─── TICKER UNIVERSES ─────────────────────────────────────
 const UNIVERSES: Record<string, string[]> = {
@@ -103,6 +103,53 @@ function calcATR(bars: { h: number; l: number; c: number }[], period = 14): numb
   return recent.reduce((a, b) => a + b, 0) / recent.length;
 }
 
+function calcBollingerBands(prices: number[], period = 20, stdDev = 2): { upper: number; middle: number; lower: number; position: number } | null {
+  if (prices.length < period) return null;
+  const recent = prices.slice(-period);
+  const mean = recent.reduce((a, b) => a + b, 0) / period;
+  const variance = recent.reduce((s, p) => s + (p - mean) ** 2, 0) / period;
+  const sd = Math.sqrt(variance);
+  const upper = mean + stdDev * sd;
+  const lower = mean - stdDev * sd;
+  const current = prices[prices.length - 1];
+  // Position: 0 = at lower band, 50 = at middle (SMA), 100 = at upper band, <0 = below lower, >100 = above upper
+  const position = upper > lower ? Math.round(((current - lower) / (upper - lower)) * 100) : 50;
+  return { upper: Math.round(upper * 100) / 100, middle: Math.round(mean * 100) / 100, lower: Math.round(lower * 100) / 100, position };
+}
+
+function calcEMACross(prices: number[], fast = 20, slow = 50): 'golden' | 'death' | 'none' {
+  if (prices.length < slow + 5) return 'none';
+  // Compute EMA series
+  const fastK = 2 / (fast + 1), slowK = 2 / (slow + 1);
+  let fastEMA = prices.slice(0, fast).reduce((a, b) => a + b, 0) / fast;
+  let slowEMA = prices.slice(0, slow).reduce((a, b) => a + b, 0) / slow;
+  // Build series of last 5 values of each to check for cross
+  const fastSeries: number[] = [];
+  const slowSeries: number[] = [];
+  for (let i = fast; i < prices.length; i++) {
+    fastEMA = prices[i] * fastK + fastEMA * (1 - fastK);
+    if (i >= slow) {
+      slowEMA = prices[i] * slowK + slowEMA * (1 - slowK);
+      fastSeries.push(fastEMA);
+      slowSeries.push(slowEMA);
+    }
+  }
+  // Also accumulate slow from start
+  slowEMA = prices.slice(0, slow).reduce((a, b) => a + b, 0) / slow;
+  const slowSeriesFull: number[] = [slowEMA];
+  for (let i = slow; i < prices.length; i++) { slowEMA = prices[i] * slowK + slowEMA * (1 - slowK); slowSeriesFull.push(slowEMA); }
+  // Check last 5 bars for cross
+  const lookback = Math.min(5, fastSeries.length - 1);
+  for (let i = fastSeries.length - lookback; i < fastSeries.length; i++) {
+    if (i < 1) continue;
+    const prevFast = fastSeries[i - 1], prevSlow = slowSeriesFull[i - 1];
+    const currFast = fastSeries[i], currSlow = slowSeriesFull[i];
+    if (prevFast <= prevSlow && currFast > currSlow) return 'golden';
+    if (prevFast >= prevSlow && currFast < currSlow) return 'death';
+  }
+  return 'none';
+}
+
 function estimateIVR(iv: number, hv: number): number {
   if (!iv || !hv) return 50;
   const ratio = iv / hv;
@@ -116,7 +163,7 @@ function estimateIVR(iv: number, hv: number): number {
 }
 
 // ─── SCHWAB SCAN (primary — real Greeks, fast) ────────────
-async function scanWithSchwab(tickers: string[], filters: any) {
+async function scanWithSchwab(tickers: string[], filters: any, userId?: string) {
   const results: any[] = [];
   const logs: string[] = [];
   
@@ -124,7 +171,7 @@ async function scanWithSchwab(tickers: string[], filters: any) {
   logs.push(`⚡ Schwab: Fetching quotes for ${tickers.length} tickers in one call...`);
   let allQuotes: any;
   try {
-    allQuotes = await getQuotes(tickers);
+    allQuotes = await getQuotes(tickers, userId);
   } catch (e: unknown) {
     logs.push(`✕ Schwab quotes failed: ${(e instanceof Error ? e.message : "Unknown error")}`);
     return { results, logs, scanned: 0, source: 'schwab' };
@@ -157,10 +204,12 @@ async function scanWithSchwab(tickers: string[], filters: any) {
 
     // Price history for technicals
     let ema20 = null, ema50 = null, ema200 = null, rsi = 50, hv = 20, atrPct = 2;
+    let bb: { upper: number; middle: number; lower: number; position: number } | null = null;
+    let emaCross: 'golden' | 'death' | 'none' = 'none';
     try {
       const hist = await getPriceHistory(ticker, {
         periodType: 'year', period: 1, frequencyType: 'daily', frequency: 1,
-      });
+      }, userId);
       const candles = hist.candles || [];
       if (candles.length >= 20) {
         const closes = candles.map((c: any) => c.close);
@@ -172,9 +221,25 @@ async function scanWithSchwab(tickers: string[], filters: any) {
         hv = calcHV(closes) || 20;
         const atr = calcATR(bars) || (price * 0.02);
         atrPct = Math.round((atr / price) * 100 * 10) / 10;
+        bb = calcBollingerBands(closes, 20, 2);
+        emaCross = calcEMACross(closes, 20, 50);
       }
     } catch (e) {
       logs.push(`  ⚠ ${ticker} · Price history unavailable, using defaults`);
+    }
+
+    // Bollinger Band filter (optional — only applied if set)
+    if (filters.bbPosition && filters.bbPosition !== 'any' && bb) {
+      if (filters.bbPosition === 'below_lower' && bb.position > 0) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need below lower)`); continue; }
+      if (filters.bbPosition === 'near_lower' && bb.position > 20) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need ≤20%)`); continue; }
+      if (filters.bbPosition === 'near_upper' && bb.position < 80) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need ≥80%)`); continue; }
+      if (filters.bbPosition === 'above_upper' && bb.position < 100) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need above upper)`); continue; }
+      if (filters.bbPosition === 'middle' && (bb.position < 30 || bb.position > 70)) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need 30-70%)`); continue; }
+    }
+
+    // EMA Cross filter (optional — only applied if set)
+    if (filters.emaCross && filters.emaCross !== 'any') {
+      if (filters.emaCross !== emaCross) { logs.push(`⊘ ${ticker} · No ${filters.emaCross} cross`); continue; }
     }
 
     // RSI filter — hard filter (Calendar Press wants neutral RSI near support too)
@@ -209,7 +274,7 @@ async function scanWithSchwab(tickers: string[], filters: any) {
         contractType: 'ALL',
         strikeCount: 40,
         range: 'ALL',
-      });
+      }, userId);
 
       // Extract IV from the chain
       iv = Math.round((chain.volatility || hv * 1.25) * (chain.volatility > 1 ? 1 : 100));
@@ -368,6 +433,7 @@ async function scanWithSchwab(tickers: string[], filters: any) {
       ema20: ema20 ? Math.round(ema20 * 100) / 100 : null,
       ema50: ema50 ? Math.round(ema50 * 100) / 100 : null,
       ema200: ema200 ? Math.round(ema200 * 100) / 100 : null,
+      bb, emaCross,
       maxOI, optVol, optBid, ror, uoaRatio,
       isUOA: uoaRatio >= 2 && optVol >= 500,
       mktCap, putCallRatio, bidAskSpreadPct,
@@ -701,7 +767,7 @@ export async function POST(req: NextRequest) {
   } = body;
 
   // Set active user for per-user credential routing
-  setActiveUser(userId || undefined);
+  const _userId = userId || undefined;
 
   // Build ticker list
   let tickers = customTickers || UNIVERSES[universe] || UNIVERSES.core;
@@ -728,10 +794,10 @@ export async function POST(req: NextRequest) {
   };
 
   const admin = isAdmin(userId, userEmail);
-  const useSchwab = admin && await isAuthenticated();
+  const useSchwab = await isAuthenticated(_userId);
   
   if (useSchwab) {
-    const result = await scanWithSchwab(tickers, f);
+    const result = await scanWithSchwab(tickers, f, _userId);
     return NextResponse.json(result);
   } else if (!admin) {
     // Non-admin user — tell them to use personal keys or Polygon fallback

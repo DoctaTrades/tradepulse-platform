@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSnapTradeClient } from '@/app/lib/snaptrade';
 import { supabase } from '@/app/lib/supabase';
+import { verifyAuth } from '@/app/lib/auth-helpers';
 
 // ─── Helper: get or create snaptrade_users table entry ───
 async function getSnapTradeUser(userId: string) {
@@ -29,9 +30,10 @@ async function saveSnapTradeUser(userId: string, snapUserId: string, userSecret:
 
 // ─── POST handler ───
 export async function POST(req: NextRequest) {
-  const userId = req.headers.get('x-user-id');
+  const { userId: authUserId } = await verifyAuth(req);
+  const userId = authUserId;
   if (!userId) {
-    return NextResponse.json({ error: 'Missing x-user-id header' }, { status: 401 });
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
   let body: any;

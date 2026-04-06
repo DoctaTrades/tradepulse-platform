@@ -1,20 +1,14 @@
+import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
+import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 
 export const dynamic = 'force-dynamic';
 
-const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
-
+let _dashUserId: string | undefined;
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  const token = await getValidAccessToken();
-  const url = new URL(`${SCHWAB_BASE}${endpoint}`);
-  if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store' });
-  if (!res.ok) throw new Error(`Schwab API ${res.status}`);
-  return res.json();
-}
-
-// ─── STRAT HELPERS ──────────────────────────────────────
+  return _schwabFetchBase(endpoint, params, _dashUserId);
+} 
 function classifyStrat(candle: any, prev: any): string {
   const higherHigh = candle.high > prev.high;
   const lowerLow = candle.low < prev.low;
@@ -86,8 +80,11 @@ const SECTORS = [
   { symbol: 'XLC', label: 'Communication' },
 ];
 
-export async function GET() {
-  if (!await isAuthenticated()) {
+export async function GET(req: NextRequest) {
+  const { userId } = await verifyAuth(req);
+  _dashUserId = userId;
+
+  if (!await isAuthenticated(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
 

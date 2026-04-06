@@ -1,41 +1,40 @@
-// Market data layer — Per-user Schwab/Tradier with platform fallback
+// Market data layer — Per-user Schwab/Tradier
 // ALL functions return data in SCHWAB'S EXACT format
-// Priority: User's Schwab → User's Tradier → Platform Schwab (env vars)
+// Priority: User's Schwab → User's Tradier → Platform Schwab (env var fallback)
+// Every function takes optional userId — no module-level mutable state
 
-import { getValidAccessToken, isAuthenticated, hasUserCredentials } from './schwab-auth';
+import { getValidAccessToken, isAuthenticated, hasUserCredentials, refreshAccessToken } from './schwab-auth';
 import { supabase } from './supabase';
 
 const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 const TRADIER_PROD = 'https://api.tradier.com/v1';
 const TRADIER_SANDBOX = 'https://sandbox.tradier.com/v1';
 
-// ─── REQUEST-SCOPED USER CONTEXT ─────────────────────────
-// Set before each scan to route to the correct user's credentials
-let _activeUserId: string | undefined;
+// ─── SCHWAB FETCH (single implementation with 401 retry) ──
 
-export function setActiveUser(userId?: string) {
-  _activeUserId = userId;
-}
-
-export function getActiveUser(): string | undefined {
-  return _activeUserId;
-}
-
-// ─── SCHWAB FETCH ────────────────────────────────────────
-
-// Resolved userId for the current request — set by detectProvider
-let _resolvedSchwabUserId: string | undefined;
-
-async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  // Use the resolved userId from detectProvider (may be undefined for platform/legacy)
-  const token = await getValidAccessToken(_resolvedSchwabUserId);
+export async function schwabFetch(endpoint: string, params?: Record<string, string>, userId?: string) {
+  let token = await getValidAccessToken(userId);
   const url = new URL(`${SCHWAB_BASE}${endpoint}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
-  const res = await fetch(url.toString(), {
+  let res = await fetch(url.toString(), {
     headers: { 'Authorization': `Bearer ${token}` },
     cache: 'no-store',
   });
+
+  // On 401, force refresh and retry once
+  if (res.status === 401) {
+    try {
+      await refreshAccessToken(userId);
+      token = await getValidAccessToken(userId);
+      res = await fetch(url.toString(), {
+        headers: { 'Authorization': `Bearer ${token}` },
+        cache: 'no-store',
+      });
+    } catch {
+      throw new Error('Schwab API 401: Token refresh failed. Please reconnect Schwab.');
+    }
+  }
 
   if (!res.ok) {
     const err = await res.text();
@@ -55,10 +54,7 @@ async function getUserTradierConfig(userId?: string): Promise<{ token: string; s
       .select('tradier_token, tradier_sandbox')
       .eq('user_id', userId)
       .single();
-
-    if (data?.tradier_token) {
-      return { token: data.tradier_token, sandbox: data.tradier_sandbox || false };
-    }
+    if (data?.tradier_token) return { token: data.tradier_token, sandbox: data.tradier_sandbox || false };
   } catch {}
   return null;
 }
@@ -83,26 +79,13 @@ function tradierQuotesToSchwab(tradierData: any): any {
   for (const q of quotes) {
     result[q.symbol] = {
       quote: {
-        lastPrice: q.last || 0,
-        closePrice: q.prevclose || 0,
-        openPrice: q.open || 0,
-        highPrice: q.high || 0,
-        lowPrice: q.low || 0,
-        netChange: q.change || 0,
-        netPercentChangeInDouble: q.change_percentage || 0,
-        totalVolume: q.volume || 0,
-        bidPrice: q.bid || 0,
-        askPrice: q.ask || 0,
-        '52WkHigh': q.week_52_high || 0,
-        '52WkLow': q.week_52_low || 0,
-        avgTotalVolume: q.average_volume || 0,
-        mark: q.last || 0,
+        lastPrice: q.last || 0, closePrice: q.prevclose || 0, openPrice: q.open || 0,
+        highPrice: q.high || 0, lowPrice: q.low || 0, netChange: q.change || 0,
+        netPercentChangeInDouble: q.change_percentage || 0, totalVolume: q.volume || 0,
+        bidPrice: q.bid || 0, askPrice: q.ask || 0, '52WkHigh': q.week_52_high || 0,
+        '52WkLow': q.week_52_low || 0, avgTotalVolume: q.average_volume || 0, mark: q.last || 0,
       },
-      fundamental: {
-        avg10DaysVolume: q.average_volume || 0,
-        marketCap: 0,
-        marketSector: '',
-      },
+      fundamental: { avg10DaysVolume: q.average_volume || 0, marketCap: 0, marketSector: '' },
     };
   }
   return result;
@@ -111,33 +94,20 @@ function tradierQuotesToSchwab(tradierData: any): any {
 function tradierChainToSchwab(options: any[], expirations: string[], underlyingPrice: number): any {
   const putExpDateMap: any = {};
   const callExpDateMap: any = {};
-
   for (const o of options) {
     const exp = o.expiration_date || '';
     const dte = Math.max(0, Math.round((new Date(exp).getTime() - Date.now()) / 86400000));
     const expKey = `${exp}:${dte}`;
-
     const contract = {
-      symbol: o.symbol || '',
-      strikePrice: o.strike || 0,
-      strike: o.strike || 0,
-      bid: o.bid || 0,
-      ask: o.ask || 0,
-      last: o.last || 0,
-      totalVolume: o.volume || 0,
-      openInterest: o.open_interest || 0,
-      delta: o.greeks?.delta || 0,
-      gamma: o.greeks?.gamma || 0,
-      theta: o.greeks?.theta || 0,
-      vega: o.greeks?.vega || 0,
-      volatility: (o.greeks?.mid_iv || o.greeks?.ask_iv || 0),
-      daysToExpiration: dte,
+      symbol: o.symbol || '', strikePrice: o.strike || 0, strike: o.strike || 0,
+      bid: o.bid || 0, ask: o.ask || 0, last: o.last || 0, totalVolume: o.volume || 0,
+      openInterest: o.open_interest || 0, delta: o.greeks?.delta || 0, gamma: o.greeks?.gamma || 0,
+      theta: o.greeks?.theta || 0, vega: o.greeks?.vega || 0,
+      volatility: (o.greeks?.mid_iv || o.greeks?.ask_iv || 0), daysToExpiration: dte,
       inTheMoney: o.strike ? (o.option_type === 'put' ? o.strike > underlyingPrice : o.strike < underlyingPrice) : false,
       expirationDate: exp,
     };
-
     const strikeKey = String(o.strike);
-
     if (o.option_type === 'put') {
       if (!putExpDateMap[expKey]) putExpDateMap[expKey] = {};
       if (!putExpDateMap[expKey][strikeKey]) putExpDateMap[expKey][strikeKey] = [];
@@ -148,103 +118,53 @@ function tradierChainToSchwab(options: any[], expirations: string[], underlyingP
       callExpDateMap[expKey][strikeKey].push(contract);
     }
   }
-
-  return {
-    putExpDateMap,
-    callExpDateMap,
-    underlyingPrice,
-    volatility: 0,
-    underlying: { last: underlyingPrice },
-  };
+  return { putExpDateMap, callExpDateMap, underlyingPrice, volatility: 0, underlying: { last: underlyingPrice } };
 }
 
 function tradierHistoryToSchwab(tradierData: any): any {
   const days = tradierData?.history?.day || [];
-  return {
-    candles: days.map((d: any) => ({
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-      volume: d.volume || 0,
-      datetime: new Date(d.date).getTime(),
-    })),
-  };
+  return { candles: days.map((d: any) => ({ open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume || 0, datetime: new Date(d.date).getTime() })) };
 }
 
 // ─── PROVIDER DETECTION ──────────────────────────────────
-// Priority: User's Schwab → User's Tradier → Platform Schwab
 
-async function detectProvider(): Promise<'schwab' | 'tradier' | null> {
-  const userId = _activeUserId;
-
-  // 1. Check if this user has their own Schwab credentials + active tokens
+async function detectProvider(userId?: string): Promise<{ type: 'schwab' | 'tradier' | null; schwabUserId?: string }> {
   if (userId) {
     const userHasSchwab = await hasUserCredentials(userId);
     if (userHasSchwab) {
       try {
         const userAuth = await isAuthenticated(userId);
-        if (userAuth) {
-          _resolvedSchwabUserId = userId; // Use this user's tokens
-          return 'schwab';
-        }
+        if (userAuth) return { type: 'schwab', schwabUserId: userId };
       } catch {}
     }
-
-    // 2. Check if this user has Tradier
     const tradier = await getUserTradierConfig(userId);
-    if (tradier) return 'tradier';
+    if (tradier) return { type: 'tradier' };
   }
-
-  // 3. Fall back to platform Schwab (env vars / legacy tokens)
   try {
-    const platformAuth = await isAuthenticated(); // no userId = legacy
-    if (platformAuth) {
-      _resolvedSchwabUserId = undefined; // Use platform/legacy tokens
-      return 'schwab';
-    }
+    const platformAuth = await isAuthenticated();
+    if (platformAuth) return { type: 'schwab', schwabUserId: undefined };
   } catch {}
-
-  return null;
+  return { type: null };
 }
 
 // ─── PUBLIC API ──────────────────────────────────────────
 
-export async function getQuotes(symbols: string[]) {
-  const provider = await detectProvider();
-
-  if (provider === 'schwab') {
-    return schwabFetch('/quotes', {
-      symbols: symbols.join(','),
-      fields: 'quote,fundamental',
-    });
+export async function getQuotes(symbols: string[], userId?: string) {
+  const { type, schwabUserId } = await detectProvider(userId);
+  if (type === 'schwab') return schwabFetch('/quotes', { symbols: symbols.join(','), fields: 'quote,fundamental' }, schwabUserId);
+  if (type === 'tradier') {
+    const tradier = await getUserTradierConfig(userId);
+    if (tradier) return tradierQuotesToSchwab(await tradierFetch('/markets/quotes', tradier.token, tradier.sandbox, { symbols: symbols.join(','), greeks: 'false' }));
   }
-
-  if (provider === 'tradier') {
-    const tradier = await getUserTradierConfig(_activeUserId);
-    if (tradier) {
-      const data = await tradierFetch('/markets/quotes', tradier.token, tradier.sandbox, {
-        symbols: symbols.join(','),
-        greeks: 'false',
-      });
-      return tradierQuotesToSchwab(data);
-    }
-  }
-
-  throw new Error('No data provider available. Connect Schwab or Tradier in Settings → Schwab API.');
+  throw new Error('No data provider available. Connect Schwab in Settings.');
 }
 
 export async function getOptionChain(symbol: string, opts?: {
-  contractType?: 'CALL' | 'PUT' | 'ALL';
-  strikeCount?: number;
-  range?: string;
-  fromDate?: string;
-  toDate?: string;
-  expMonth?: string;
-}) {
-  const provider = await detectProvider();
-
-  if (provider === 'schwab') {
+  contractType?: 'CALL' | 'PUT' | 'ALL'; strikeCount?: number; range?: string;
+  fromDate?: string; toDate?: string; expMonth?: string;
+}, userId?: string) {
+  const { type, schwabUserId } = await detectProvider(userId);
+  if (type === 'schwab') {
     const params: Record<string, string> = { symbol };
     if (opts?.contractType) params.contractType = opts.contractType;
     if (opts?.strikeCount) params.strikeCount = String(opts.strikeCount);
@@ -252,83 +172,62 @@ export async function getOptionChain(symbol: string, opts?: {
     if (opts?.fromDate) params.fromDate = opts.fromDate;
     if (opts?.toDate) params.toDate = opts.toDate;
     if (opts?.expMonth) params.expMonth = opts.expMonth;
-    return schwabFetch('/chains', params);
+    return schwabFetch('/chains', params, schwabUserId);
   }
-
-  if (provider === 'tradier') {
-    const tradier = await getUserTradierConfig(_activeUserId);
+  if (type === 'tradier') {
+    const tradier = await getUserTradierConfig(userId);
     if (tradier) {
-      // Get underlying price
       const quoteData = await tradierFetch('/markets/quotes', tradier.token, tradier.sandbox, { symbols: symbol });
       const quotes = Array.isArray(quoteData?.quotes?.quote) ? quoteData.quotes.quote : quoteData?.quotes?.quote ? [quoteData.quotes.quote] : [];
       const underlyingPrice = quotes[0]?.last || 0;
-
-      // Get expirations
       const expData = await tradierFetch('/markets/options/expirations', tradier.token, tradier.sandbox, { symbol, includeAllRoots: 'true' });
       let expirations: string[] = expData?.expirations?.date || [];
-
       if (opts?.fromDate) expirations = expirations.filter(e => e >= opts.fromDate!);
       if (opts?.toDate) expirations = expirations.filter(e => e <= opts.toDate!);
       expirations = expirations.slice(0, 6);
-
       let allOptions: any[] = [];
       for (const exp of expirations) {
         try {
-          const chainData = await tradierFetch('/markets/options/chains', tradier.token, tradier.sandbox, {
-            symbol, expiration: exp, greeks: 'true',
-          });
+          const chainData = await tradierFetch('/markets/options/chains', tradier.token, tradier.sandbox, { symbol, expiration: exp, greeks: 'true' });
           const options = Array.isArray(chainData?.options?.option) ? chainData.options.option : chainData?.options?.option ? [chainData.options.option] : [];
           allOptions.push(...options);
         } catch {}
       }
-
       return tradierChainToSchwab(allOptions, expirations, underlyingPrice);
     }
   }
-
-  throw new Error('No data provider available. Connect Schwab or Tradier in Settings → Schwab API.');
+  throw new Error('No data provider available. Connect Schwab in Settings.');
 }
 
 export async function getPriceHistory(symbol: string, opts?: {
-  periodType?: string;
-  period?: number;
-  frequencyType?: string;
-  frequency?: number;
-  startDate?: number;
-  endDate?: number;
-  needExtendedHoursData?: boolean;
-}) {
-  const provider = await detectProvider();
-
-  if (provider === 'schwab') {
+  periodType?: string; period?: number; frequencyType?: string; frequency?: number;
+  startDate?: number; endDate?: number; needExtendedHoursData?: boolean;
+}, userId?: string) {
+  const { type, schwabUserId } = await detectProvider(userId);
+  if (type === 'schwab') {
     const params: Record<string, string> = { symbol };
     if (opts?.periodType) params.periodType = opts.periodType;
     if (opts?.period) params.period = String(opts.period);
     if (opts?.frequencyType) params.frequencyType = opts.frequencyType;
     if (opts?.frequency) params.frequency = String(opts.frequency);
     if (opts?.needExtendedHoursData !== undefined) params.needExtendedHoursData = String(opts.needExtendedHoursData);
-    return schwabFetch(`/pricehistory`, { ...params });
+    return schwabFetch('/pricehistory', { ...params }, schwabUserId);
   }
-
-  if (provider === 'tradier') {
-    const tradier = await getUserTradierConfig(_activeUserId);
+  if (type === 'tradier') {
+    const tradier = await getUserTradierConfig(userId);
     if (tradier) {
       const end = new Date().toISOString().split('T')[0];
       const days = (opts?.period || 3) * (opts?.periodType === 'year' ? 365 : 30);
       const start = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
-      const data = await tradierFetch('/markets/history', tradier.token, tradier.sandbox, {
-        symbol, interval: 'daily', start, end,
-      });
-      return tradierHistoryToSchwab(data);
+      return tradierHistoryToSchwab(await tradierFetch('/markets/history', tradier.token, tradier.sandbox, { symbol, interval: 'daily', start, end }));
     }
   }
-
-  throw new Error('No data provider available. Connect Schwab or Tradier in Settings → Schwab API.');
+  throw new Error('No data provider available. Connect Schwab in Settings.');
 }
 
-// Market movers (Schwab only)
-export async function getMovers(index: string, direction?: 'up' | 'down') {
+export async function getMovers(index: string, direction?: 'up' | 'down', userId?: string) {
+  const { schwabUserId } = await detectProvider(userId);
   const params: Record<string, string> = {};
   if (direction) params.sort = direction;
-  return schwabFetch(`/movers/${index}`, params);
+  return schwabFetch(`/movers/${index}`, params, schwabUserId);
 }

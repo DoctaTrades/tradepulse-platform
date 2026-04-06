@@ -37,7 +37,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Dynamic imports for heavy modules (code splitting)
 const JournalModule = dynamic(() => import('./modules/journal/JournalModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading journal</span></div> });
 const ScreenerModule = dynamic(() => import('./modules/screener/ScreenerModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading screener</span></div> });
-const DiscoveryModule = dynamic(() => import('./modules/screener/DiscoveryModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading discovery</span></div> });
+const DiscoveryModule = dynamic(() => import('./modules/screener/DiscoveryModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading stock screener</span></div> });
 const MarketPulseModule = dynamic(() => import('./modules/research/MarketPulseModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading market pulse</span></div> });
 const DeepDiveModule = dynamic(() => import('./modules/research/DeepDiveModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading deep dive</span></div> });
 const MarketCalendarModule = dynamic(() => import('./modules/calendar/MarketCalendarModule'), { ssr: false, loading: () => <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:60, gap:12 }}><div className="tp-spinner"/><span style={{ color:"var(--text-dim)", fontSize:12, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, textTransform:"uppercase", letterSpacing:1 }}>Loading calendar</span></div> });
@@ -139,8 +139,8 @@ const SIDEBAR = [
   { label:"Research", items:[
     { id:"calendar", icon:"crosshair", name:"Market Calendar" },
     { id:"sectors", icon:"zap", name:"Sector Explorer" },
-    { id:"screener", icon:"search", name:"Screener" },
-    { id:"discovery", icon:"trendUp", name:"Discovery" },
+    { id:"screener", icon:"search", name:"Options Screener" },
+    { id:"discovery", icon:"trendUp", name:"Stock Screener" },
     { id:"marketpulse", icon:"trendUp", name:"Market Pulse" },
     { id:"deepdive", icon:"search", name:"Deep Dive" },
   ]},
@@ -160,12 +160,17 @@ export default function TradePulsePlatform() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [schwabDisconnected, setSchwabDisconnected] = useState(false);
 
-  // Global Schwab connection check on mount
+  // Global Schwab connection check on mount (once user is loaded)
   useEffect(() => {
-    fetch('/api/schwab/refresh').then(r => r.json()).then(d => {
-      setSchwabDisconnected(!d.connected);
-    }).catch(() => setSchwabDisconnected(true));
-  }, []);
+    if (!user?.id) return;
+    import('./lib/auth-fetch').then(({ getAuthHeaders }) => {
+      getAuthHeaders().then(headers => {
+        fetch('/api/schwab/refresh', { headers }).then(r => r.json()).then(d => {
+          setSchwabDisconnected(!d.connected);
+        }).catch(() => setSchwabDisconnected(true));
+      });
+    });
+  }, [user?.id]);
   const [prefs, setPrefs] = useState({ theme: "dark" });
   const isDark = prefs.theme !== "light";
 
@@ -287,7 +292,7 @@ export default function TradePulsePlatform() {
                   <div style={{ fontSize:11, color:"#a3870d", marginTop:2 }}>Market data, screener, and live quotes require an active Schwab connection.</div>
                 </div>
               </div>
-              <button onClick={() => { window.location.href = '/api/schwab/auth'; }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
+              <button onClick={() => { window.location.href = `/api/schwab/auth${user?.id ? `?userId=${user.id}` : ''}`; }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
                 🔐 Reconnect Schwab
               </button>
             </div>
@@ -324,14 +329,14 @@ export default function TradePulsePlatform() {
           {tab === "discovery" && <DiscoveryModule user={user}/>}
 
           {/* Market Pulse module */}
-          {tab === "marketpulse" && <MarketPulseModule/>}
+          {tab === "marketpulse" && <MarketPulseModule user={user}/>}
 
           {/* Deep Dive module */}
-          {tab === "deepdive" && <DeepDiveModule/>}
+          {tab === "deepdive" && <DeepDiveModule user={user}/>}
 
           {/* Market Calendar module */}
           {tab === "calendar" && <MarketCalendarModule/>}
-          {tab === "sectors" && <SectorExplorerModule/>}
+          {tab === "sectors" && <SectorExplorerModule user={user}/>}
         </div>
       </div>
     </div>

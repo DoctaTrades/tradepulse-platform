@@ -7,6 +7,8 @@ interface ScanResult {
   ticker: string; price: number; change: number; vol: number;
   iv: number; hv: number; ivr: number; rsi: number; atrPct: number;
   ema20: number | null; ema50: number | null; ema200: number | null;
+  bb?: { upper: number; middle: number; lower: number; position: number } | null;
+  emaCross?: 'golden' | 'death' | 'none';
   maxOI: number; optVol: number; optBid: number; ror: number;
   uoaRatio: number; isUOA: boolean; mktCap: number;
   passesMainFilters: boolean;
@@ -95,17 +97,22 @@ export default function ScreenerModule({ user }: { user?: any }) {
 
   useEffect(() => {
     if (!user?.id) return;
-    fetch('/api/user-keys', { headers: { 'x-user-id': user.id } })
-      .then(r => r.json())
-      .then(data => { if (data.apiKeys) setUserKeys(data.apiKeys); })
-      .catch(() => {});
+    (async () => {
+      const headers: Record<string, string> = { 'x-user-id': user.id };
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
+      fetch('/api/user-keys', { headers })
+        .then(r => r.json())
+        .then(data => { if (data.apiKeys) setUserKeys(data.apiKeys); })
+        .catch(() => {});
+    })();
   }, [user?.id]);
 
   const saveUserKeys = async () => {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' };
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
       const res = await fetch('/api/user-keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        method: 'POST', headers,
         body: JSON.stringify({ action: 'save', apiKeys: userKeys }),
       });
       const data = await res.json();
@@ -119,9 +126,10 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const testUserKeys = async (provider: string) => {
     setUserKeyStatus({ ok: false, msg: '⏳ Testing...' });
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' };
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
       const res = await fetch('/api/user-keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' },
+        method: 'POST', headers,
         body: JSON.stringify({ action: 'test', provider, apiKeys: userKeys }),
       });
       const data = await res.json();
@@ -220,44 +228,28 @@ export default function ScreenerModule({ user }: { user?: any }) {
     minBid: 0.10, minRoR: 0, minRSI: 30, maxRSI: 75,
     emaTrend: 'any', targetDelta: 0.30, targetDTE: [25, 45] as [number, number],
     cspDeltaMin: 0.10, cspDeltaMax: 0.35,
+    bbPosition: 'any', emaCross: 'any',
   });
 
   // Check Schwab connection status on load
   useEffect(() => {
-    // Check for any user — admin uses platform schwab, others use their own credentials
     if (user?.id) {
-      // First check user-specific credentials
-      fetch(`/api/schwab/credentials?userId=${user.id}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.connected) {
-            setSchwabStatus({ connected: true, expiresAt: data.expiresAt || Date.now() + 1800000, refreshExpiresEstimate: data.refreshExpiresEstimate || '~7 days' });
-          } else if (isAdmin) {
-            // Admin fallback: try platform schwab — verify token actually works
-            fetch('/api/schwab/refresh').then(r => r.json()).then(data => {
-              if (data.connected) {
-                setSchwabStatus(data);
-              } else {
-                setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Token expired — click Reconnect' });
-              }
-            }).catch(() => {
-              setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Connection failed' });
-            });
-          }
-        })
-        .catch(() => {
-          if (isAdmin) {
-            fetch('/api/schwab/refresh').then(r => r.json()).then(data => {
-              if (data.connected) {
-                setSchwabStatus(data);
-              } else {
-                setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Token expired — click Reconnect' });
-              }
-            }).catch(() => {
-              setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Connection failed' });
-            });
-          }
-        });
+      (async () => {
+        const userHeaders: Record<string, string> = { 'x-user-id': user.id };
+        try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(userHeaders, await getAuthHeaders()); } catch {}
+        fetch('/api/schwab/refresh', { headers: userHeaders })
+          .then(r => r.json())
+          .then(data => {
+            if (data.connected) {
+              setSchwabStatus(data);
+            } else {
+              setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Token expired — click Reconnect' });
+            }
+          })
+          .catch(() => {
+            setSchwabStatus({ connected: false, expiresAt: null, refreshExpiresEstimate: 'Connection failed' });
+          });
+      })();
     }
     // Check URL params for OAuth callback result
     const params = new URLSearchParams(window.location.search);
@@ -419,12 +411,15 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const loadDashboard = useCallback(async () => {
     setDashLoading(true);
     try {
-      const res = await fetch('/api/dashboard');
+      const headers: Record<string, string> = {};
+      if (user?.id) headers['x-user-id'] = user.id;
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
+      const res = await fetch('/api/dashboard', { headers });
       const data = await res.json();
       if (!data.error) setDashData(data);
     } catch {}
     setDashLoading(false);
-  }, []);
+  }, [user?.id]);
 
   const updateFilter = (key: string, value: string | number | number[]) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -545,7 +540,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
     { id: 'calPress', label: `📅 Cal Press (${results.length ? getStrategyResults('calPress').length : '-'})` },
     { id: 'ic', label: `🦅 IC (${results.length ? getStrategyResults('ic').length : '-'})` },
     { id: 'uoa', label: `🔥 UOA (${results.length ? getStrategyResults('uoa').length : '-'})` },
-    { id: 'equity', label: `📊 Equities (${equityResults.length || '-'})` },
+    { id: 'equity', label: `📊 Setups (${equityResults.length || '-'})` },
     { id: 'spx', label: '🎯 SPX Radar' },
   ];
 
@@ -869,6 +864,10 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 <FilterField label="Max RSI" value={filters.maxRSI} onChange={v => updateFilter('maxRSI', +v)} type="number" />
                 <SelectField label="EMA Trend" value={filters.emaTrend} onChange={v => updateFilter('emaTrend', v)}
                   options={[['any','Any'],['above20','Above 20 EMA'],['above50','Above 50 EMA'],['above200','Above 200 EMA'],['above_both','Above 50 & 200'],['above_all','Above 20/50/200'],['below20','Below 20 EMA']]} />
+                <SelectField label="Bollinger Band" value={filters.bbPosition} onChange={v => updateFilter('bbPosition', v)}
+                  options={[['any','Any'],['below_lower','Below lower band'],['near_lower','Near lower (≤20%)'],['middle','Middle (30-70%)'],['near_upper','Near upper (≥80%)'],['above_upper','Above upper band']]} />
+                <SelectField label="EMA Cross (20/50)" value={filters.emaCross} onChange={v => updateFilter('emaCross', v)}
+                  options={[['any','Any'],['golden','🟢 Golden cross (recent)'],['death','🔴 Death cross (recent)'],['none','No recent cross']]} />
                 {/* Schwab-only filters */}
                 <FilterField label={schwabStatus.connected ? '🟢 Delta Min' : '🔒 Delta Min'} value={filters.cspDeltaMin}
                   onChange={v => updateFilter('cspDeltaMin', +v)} type="number" step="0.01" disabled={!schwabStatus.connected} />
@@ -1825,6 +1824,8 @@ function ResultsTable({ results, onSelect, title }: { results: ScanResult[]; onS
             <TH col="iv" label="IV%" />
             <TH col="ror" label="RoR%" />
             <TH col="rsi" label="RSI" />
+            <th className="font-mono text-[9px] font-medium uppercase tracking-wider px-3 py-2.5 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>BB</th>
+            <th className="font-mono text-[9px] font-medium uppercase tracking-wider px-3 py-2.5 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>Cross</th>
             <TH col="optBid" label="Best Bid" />
             {results[0]?.bestPut && <TH col="bestPut.delta" label="Delta" />}
             {results[0]?.bestPut && <th className="font-mono text-[9px] font-medium uppercase tracking-wider px-3 py-2.5 text-left border-b" style={{ color: 'var(--text-dim)', borderColor: 'var(--border)' }}>DTE</th>}
@@ -1853,6 +1854,8 @@ function ResultsTable({ results, onSelect, title }: { results: ScanResult[]; onS
                 <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)' }}>{r.iv}%</td>
                 <td className="px-3 py-2 border-b font-mono text-xs font-semibold" style={{ borderColor: 'rgba(255,255,255,0.035)', color: r.ror >= 3 ? 'var(--green)' : r.ror >= 1.5 ? 'var(--gold)' : 'var(--text-mid)' }}>{r.ror}%</td>
                 <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)' }}>{r.rsi}</td>
+                <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)', color: r.bb?.position < 20 ? 'var(--green)' : r.bb?.position > 80 ? 'var(--red)' : 'var(--text-mid)' }}>{r.bb ? `${r.bb.position}%` : '—'}</td>
+                <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)' }}>{r.emaCross === 'golden' ? <span style={{ color: 'var(--green)' }}>🟢 GC</span> : r.emaCross === 'death' ? <span style={{ color: 'var(--red)' }}>🔴 DC</span> : <span style={{ color: 'var(--text-dim)' }}>—</span>}</td>
                 <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)' }}>${r.optBid?.toFixed(2) || '—'}</td>
                 {results[0]?.bestPut && <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)' }}>{r.bestPut?.delta?.toFixed(2) || '—'}</td>}
                 {results[0]?.bestPut && <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)' }}>{r.bestPut?.dte || '—'}</td>}

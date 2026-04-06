@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
-
-const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
+import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 
 let _spxUserId: string | undefined;
 
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  const token = await getValidAccessToken(_spxUserId);
-  const url = new URL(`${SCHWAB_BASE}${endpoint}`);
-  if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store' });
-  if (!res.ok) throw new Error(`Schwab API ${res.status}: ${await res.text()}`);
-  return res.json();
+  return _schwabFetchBase(endpoint, params, _spxUserId);
 }
 
 // ─── TYPES ────────────────────────────────────────────────

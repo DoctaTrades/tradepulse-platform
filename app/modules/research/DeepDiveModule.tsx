@@ -18,10 +18,20 @@ interface DeepDiveData {
   tradingContext: string;
   rating: string | null;
   sectorETFs?: { etf: string; label: string; color: string; tickerCount: number }[];
+  // New cascading data
+  valuation: { pe: number; forwardPE: number; ps: number; pb: number; peg: number; evToEbitda?: number };
+  nextEarningsDate?: string | null;
+  insiderTransactions?: { name: string; share: number; change: number; filingDate: string; transactionType: string }[];
+  insiderSentiment?: string;
+  recommendations?: { period: string; buy: number; hold: number; sell: number; strongBuy: number; strongSell: number }[];
+  analystConsensus?: string | null;
+  totalAnalysts?: number;
+  peers?: string[];
+  dataSources?: string[];
   error?: string;
 }
 
-export default function DeepDiveModule() {
+export default function DeepDiveModule({ user }: { user?: any }) {
   const [ticker, setTicker] = useState('');
   const [data, setData] = useState<DeepDiveData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,6 +40,17 @@ export default function DeepDiveModule() {
   const [matrixLoading, setMatrixLoading] = useState(false);
   const [matrixCollapsed, setMatrixCollapsed] = useState(false);
 
+  const getHeaders = useCallback(async () => {
+    const h: Record<string, string> = {};
+    if (user?.id) h['x-user-id'] = user.id;
+    try {
+      const { getAuthHeaders } = await import('@/app/lib/auth-fetch');
+      const authH = await getAuthHeaders();
+      Object.assign(h, authH);
+    } catch {}
+    return h;
+  }, [user?.id]);
+
   const loadData = useCallback(async (sym?: string) => {
     const t = (sym || ticker).toUpperCase().trim();
     if (!t) return;
@@ -37,8 +58,9 @@ export default function DeepDiveModule() {
     setError('');
     setData(null);
     setStratMatrix(null);
+    const headers = await getHeaders();
     try {
-      const res = await fetch(`/api/deep-dive?ticker=${t}`);
+      const res = await fetch(`/api/deep-dive?ticker=${t}`, { headers });
       const d = await res.json();
       if (d.error) setError(d.error);
       else setData(d);
@@ -47,15 +69,14 @@ export default function DeepDiveModule() {
     }
     setLoading(false);
 
-    // Also fetch Strat matrix (independent of FMP)
     setMatrixLoading(true);
     try {
-      const mRes = await fetch(`/api/strat-matrix?ticker=${t}`);
+      const mRes = await fetch(`/api/strat-matrix?ticker=${t}`, { headers });
       const mData = await mRes.json();
       if (!mData.error) setStratMatrix(mData);
     } catch {}
     setMatrixLoading(false);
-  }, [ticker]);
+  }, [ticker, getHeaders]);
 
   const fmtB = (n: number) => {
     if (!n) return '—';
@@ -303,6 +324,7 @@ export default function DeepDiveModule() {
               { label: 'P/S Ratio', value: data.valuation.ps ? `${data.valuation.ps}x` : '—' },
               { label: 'PEG Ratio', value: data.valuation.peg ? `${data.valuation.peg}x` : '—' },
               { label: 'P/B Ratio', value: data.valuation.pb ? `${data.valuation.pb}x` : '—' },
+              { label: 'EV/EBITDA', value: data.valuation.evToEbitda ? `${data.valuation.evToEbitda}x` : '—' },
               { label: 'Rev Growth', value: fmtPct(data.growth.revenueGrowth), color: data.growth.revenueGrowth > 0 ? '#4ade80' : '#f87171' },
               { label: 'EPS Growth', value: fmtPct(data.growth.epsGrowth), color: data.growth.epsGrowth > 0 ? '#4ade80' : '#f87171' },
               { label: 'Gross Margin', value: data.margins.gross ? `${data.margins.gross}%` : '—' },
@@ -368,6 +390,104 @@ export default function DeepDiveModule() {
               ) : <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>No revenue history available</div>}
             </div>
           </div>
+
+          {/* ── NEW: Insider Activity, Analyst Recs, Peers ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+
+            {/* Insider Transactions */}
+            {data.insiderTransactions && data.insiderTransactions.length > 0 && (
+              <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>Insider Activity</div>
+                  {data.insiderSentiment && (
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
+                      background: data.insiderSentiment === 'net-buyer' ? 'rgba(74,222,128,0.1)' : data.insiderSentiment === 'net-seller' ? 'rgba(248,113,113,0.1)' : 'rgba(234,179,8,0.1)',
+                      color: data.insiderSentiment === 'net-buyer' ? '#4ade80' : data.insiderSentiment === 'net-seller' ? '#f87171' : '#eab308'
+                    }}>
+                      {data.insiderSentiment === 'net-buyer' ? '↑ Net Buying' : data.insiderSentiment === 'net-seller' ? '↓ Net Selling' : '— Neutral'}
+                    </span>
+                  )}
+                </div>
+                {data.insiderTransactions.slice(0, 6).map((t, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: i < 5 ? '1px solid rgba(255,255,255,0.04)' : 'none', fontSize: 11 }}>
+                    <div>
+                      <span style={{ color: 'var(--text)', fontWeight: 600 }}>{t.name?.split(' ').slice(0, 2).join(' ')}</span>
+                      <span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>{t.filingDate}</span>
+                    </div>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+                      color: t.change > 0 ? '#4ade80' : '#f87171'
+                    }}>
+                      {t.change > 0 ? '+' : ''}{t.change?.toLocaleString()} shares
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Analyst Recommendations */}
+            {data.recommendations && data.recommendations.length > 0 && (
+              <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>Analyst Consensus</div>
+                  {data.analystConsensus && (
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
+                      background: data.analystConsensus === 'Buy' ? 'rgba(74,222,128,0.1)' : data.analystConsensus === 'Sell' ? 'rgba(248,113,113,0.1)' : 'rgba(234,179,8,0.1)',
+                      color: data.analystConsensus === 'Buy' ? '#4ade80' : data.analystConsensus === 'Sell' ? '#f87171' : '#eab308'
+                    }}>
+                      {data.analystConsensus} ({data.totalAnalysts} analysts)
+                    </span>
+                  )}
+                </div>
+                {data.recommendations.slice(0, 3).map((r, i) => {
+                  const total = (r.strongBuy || 0) + (r.buy || 0) + (r.hold || 0) + (r.sell || 0) + (r.strongSell || 0);
+                  if (total === 0) return null;
+                  return (
+                    <div key={i} style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 4 }}>{r.period}</div>
+                      <div style={{ display: 'flex', height: 16, borderRadius: 4, overflow: 'hidden' }}>
+                        {r.strongBuy > 0 && <div style={{ width: `${(r.strongBuy / total) * 100}%`, background: '#059669' }} title={`Strong Buy: ${r.strongBuy}`}/>}
+                        {r.buy > 0 && <div style={{ width: `${(r.buy / total) * 100}%`, background: '#4ade80' }} title={`Buy: ${r.buy}`}/>}
+                        {r.hold > 0 && <div style={{ width: `${(r.hold / total) * 100}%`, background: '#eab308' }} title={`Hold: ${r.hold}`}/>}
+                        {r.sell > 0 && <div style={{ width: `${(r.sell / total) * 100}%`, background: '#f87171' }} title={`Sell: ${r.sell}`}/>}
+                        {r.strongSell > 0 && <div style={{ width: `${(r.strongSell / total) * 100}%`, background: '#dc2626' }} title={`Strong Sell: ${r.strongSell}`}/>}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-dim)', marginTop: 2 }}>
+                        <span style={{ color: '#4ade80' }}>Buy {(r.strongBuy || 0) + (r.buy || 0)}</span>
+                        <span style={{ color: '#eab308' }}>Hold {r.hold || 0}</span>
+                        <span style={{ color: '#f87171' }}>Sell {(r.sell || 0) + (r.strongSell || 0)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Peers & Data Sources */}
+          {(data.peers?.length > 0 || data.nextEarningsDate || data.dataSources?.length > 0) && (
+            <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              {data.nextEarningsDate && (
+                <span style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.15)', color: '#eab308', fontWeight: 600 }}>
+                  📅 Next Earnings: {data.nextEarningsDate}
+                </span>
+              )}
+              {data.peers && data.peers.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-dim)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Peers:</span>
+                  {data.peers.map(p => (
+                    <button key={p} onClick={() => { setTicker(p); loadData(p); }} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(99,102,241,0.2)', background: 'rgba(99,102,241,0.06)', color: '#a5b4fc', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {data.dataSources && data.dataSources.length > 0 && (
+                <span style={{ fontSize: 9, color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                  Sources: {data.dataSources.join(' + ')}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Company Description */}
           {data.profile.description && (

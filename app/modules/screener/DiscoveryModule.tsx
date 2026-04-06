@@ -79,24 +79,29 @@ export default function DiscoveryModule({ user }: { user?: any }) {
   // Load saved presets from Supabase
   useEffect(() => {
     if (!user?.id) return;
-    fetch('/api/user-keys', { headers: { 'x-user-id': user.id } })
-      .then(r => r.json())
-      .then(data => {
-        if (data.apiKeys?.discoveryPresets) setSavedPresets(data.apiKeys.discoveryPresets);
-      }).catch(() => {});
+    (async () => {
+      const headers: Record<string, string> = { 'x-user-id': user.id };
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
+      fetch('/api/user-keys', { headers })
+        .then(r => r.json())
+        .then(data => {
+          if (data.apiKeys?.discoveryPresets) setSavedPresets(data.apiKeys.discoveryPresets);
+        }).catch(() => {});
+    })();
   }, [user?.id]);
 
   // Save presets to Supabase
   const persistPresets = async (presets: SavedPreset[]) => {
     if (!user?.id) return;
-    // Load existing keys first, merge
     try {
-      const res = await fetch('/api/user-keys', { headers: { 'x-user-id': user.id } });
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-user-id': user.id };
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
+      const res = await fetch('/api/user-keys', { headers });
       const data = await res.json();
       const merged = { ...(data.apiKeys || {}), discoveryPresets: presets };
       await fetch('/api/user-keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+        headers,
         body: JSON.stringify({ action: 'save', apiKeys: merged }),
       });
     } catch {}
@@ -485,7 +490,7 @@ export default function DiscoveryModule({ user }: { user?: any }) {
       {!scanning && results.length === 0 && !activePreset && (
         <div className="text-center py-16">
           <div className="text-5xl mb-4 opacity-30">🔍</div>
-          <div className="font-display text-xl font-bold mb-2" style={{ color: 'var(--text-dim)' }}>Stock Discovery</div>
+          <div className="font-display text-xl font-bold mb-2" style={{ color: 'var(--text-dim)' }}>Stock Screener</div>
           <div className="font-mono text-xs max-w-md mx-auto" style={{ color: 'var(--text-dim)', lineHeight: 1.8 }}>
             Pick a preset scan above or build your own custom filters. Results show tickers matching your criteria with key metrics for further analysis.
           </div>

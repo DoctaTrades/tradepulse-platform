@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveUserCredentials, deleteUserCredentials, hasUserCredentials, getTokenStatus } from '@/app/lib/schwab-auth';
 import { supabase } from '@/app/lib/supabase';
+import { verifyAuth } from '@/app/lib/auth-helpers';
 
 // GET: check if user has credentials saved
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('userId');
-  if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+  const { userId } = await verifyAuth(req);
+  if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   try {
     const hasCreds = await hasUserCredentials(userId);
@@ -20,8 +21,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { userId, provider } = body;
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    const { userId: bodyUserId, provider } = body;
+    const { userId: authUserId } = await verifyAuth(req);
+    const userId = authUserId || bodyUserId;
+    if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     // Tradier save
     if (provider === 'tradier') {
@@ -82,8 +85,10 @@ export async function POST(req: NextRequest) {
 // DELETE: remove user's credentials and tokens
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId } = await req.json();
-    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    const body = await req.json();
+    const { userId: authUserId } = await verifyAuth(req);
+    const userId = authUserId || body.userId;
+    if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     await deleteUserCredentials(userId);
     return NextResponse.json({ success: true, message: 'Credentials and tokens removed.' });

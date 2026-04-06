@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAuth } from '@/app/lib/auth-helpers';
 
 // ─── PER-USER API KEY MANAGEMENT ─────────────────────────────
-// This route handles:
-// 1. Saving user API keys to Supabase
-// 2. Retrieving user API keys
-// 3. Testing API connections
-
-const supabaseUrl = process.env.SUPABASE_URL || 'https://odpgrgyiivbcbbqcdkxm.supabase.co';
+const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
-const supabase = supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 // ─── GET: Retrieve user's API config ─────────────────────────
 export async function GET(req: NextRequest) {
-  const userId = req.headers.get('x-user-id');
+  const { userId } = await verifyAuth(req);
   if (!userId || !supabase) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   try {
@@ -26,7 +22,7 @@ export async function GET(req: NextRequest) {
 
 // ─── POST: Save user's API config ────────────────────────────
 export async function POST(req: NextRequest) {
-  const userId = req.headers.get('x-user-id');
+  const { userId } = await verifyAuth(req);
   if (!userId || !supabase) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json();

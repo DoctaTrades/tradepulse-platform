@@ -1,19 +1,16 @@
+import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
+import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS, getSectorByETF } from '@/app/lib/sector-holdings';
 
 export const dynamic = 'force-dynamic';
 
-const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 
+let _sectUserId: string | undefined;
 async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  const token = await getValidAccessToken();
-  const url = new URL(`${SCHWAB_BASE}${endpoint}`);
-  if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${token}` }, cache: 'no-store' });
-  if (!res.ok) throw new Error(`Schwab API ${res.status}`);
-  return res.json();
+  return _schwabFetchBase(endpoint, params, _sectUserId);
 }
 
 // ─── STRAT HELPERS ───
@@ -109,11 +106,13 @@ const cache: Record<string, { data: any; ts: number }> = {};
 const CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 export async function GET(req: NextRequest) {
-  const sector = req.nextUrl.searchParams.get('sector'); // ETF symbol like XLK
-  const mode = req.nextUrl.searchParams.get('mode') || 'overview'; // overview | drilldown
+  const sector = req.nextUrl.searchParams.get('sector');
+  const mode = req.nextUrl.searchParams.get('mode') || 'overview';
   const useFinnhub = req.nextUrl.searchParams.get('finnhub') === 'true';
+  const { userId } = await verifyAuth(req);
+  _sectUserId = userId;
 
-  if (!await isAuthenticated()) {
+  if (!await isAuthenticated(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
 

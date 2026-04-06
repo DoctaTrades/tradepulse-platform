@@ -14,7 +14,7 @@ interface MarketData {
   error?: string;
 }
 
-export default function MarketPulseModule() {
+export default function MarketPulseModule({ user }: { user?: any }) {
   const [data, setData] = useState<MarketData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -23,7 +23,10 @@ export default function MarketPulseModule() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/market-pulse');
+      const headers: Record<string, string> = {};
+      if (user?.id) headers['x-user-id'] = user.id;
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
+      const res = await fetch('/api/market-pulse', { headers });
       const d = await res.json();
       if (d.error) setError(d.error);
       else setData(d);
@@ -31,7 +34,7 @@ export default function MarketPulseModule() {
       setError(e.message);
     }
     setLoading(false);
-  }, []);
+  }, [user?.id]);
 
   const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
   const fmtPrice = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

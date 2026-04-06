@@ -1,32 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated, getValidAccessToken } from '@/app/lib/schwab-auth';
+import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { schwabFetch } from '@/app/lib/schwab-data';
+import { verifyAuth } from '@/app/lib/auth-helpers';
 
-const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 
-async function schwabQuotes(symbols: string[]): Promise<Record<string, number>> {
+async function schwabQuotes(symbols: string[], userId?: string): Promise<Record<string, number>> {
   const prices: Record<string, number> = {};
   try {
-    const token = await getValidAccessToken();
-    // Schwab supports comma-separated symbols in one call (up to ~50)
     const batches: string[][] = [];
     for (let i = 0; i < symbols.length; i += 40) {
       batches.push(symbols.slice(i, i + 40));
     }
     for (const batch of batches) {
-      const url = new URL(`${SCHWAB_BASE}/quotes`);
-      url.searchParams.set('symbols', batch.join(','));
-      url.searchParams.set('fields', 'quote');
-      const res = await fetch(url.toString(), {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const [sym, info] of Object.entries(data) as any) {
-        const q = info?.quote;
-        const price = q?.lastPrice || q?.closePrice || q?.mark || 0;
-        if (price > 0) prices[sym] = Math.round(price * 100) / 100;
-      }
+      try {
+        const data = await schwabFetch('/quotes', { symbols: batch.join(','), fields: 'quote' }, userId);
+        for (const [sym, info] of Object.entries(data) as any) {
+          const q = info?.quote;
+          const price = q?.lastPrice || q?.closePrice || q?.mark || 0;
+          if (price > 0) prices[sym] = Math.round(price * 100) / 100;
+        }
+      } catch { continue; }
     }
   } catch (err: any) {
     console.error('Schwab quotes error:', err.message);
@@ -53,18 +47,17 @@ async function finnhubQuote(symbol: string): Promise<number | null> {
 export async function POST(req: NextRequest) {
   try {
     const { symbols } = await req.json();
+    const { userId } = await verifyAuth(req);
     if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
       return NextResponse.json({ error: 'symbols array required' }, { status: 400 });
     }
 
-    // Clean and dedupe
     const tickers = [...new Set(symbols.map((s: string) => s.toUpperCase().trim()).filter(Boolean))];
     const prices: Record<string, number> = {};
     const sources: Record<string, string> = {};
 
-    // Source 1: Schwab (batch, real-time during market hours)
-    if (await isAuthenticated()) {
-      const schwabPrices = await schwabQuotes(tickers);
+    if (await isAuthenticated(userId)) {
+      const schwabPrices = await schwabQuotes(tickers, userId);
       for (const [sym, price] of Object.entries(schwabPrices)) {
         prices[sym] = price;
         sources[sym] = 'schwab';

@@ -1,9 +1,11 @@
+import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getOptionChain } from '@/app/lib/schwab-data';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 
 export async function GET(req: NextRequest) {
-  if (!await isAuthenticated()) {
+  const { userId } = await verifyAuth(req);
+  if (!await isAuthenticated(userId)) {
     return NextResponse.json({ error: 'Not authenticated with Schwab' }, { status: 401 });
   }
 
@@ -19,7 +21,7 @@ export async function GET(req: NextRequest) {
       range: req.nextUrl.searchParams.get('range') || undefined,
       fromDate: req.nextUrl.searchParams.get('fromDate') || undefined,
       toDate: req.nextUrl.searchParams.get('toDate') || undefined,
-    });
+    }, userId);
     return NextResponse.json(data);
   } catch (e: unknown) {
     return NextResponse.json({ error: (e instanceof Error ? e.message : "Unknown error") }, { status: 500 });
