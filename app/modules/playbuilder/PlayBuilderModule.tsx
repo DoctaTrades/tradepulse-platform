@@ -1,22 +1,25 @@
 'use client';
 
 /**
- * PlayBuilderModule — Session 1
+ * PlayBuilderModule — Session 2
  *
  * Standalone module for designing options strategies before placing them.
- * Live ticker → chain load → strategy auto-pick → editable legs → real-time metrics.
+ * Live ticker → chain load → strategy auto-pick → editable legs → real-time metrics + payoff chart.
  *
- * Session 1 scope:
+ * Session 1:
  *  - Ticker input + live chain loading via /api/schwab/options
- *  - 10 strategy chips defined; 4 fully wired (CSP, CC, Bull Put, Bear Call)
- *  - Auto-leg-selection (0.30 short delta target, 25–45 DTE, $5/$10 width)
- *  - Editable leg table (swap strike, change expiry, change qty, flip side)
- *  - Live metrics: net Greeks, max profit/loss, breakevens, credit/debit, RoR, POP
- *  - Save to Journal STUBBED (logs payload + toast — no Journal write yet)
+ *  - Editable leg table, metrics panel (Greeks, max P/L, breakevens, RoR, POP)
+ *  - 4 strategies wired: CSP, Covered Call, Bull Put, Bear Call
+ *  - Save to Journal stubbed
  *
- * Sessions 2/3 will add: payoff chart, P&L heat map, theta decay projection,
- * expected move bands, remaining 6 strategies, Calendar Press logic, and
- * Screener / SPX Radar / Journal event wiring.
+ * Session 2 adds:
+ *  - Canvas payoff-at-expiration chart (±30% auto-widen, breakeven lines, current price marker)
+ *  - 1σ / 2σ expected-move bands overlaid on the chart
+ *  - 4 more strategies wired: Iron Condor, Iron Butterfly, PMCC, Straddle (under "Custom" chip)
+ *  - Layout restructure: chart sits full-width below the legs/metrics row
+ *
+ * Session 3 will add: P&L heat map, theta decay projection, Diagonal,
+ * Calendar Press (custom logic), Screener / SPX Radar / Journal event wiring.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -89,12 +92,12 @@ const STRATEGIES: StrategyDef[] = [
   { id:'cc',            name:'Covered Call',           shortName:'CC',          category:'income',      legs:1, enabled:true,  description:'Sell call against owned shares for premium' },
   { id:'bullput',       name:'Bull Put Credit Spread', shortName:'Bull Put',    category:'directional', legs:2, enabled:true,  description:'Sell put, buy lower put — bullish, defined risk' },
   { id:'bearcall',      name:'Bear Call Credit Spread',shortName:'Bear Call',   category:'directional', legs:2, enabled:true,  description:'Sell call, buy higher call — bearish, defined risk' },
-  { id:'iron_condor',   name:'Iron Condor',            shortName:'IC',          category:'neutral',     legs:4, enabled:false, description:'Bull put + bear call — range-bound profit' },
-  { id:'iron_butterfly',name:'Iron Butterfly',         shortName:'IB',          category:'neutral',     legs:4, enabled:false, description:'Tighter IC centered at the money' },
-  { id:'pmcc',          name:"Poor Man's Covered Call",shortName:'PMCC',        category:'leveraged',   legs:2, enabled:false, description:'Long LEAP call + short near-term call' },
+  { id:'iron_condor',   name:'Iron Condor',            shortName:'IC',          category:'neutral',     legs:4, enabled:true,  description:'Bull put + bear call — range-bound profit' },
+  { id:'iron_butterfly',name:'Iron Butterfly',         shortName:'IB',          category:'neutral',     legs:4, enabled:true,  description:'Tighter IC centered at the money' },
+  { id:'pmcc',          name:"Poor Man's Covered Call",shortName:'PMCC',        category:'leveraged',   legs:2, enabled:true,  description:'Long LEAP call + short near-term call' },
   { id:'diagonal',      name:'Diagonal Spread',        shortName:'Diagonal',    category:'leveraged',   legs:2, enabled:false, description:'Different strikes + different expiries' },
   { id:'calendar_press',name:'Calendar Press',         shortName:'CalPress',    category:'custom',      legs:2, enabled:false, description:'Long-dated put + weekly short puts (custom)' },
-  { id:'custom',        name:'Custom / Straddle',      shortName:'Custom',      category:'custom',      legs:0, enabled:false, description:'Build any combination from scratch' },
+  { id:'custom',        name:'Long Straddle',          shortName:'Straddle',    category:'custom',      legs:2, enabled:true,  description:'Long ATM call + long ATM put — volatility play' },
 ];
 
 // ─── DEFAULTS (from spec) ────────────────────────────────────────────────────
@@ -103,6 +106,9 @@ const TARGET_DTE_MIN = 25;
 const TARGET_DTE_MAX = 45;
 const SPREAD_WIDTH_HIGH = 10;   // for stocks > $100
 const SPREAD_WIDTH_LOW  = 5;    // for stocks <= $100
+const PMCC_LEAP_DELTA = 0.70;
+const PMCC_LEAP_DTE_MIN = 180;
+const PMCC_LEAP_DTE_MAX = 730;
 
 // ─── UTIL: math ──────────────────────────────────────────────────────────────
 const mid = (bid: number, ask: number) => {
@@ -294,24 +300,114 @@ function buildStrategy(
         ? [contractToLeg(shortCall, 'SELL'), contractToLeg(longCall, 'BUY')]
         : [contractToLeg(shortCall, 'SELL')];
     }
+    case 'iron_condor': {
+      // Bull put + bear call, both shorts at ~0.30 delta, both spreads same width
+      const shortPut  = pickByDelta(contracts, exp, 'PUT',  TARGET_SHORT_DELTA);
+      const shortCall = pickByDelta(contracts, exp, 'CALL', TARGET_SHORT_DELTA);
+      if (!shortPut || !shortCall) return [];
+      const putStrikes  = strikesForExp(contracts, exp, 'PUT');
+      const callStrikes = strikesForExp(contracts, exp, 'CALL');
+      const lowerPuts  = putStrikes.filter(s => s < (shortPut.strikePrice ?? 0));
+      const upperCalls = callStrikes.filter(s => s > (shortCall.strikePrice ?? 0));
+      if (!lowerPuts.length || !upperCalls.length) return [];
+      const longPutTarget  = (shortPut.strikePrice  ?? 0) - width;
+      const longCallTarget = (shortCall.strikePrice ?? 0) + width;
+      const longPutStrike  = lowerPuts.sort((a, b) =>
+        Math.abs(a - longPutTarget) - Math.abs(b - longPutTarget))[0];
+      const longCallStrike = upperCalls.sort((a, b) =>
+        Math.abs(a - longCallTarget) - Math.abs(b - longCallTarget))[0];
+      const longPut  = findContract(contracts, exp, longPutStrike,  'PUT');
+      const longCall = findContract(contracts, exp, longCallStrike, 'CALL');
+      if (!longPut || !longCall) return [];
+      return [
+        contractToLeg(shortPut,  'SELL'),
+        contractToLeg(longPut,   'BUY'),
+        contractToLeg(shortCall, 'SELL'),
+        contractToLeg(longCall,  'BUY'),
+      ];
+    }
+    case 'iron_butterfly': {
+      // Both shorts at the SAME strike (closest to ATM), wings at ±width
+      const atmCall = pickByDelta(contracts, exp, 'CALL', 0.50);
+      if (!atmCall) return [];
+      const centerStrike = atmCall.strikePrice ?? 0;
+      // Use the same center strike for the put side
+      const shortPut = findContract(contracts, exp, centerStrike, 'PUT');
+      const shortCall = atmCall;
+      if (!shortPut) return [];
+      const putStrikes  = strikesForExp(contracts, exp, 'PUT');
+      const callStrikes = strikesForExp(contracts, exp, 'CALL');
+      const lowerPuts  = putStrikes.filter(s => s < centerStrike);
+      const upperCalls = callStrikes.filter(s => s > centerStrike);
+      if (!lowerPuts.length || !upperCalls.length) return [];
+      const longPutTarget  = centerStrike - width;
+      const longCallTarget = centerStrike + width;
+      const longPutStrike  = lowerPuts.sort((a, b) =>
+        Math.abs(a - longPutTarget) - Math.abs(b - longPutTarget))[0];
+      const longCallStrike = upperCalls.sort((a, b) =>
+        Math.abs(a - longCallTarget) - Math.abs(b - longCallTarget))[0];
+      const longPut  = findContract(contracts, exp, longPutStrike,  'PUT');
+      const longCall = findContract(contracts, exp, longCallStrike, 'CALL');
+      if (!longPut || !longCall) return [];
+      return [
+        contractToLeg(shortPut,  'SELL'),
+        contractToLeg(longPut,   'BUY'),
+        contractToLeg(shortCall, 'SELL'),
+        contractToLeg(longCall,  'BUY'),
+      ];
+    }
+    case 'pmcc': {
+      // Long LEAP call (~0.70 delta, 180–730 DTE) + short near-term call (~0.30 delta, 25–45 DTE)
+      const leapExp = pickExpiration(contracts, PMCC_LEAP_DTE_MIN, PMCC_LEAP_DTE_MAX);
+      if (!leapExp) return [];
+      const longLeap   = pickByDelta(contracts, leapExp, 'CALL', PMCC_LEAP_DELTA);
+      const shortFront = pickByDelta(contracts, exp,     'CALL', TARGET_SHORT_DELTA);
+      if (!longLeap || !shortFront) return [];
+      // Make sure short strike > long strike (defines the spread as net debit with upside cap)
+      if ((shortFront.strikePrice ?? 0) <= (longLeap.strikePrice ?? 0)) {
+        // Pick the lowest call strike strictly above the LEAP strike
+        const callStrikes = strikesForExp(contracts, exp, 'CALL').filter(s => s > (longLeap.strikePrice ?? 0));
+        if (!callStrikes.length) return [contractToLeg(longLeap, 'BUY')];
+        const altStrike = callStrikes[0];
+        const altShort = findContract(contracts, exp, altStrike, 'CALL');
+        if (!altShort) return [contractToLeg(longLeap, 'BUY')];
+        return [contractToLeg(longLeap, 'BUY'), contractToLeg(altShort, 'SELL')];
+      }
+      return [contractToLeg(longLeap, 'BUY'), contractToLeg(shortFront, 'SELL')];
+    }
+    case 'custom': {
+      // Long Straddle: long ATM call + long ATM put at same strike
+      const atmCall = pickByDelta(contracts, exp, 'CALL', 0.50);
+      if (!atmCall) return [];
+      const strike = atmCall.strikePrice ?? 0;
+      const atmPut = findContract(contracts, exp, strike, 'PUT');
+      if (!atmPut) return [contractToLeg(atmCall, 'BUY')];
+      return [contractToLeg(atmCall, 'BUY'), contractToLeg(atmPut, 'BUY')];
+    }
     default:
       return [];
   }
 }
 
 // ─── METRICS ─────────────────────────────────────────────────────────────────
+type PayoffSample = { S: number; pnl: number };
+
 type Metrics = {
   netCredit: number;          // positive = credit received, negative = debit paid
   netDelta: number;
   netGamma: number;
   netTheta: number;
   netVega: number;
-  maxProfit: number;          // null = unlimited; we use Infinity
-  maxLoss: number;            // null = unlimited; we use Infinity (positive number = loss magnitude)
+  maxProfit: number;          // Infinity if unlimited
+  maxLoss: number;            // Infinity if unlimited (positive number = loss magnitude)
   breakevens: number[];
   ror: number;                // return on risk (decimal)
   pop: number;                // probability of profit (decimal)
   capitalRequired: number;    // for sizing/RoR
+  // Chart support
+  samples: PayoffSample[];    // payoff curve across price range
+  priceLo: number;            // X-axis low
+  priceHi: number;            // X-axis high
 };
 
 // Compute payoff at a given underlying price at expiration
@@ -331,13 +427,22 @@ function totalPayoffAtExpiry(legs: Leg[], S: number): number {
   return legs.reduce((sum, l) => sum + legPayoffAtExpiry(l, S), 0);
 }
 
+// Try to detect a vertical spread's width from a 2-leg group
+function detectVerticalWidth(group: Leg[]): number | null {
+  if (group.length !== 2) return null;
+  if (group[0].type !== group[1].type) return null;
+  if (group[0].expiration !== group[1].expiration) return null;
+  if (group[0].side === group[1].side) return null;
+  return Math.abs(group[0].strike - group[1].strike);
+}
+
 function computeMetrics(legs: Leg[], underlying: number): Metrics {
-  if (!legs.length) {
-    return {
-      netCredit: 0, netDelta: 0, netGamma: 0, netTheta: 0, netVega: 0,
-      maxProfit: 0, maxLoss: 0, breakevens: [], ror: 0, pop: 0, capitalRequired: 0,
-    };
-  }
+  const empty: Metrics = {
+    netCredit: 0, netDelta: 0, netGamma: 0, netTheta: 0, netVega: 0,
+    maxProfit: 0, maxLoss: 0, breakevens: [], ror: 0, pop: 0, capitalRequired: 0,
+    samples: [], priceLo: 0, priceHi: 0,
+  };
+  if (!legs.length) return empty;
 
   // Net credit (positive) / debit (negative). Per spread, ×100.
   let netCredit = 0;
@@ -352,88 +457,141 @@ function computeMetrics(legs: Leg[], underlying: number): Metrics {
     nVega  += sign * l.vega  * l.qty;
   }
 
-  // Sample payoff across a wide range of underlying prices
-  const lo = Math.max(0.01, underlying * 0.5);
-  const hi = underlying * 1.5;
-  const steps = 400;
-  const stepSize = (hi - lo) / steps;
-  let maxP = -Infinity, maxL = Infinity;  // maxL stored as signed (negative = loss)
-  const samples: { S: number; pnl: number }[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const S = lo + i * stepSize;
-    const pnl = totalPayoffAtExpiry(legs, S);
-    samples.push({ S, pnl });
-    if (pnl > maxP) maxP = pnl;
-    if (pnl < maxL) maxL = pnl;
+  // ─── AUTO-WIDEN PRICE RANGE ──
+  // Default ±30% from underlying, but expand to include all strikes with margin
+  // and (after computing) any breakevens.
+  const baseLo = underlying * 0.7;
+  const baseHi = underlying * 1.3;
+  const strikeLo = Math.min(...legs.map(l => l.strike));
+  const strikeHi = Math.max(...legs.map(l => l.strike));
+  // Pad strikes by 15% of the underlying so the strike marker isn't on the chart edge
+  const pad = underlying * 0.15;
+  let lo = Math.max(0.01, Math.min(baseLo, strikeLo - pad));
+  let hi = Math.max(baseHi, strikeHi + pad);
+
+  // ─── SAMPLE PAYOFF ──
+  const sample = (rangeLo: number, rangeHi: number, steps: number): PayoffSample[] => {
+    const out: PayoffSample[] = [];
+    const step = (rangeHi - rangeLo) / steps;
+    for (let i = 0; i <= steps; i++) {
+      const S = rangeLo + i * step;
+      out.push({ S, pnl: totalPayoffAtExpiry(legs, S) });
+    }
+    return out;
+  };
+
+  let samples = sample(lo, hi, 400);
+  let maxP = -Infinity, maxL = Infinity;
+  for (const s of samples) {
+    if (s.pnl > maxP) maxP = s.pnl;
+    if (s.pnl < maxL) maxL = s.pnl;
   }
 
-  // Detect unlimited risk by checking the slopes at the extremes
+  // ─── BREAKEVENS (linear-interpolate zero crossings) ──
+  const findBreakevens = (data: PayoffSample[]): number[] => {
+    const bes: number[] = [];
+    for (let i = 1; i < data.length; i++) {
+      const a = data[i - 1], b = data[i];
+      if ((a.pnl <= 0 && b.pnl >= 0) || (a.pnl >= 0 && b.pnl <= 0)) {
+        const t = a.pnl === b.pnl ? 0 : -a.pnl / (b.pnl - a.pnl);
+        bes.push(a.S + t * (b.S - a.S));
+      }
+    }
+    return bes;
+  };
+  let breakevens = findBreakevens(samples);
+
+  // If any breakeven is too close to the chart edge, widen and re-sample once
+  const margin = (hi - lo) * 0.08;
+  const beOutside = breakevens.some(be => be < lo + margin || be > hi - margin);
+  if (beOutside) {
+    if (breakevens.length) {
+      lo = Math.max(0.01, Math.min(lo, Math.min(...breakevens) - pad));
+      hi = Math.max(hi, Math.max(...breakevens) + pad);
+    }
+    samples = sample(lo, hi, 400);
+    maxP = -Infinity; maxL = Infinity;
+    for (const s of samples) {
+      if (s.pnl > maxP) maxP = s.pnl;
+      if (s.pnl < maxL) maxL = s.pnl;
+    }
+    breakevens = findBreakevens(samples);
+  }
+
+  // ─── UNLIMITED-RISK DETECTION ──
+  // Test deep tails to see if payoff continues changing past the sampled range
   const tailLeft  = totalPayoffAtExpiry(legs, lo * 0.5);
   const tailRight = totalPayoffAtExpiry(legs, hi * 1.5);
-  const unlimitedDownside = tailLeft  < maxL - 1;   // payoff still falling past lo
-  const unlimitedUpside   = tailRight < maxL - 1;   // payoff still falling past hi
+  const unlimitedDownside = tailLeft  < maxL - 1;
+  const unlimitedUpside   = tailRight < maxL - 1;
   const unlimitedProfitDn = tailLeft  > maxP + 1;
   const unlimitedProfitUp = tailRight > maxP + 1;
 
   const maxProfit = (unlimitedProfitDn || unlimitedProfitUp) ? Infinity : maxP;
   const maxLoss   = (unlimitedDownside || unlimitedUpside)   ? Infinity : Math.abs(Math.min(0, maxL));
 
-  // Breakevens: zero-crossings in payoff samples
-  const breakevens: number[] = [];
-  for (let i = 1; i < samples.length; i++) {
-    const a = samples[i - 1], b = samples[i];
-    if ((a.pnl <= 0 && b.pnl >= 0) || (a.pnl >= 0 && b.pnl <= 0)) {
-      // Linear interpolate
-      const t = a.pnl === b.pnl ? 0 : -a.pnl / (b.pnl - a.pnl);
-      breakevens.push(a.S + t * (b.S - a.S));
-    }
-  }
-
-  // Capital required (sizing basis)
-  // - Single short put (CSP): strike × 100 × qty
-  // - Single short call (naked): treat as undefined (use abs of debit/credit)
-  // - Vertical spread: width × 100 × qty
-  // - Otherwise: max of (max loss, |net debit|)
+  // ─── CAPITAL REQUIRED ──
+  // Single short put (CSP): strike × 100 × qty
+  // Single short call: max loss (covered call basis)
+  // Vertical spread: width × 100 × qty
+  // Iron Condor / Butterfly: max(put-side width, call-side width) × 100 × qty
+  // Otherwise: max loss if finite, else net debit
   let capitalRequired = 0;
   if (legs.length === 1) {
     const l = legs[0];
     if (l.side === 'SELL' && l.type === 'PUT') {
-      capitalRequired = l.strike * 100 * l.qty;            // CSP
+      capitalRequired = l.strike * 100 * l.qty;
     } else if (l.side === 'SELL' && l.type === 'CALL') {
-      capitalRequired = isFinite(maxLoss) ? maxLoss : 0;   // covered call: shares are the capital
+      capitalRequired = isFinite(maxLoss) ? maxLoss : 0;
     } else {
-      capitalRequired = Math.abs(Math.min(netCredit, 0));  // long single
+      capitalRequired = Math.abs(Math.min(netCredit, 0));
     }
-  } else {
-    // Vertical-style: detect width from same-type, same-expiry, opposite sides
-    const sameExpType = legs.every(l => l.expiration === legs[0].expiration && l.type === legs[0].type);
-    if (sameExpType && legs.length === 2 && legs[0].side !== legs[1].side) {
-      const width = Math.abs(legs[0].strike - legs[1].strike);
-      capitalRequired = width * 100 * Math.min(...legs.map(l => l.qty));
+  } else if (legs.length === 2) {
+    const w = detectVerticalWidth(legs);
+    if (w != null) {
+      capitalRequired = w * 100 * Math.min(legs[0].qty, legs[1].qty);
+    } else {
+      capitalRequired = isFinite(maxLoss) ? maxLoss : Math.abs(Math.min(netCredit, 0));
+    }
+  } else if (legs.length === 4) {
+    // Iron Condor / Butterfly: split into put-side and call-side, take the larger width
+    const puts  = legs.filter(l => l.type === 'PUT');
+    const calls = legs.filter(l => l.type === 'CALL');
+    const wPut  = detectVerticalWidth(puts)  || 0;
+    const wCall = detectVerticalWidth(calls) || 0;
+    const widerWidth = Math.max(wPut, wCall);
+    if (widerWidth > 0) {
+      const minQty = Math.min(...legs.map(l => l.qty));
+      capitalRequired = widerWidth * 100 * minQty;
     } else {
       capitalRequired = isFinite(maxLoss) ? maxLoss : 0;
     }
+  } else {
+    capitalRequired = isFinite(maxLoss) ? maxLoss : Math.abs(Math.min(netCredit, 0));
   }
 
-  // Return on risk
+  // ─── RETURN ON RISK ──
   const ror = capitalRequired > 0 && isFinite(maxProfit)
     ? maxProfit / capitalRequired
     : 0;
 
-  // Probability of profit:
-  // For credit strategies: POP ≈ 1 - |short delta closest to underlying|.
-  // We approximate as: probability that underlying ends inside the profitable region,
-  // computed via a lognormal-ish proxy using the dominant leg's IV and DTE.
-  // Simpler & defensible: average |delta| of short legs as a tail probability proxy
-  // for single/double-leg credit; take 1 - that for credits, |net delta| for debits.
+  // ─── PROBABILITY OF PROFIT ──
   let pop = 0;
   const shorts = legs.filter(l => l.side === 'SELL');
   if (netCredit > 0 && shorts.length) {
-    // Use the short leg with the largest |delta| as the closest-to-money short
-    const dominant = shorts.reduce((a, b) => Math.abs(a.delta) > Math.abs(b.delta) ? a : b);
-    pop = Math.max(0, Math.min(1, 1 - Math.abs(dominant.delta)));
+    // Credit strategy: POP ≈ 1 - |dominant short delta|
+    // For multi-short structures (IC, IB), use the average of max-delta per side
+    if (shorts.length >= 2) {
+      const maxAbs = (group: Leg[]) => group.length ? Math.max(...group.map(l => Math.abs(l.delta))) : 0;
+      const sPuts  = shorts.filter(l => l.type === 'PUT');
+      const sCalls = shorts.filter(l => l.type === 'CALL');
+      // Probability of getting tagged on either side ≈ sum of tail deltas
+      const tagProb = maxAbs(sPuts) + maxAbs(sCalls);
+      pop = Math.max(0, Math.min(1, 1 - tagProb));
+    } else {
+      pop = Math.max(0, Math.min(1, 1 - Math.abs(shorts[0].delta)));
+    }
   } else if (netCredit < 0) {
-    // Debit: rough proxy from net delta
     pop = Math.max(0, Math.min(1, Math.abs(nDelta)));
   } else {
     pop = 0.5;
@@ -451,7 +609,304 @@ function computeMetrics(legs: Leg[], underlying: number): Metrics {
     ror,
     pop,
     capitalRequired,
+    samples,
+    priceLo: lo,
+    priceHi: hi,
   };
+}
+
+// ─── EXPECTED MOVE ───────────────────────────────────────────────────────────
+// σ = S × IV × √(DTE/365). 1σ ≈ 68% probability cone, 2σ ≈ 95%.
+// Use the dominant short leg's IV+DTE, falling back to the leg closest to ATM.
+function computeExpectedMove(legs: Leg[], underlying: number): { sigma1: number; sigma2: number; iv: number; dte: number } | null {
+  if (!legs.length || !underlying) return null;
+  // Prefer short legs (they're the structural anchor of credit plays)
+  const shorts = legs.filter(l => l.side === 'SELL');
+  const pool = shorts.length ? shorts : legs;
+  // Pick leg closest to ATM by strike distance
+  const anchor = pool.reduce((best, l) =>
+    Math.abs(l.strike - underlying) < Math.abs(best.strike - underlying) ? l : best
+  );
+  if (!anchor.iv || !anchor.dte) return null;
+  const sigma = underlying * anchor.iv * Math.sqrt(anchor.dte / 365);
+  return { sigma1: sigma, sigma2: sigma * 2, iv: anchor.iv, dte: anchor.dte };
+}
+
+// ─── PAYOFF CHART ────────────────────────────────────────────────────────────
+type PayoffChartProps = {
+  samples: PayoffSample[];
+  underlying: number;
+  breakevens: number[];
+  expectedMove: { sigma1: number; sigma2: number } | null;
+  legs: Leg[];
+  height?: number;
+};
+
+function PayoffChart({ samples, underlying, breakevens, expectedMove, legs, height = 320 }: PayoffChartProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(800);
+  const [hover, setHover] = useState<{ x: number; y: number; S: number; pnl: number } | null>(null);
+
+  // Track container width responsively
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const w = Math.floor(e.contentRect.width);
+        if (w > 0) setWidth(w);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Draw
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !samples.length) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    // Padding for axes
+    const padL = 56, padR = 16, padT = 14, padB = 28;
+    const W = width - padL - padR;
+    const H = height - padT - padB;
+
+    // Bounds
+    const sLo = samples[0].S;
+    const sHi = samples[samples.length - 1].S;
+    let pMin = Infinity, pMax = -Infinity;
+    for (const s of samples) {
+      if (s.pnl < pMin) pMin = s.pnl;
+      if (s.pnl > pMax) pMax = s.pnl;
+    }
+    // Add 10% headroom; ensure zero is always visible
+    const pRange = Math.max(1, pMax - pMin);
+    pMin = Math.min(pMin - pRange * 0.1, 0);
+    pMax = Math.max(pMax + pRange * 0.1, 0);
+
+    const xFor = (S: number) => padL + ((S - sLo) / (sHi - sLo)) * W;
+    const yFor = (pnl: number) => padT + (1 - (pnl - pMin) / (pMax - pMin)) * H;
+
+    // ─── 2σ band (lighter) ──
+    if (expectedMove) {
+      const lo2 = underlying - expectedMove.sigma2;
+      const hi2 = underlying + expectedMove.sigma2;
+      const x1 = Math.max(padL, xFor(lo2));
+      const x2 = Math.min(padL + W, xFor(hi2));
+      if (x2 > x1) {
+        ctx.fillStyle = 'rgba(99,102,241,0.05)';
+        ctx.fillRect(x1, padT, x2 - x1, H);
+      }
+      // 1σ band (slightly more visible)
+      const lo1 = underlying - expectedMove.sigma1;
+      const hi1 = underlying + expectedMove.sigma1;
+      const x3 = Math.max(padL, xFor(lo1));
+      const x4 = Math.min(padL + W, xFor(hi1));
+      if (x4 > x3) {
+        ctx.fillStyle = 'rgba(99,102,241,0.08)';
+        ctx.fillRect(x3, padT, x4 - x3, H);
+      }
+      // Sigma boundary lines (subtle)
+      ctx.strokeStyle = 'rgba(99,102,241,0.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      [lo2, lo1, hi1, hi2].forEach(s => {
+        const x = xFor(s);
+        if (x > padL && x < padL + W) {
+          ctx.beginPath();
+          ctx.moveTo(x, padT);
+          ctx.lineTo(x, padT + H);
+          ctx.stroke();
+        }
+      });
+      ctx.setLineDash([]);
+    }
+
+    // ─── Zero line ──
+    const yZero = yFor(0);
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, yZero);
+    ctx.lineTo(padL + W, yZero);
+    ctx.stroke();
+
+    // ─── Profit / loss filled regions ──
+    // Build a polygon for profit (above zero, clipped to zero) and loss (below zero)
+    const drawFill = (above: boolean, color: string) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(xFor(samples[0].S), yZero);
+      for (const s of samples) {
+        const y = above ? Math.min(yFor(s.pnl), yZero) : Math.max(yFor(s.pnl), yZero);
+        ctx.lineTo(xFor(s.S), y);
+      }
+      ctx.lineTo(xFor(samples[samples.length - 1].S), yZero);
+      ctx.closePath();
+      ctx.fill();
+    };
+    drawFill(true,  'rgba(74,222,128,0.18)');   // profit (green)
+    drawFill(false, 'rgba(248,113,113,0.18)');  // loss (red)
+
+    // ─── Payoff curve ──
+    ctx.strokeStyle = '#a5b4fc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    samples.forEach((s, i) => {
+      const x = xFor(s.S), y = yFor(s.pnl);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // ─── Strike markers ──
+    legs.forEach(leg => {
+      const x = xFor(leg.strike);
+      if (x < padL || x > padL + W) return;
+      ctx.strokeStyle = leg.side === 'SELL' ? 'rgba(74,222,128,0.5)' : 'rgba(248,113,113,0.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
+    // ─── Breakeven lines ──
+    breakevens.forEach(be => {
+      const x = xFor(be);
+      if (x < padL || x > padL + W) return;
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Label
+      ctx.fillStyle = '#eab308';
+      ctx.font = '10px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`BE $${be.toFixed(2)}`, x, padT - 4);
+    });
+
+    // ─── Current price marker ──
+    const xCur = xFor(underlying);
+    if (xCur >= padL && xCur <= padL + W) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(xCur, padT);
+      ctx.lineTo(xCur, padT + H);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`$${underlying.toFixed(2)}`, xCur, padT + H + 16);
+    }
+
+    // ─── Y-axis labels (P/L) ──
+    ctx.fillStyle = '#8a8f9e';
+    ctx.font = '10px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const v = pMin + ((pMax - pMin) * i) / yTicks;
+      const y = yFor(v);
+      ctx.fillText(`$${v >= 0 ? '' : '-'}${Math.abs(Math.round(v))}`, padL - 6, y + 3);
+      // Faint horizontal gridline
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + W, y);
+      ctx.stroke();
+    }
+
+    // ─── X-axis labels (price) ──
+    ctx.textAlign = 'center';
+    const xTicks = 6;
+    for (let i = 0; i <= xTicks; i++) {
+      const v = sLo + ((sHi - sLo) * i) / xTicks;
+      const x = xFor(v);
+      ctx.fillText(`$${v.toFixed(0)}`, x, padT + H + 16);
+    }
+
+    // ─── Hover crosshair + tooltip ──
+    if (hover) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath();
+      ctx.moveTo(hover.x, padT);
+      ctx.lineTo(hover.x, padT + H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Tooltip box
+      const txt1 = `$${hover.S.toFixed(2)}`;
+      const txt2 = `${hover.pnl >= 0 ? '+' : ''}$${hover.pnl.toFixed(0)}`;
+      ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+      const tw = Math.max(ctx.measureText(txt1).width, ctx.measureText(txt2).width) + 16;
+      const tx = Math.min(padL + W - tw, Math.max(padL, hover.x - tw / 2));
+      const ty = padT + 6;
+      ctx.fillStyle = 'rgba(20,22,30,0.95)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.rect(tx, ty, tw, 36);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e2e4ea';
+      ctx.textAlign = 'left';
+      ctx.fillText(txt1, tx + 8, ty + 14);
+      ctx.fillStyle = hover.pnl >= 0 ? '#4ade80' : '#f87171';
+      ctx.fillText(txt2, tx + 8, ty + 28);
+    }
+  }, [samples, width, height, underlying, breakevens, expectedMove, legs, hover]);
+
+  // Mouse handlers — convert mouse X back to S, find nearest sample
+  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!samples.length) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const padL = 56, padR = 16;
+    const W = width - padL - padR;
+    if (mx < padL || mx > padL + W) { setHover(null); return; }
+    const sLo = samples[0].S;
+    const sHi = samples[samples.length - 1].S;
+    const S = sLo + ((mx - padL) / W) * (sHi - sLo);
+    // Find closest sample
+    let best = samples[0], bestD = Math.abs(samples[0].S - S);
+    for (const s of samples) {
+      const d = Math.abs(s.S - S);
+      if (d < bestD) { best = s; bestD = d; }
+    }
+    setHover({ x: mx, y: e.clientY - rect.top, S: best.S, pnl: best.pnl });
+  };
+  const onMouseLeave = () => setHover(null);
+
+  return (
+    <div ref={wrapRef} style={{ width: '100%' }}>
+      <canvas
+        ref={canvasRef}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        style={{ display: 'block', cursor: 'crosshair' }}
+      />
+    </div>
+  );
 }
 
 // ─── COMPONENT ───────────────────────────────────────────────────────────────
@@ -573,6 +1028,9 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
 
   // Live metrics
   const metrics = useMemo(() => computeMetrics(legs, underlying), [legs, underlying]);
+
+  // Expected move for chart bands
+  const expectedMove = useMemo(() => computeExpectedMove(legs, underlying), [legs, underlying]);
 
   // Available expirations & strike lists for dropdowns
   const expirations = useMemo(() => uniqueExpirations(contracts), [contracts]);
@@ -906,10 +1364,37 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         </div>
       </div>
 
+      {/* PAYOFF CHART */}
+      {legs.length > 0 && metrics.samples.length > 0 && (
+        <div style={{ ...panel, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+            <div style={label}>Payoff at Expiration</div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', alignItems: 'center', flexWrap: 'wrap' }}>
+              <LegendDot color="#a5b4fc" label="P/L curve" />
+              <LegendDot color="#ffffff" label="Current price" />
+              <LegendDot color="#eab308" label="Breakeven" dashed />
+              <LegendDot color="rgba(74,222,128,0.7)" label="Short strike" dashed />
+              <LegendDot color="rgba(248,113,113,0.7)" label="Long strike" dashed />
+              {expectedMove && (
+                <LegendDot color="rgba(99,102,241,0.5)" label={`Exp. move (1σ/2σ, IV ${(expectedMove.iv * 100).toFixed(0)}%, ${expectedMove.dte}d)`} />
+              )}
+            </div>
+          </div>
+          <PayoffChart
+            samples={metrics.samples}
+            underlying={underlying}
+            breakevens={metrics.breakevens}
+            expectedMove={expectedMove}
+            legs={legs}
+            height={340}
+          />
+        </div>
+      )}
+
       {/* ACTIONS */}
       <div style={{ ...panel, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 11, color: 'var(--text-dim, #8a8f9e)' }}>
-          Visualizations (payoff chart, P&L heat map, theta decay, expected move bands) ship in Session 2. Save-to-Journal in Session 3.
+          Coming in Session 3: P&amp;L heat map, theta decay projection, Diagonal &amp; Calendar Press, Save-to-Journal wiring.
         </div>
         <button
           onClick={saveToJournal}
@@ -962,5 +1447,17 @@ function MetricRow({ label, value, color, bold }: { label: string; value: string
         {value}
       </span>
     </div>
+  );
+}
+
+function LegendDot({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{
+        display: 'inline-block', width: 14, height: 0,
+        borderTop: dashed ? `2px dashed ${color}` : `2px solid ${color}`,
+      }}/>
+      <span>{label}</span>
+    </span>
   );
 }
