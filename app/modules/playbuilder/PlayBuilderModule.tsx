@@ -1747,6 +1747,19 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     };
     window.addEventListener('tp-open-playbuilder', handler);
     window.addEventListener('tp-open-playbuilder-ready', handler);
+
+    // Cold-mount drain: if a handoff fired before this listener was registered
+    // (typical on the first Screener/Journal click of a session), page.tsx will
+    // have stashed the payload on window.__pendingPlayBuilderPayload. Consume it
+    // synchronously and clear the buffer so the timer-fired event no-ops.
+    try {
+      const pending = (window as any).__pendingPlayBuilderPayload;
+      if (pending) {
+        (window as any).__pendingPlayBuilderPayload = null;
+        handler({ detail: pending });
+      }
+    } catch {}
+
     return () => {
       window.removeEventListener('tp-open-playbuilder', handler);
       window.removeEventListener('tp-open-playbuilder-ready', handler);

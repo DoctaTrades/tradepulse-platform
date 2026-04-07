@@ -207,19 +207,30 @@ export default function TradePulsePlatform() {
   }, []);
 
   // ── Journal → Play Builder bridge ──
-  // Same pattern in reverse: Journal dispatches tp-open-playbuilder, page.tsx
+  // Same pattern in reverse: Journal/Screener dispatches tp-open-playbuilder, page.tsx
   // catches it (always mounted), switches tab to "playbuilder", then re-dispatches
-  // as tp-open-playbuilder-ready so PlayBuilderModule's listener — only alive when
-  // mounted — picks it up and hydrates.
+  // as tp-open-playbuilder-ready so PlayBuilderModule's listener picks it up.
+  //
+  // Race fix: on the FIRST handoff in a session, PlayBuilderModule has never been
+  // mounted, so its listener doesn't exist when the re-fired event arrives. We
+  // stash the payload on window.__pendingPlayBuilderPayload so that PlayBuilder
+  // can drain it on mount, and ALSO fire the event on a timer for the warm path.
+  // Whichever path consumes first wins; the other no-ops.
   useEffect(() => {
     const handler = (e: any) => {
       const detail = e?.detail;
+      // Stash for cold-mount drain
+      try { (window as any).__pendingPlayBuilderPayload = detail; } catch {}
       setTab("playbuilder");
+      // Also fire on a timer for the warm-mount path (PlayBuilder already mounted)
       setTimeout(() => {
         try {
-          window.dispatchEvent(new CustomEvent('tp-open-playbuilder-ready', { detail }));
+          // Only re-fire if the buffer is still set — PlayBuilder clears it on consume
+          if ((window as any).__pendingPlayBuilderPayload) {
+            window.dispatchEvent(new CustomEvent('tp-open-playbuilder-ready', { detail }));
+          }
         } catch {}
-      }, 120);
+      }, 200);
     };
     window.addEventListener('tp-open-playbuilder', handler);
     return () => window.removeEventListener('tp-open-playbuilder', handler);
