@@ -389,6 +389,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       case 'credit':
         // Credit Spreads: High IVR, good OI for multi-strike liquidity, directional bias
         return results.filter(r => {
+          if (!r.creditSpread && !r.bearCallSpread) return false;
           if (!r.passesMainFilters) return false;
           if (r.ivr < sf.credit.minIVR) return false;
           if (r.maxOI < sf.credit.minOI) return false;
@@ -400,6 +401,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       case 'pmcc':
         // PMCC: Strong uptrend, momentum, affordable LEAP, liquid
         return results.filter(r => {
+          if (!r.pmcc) return false;
           if (!r.passesMainFilters) return false;
           if (r.rsi < sf.pmcc.minRSI) return false;
           if (r.vol < sf.pmcc.minVol) return false;
@@ -421,6 +423,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       case 'diag':
         // Diagonals: Moderate IVR, liquid, directional
         return results.filter(r => {
+          if (!r.diagonal) return false;
           if (!r.passesMainFilters) return false;
           if (r.ivr < sf.diag.minIVR) return false;
           if (r.vol < sf.diag.minVol) return false;
@@ -431,6 +434,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       case 'ic':
         // Iron Condor: OPPOSITE of trend strategies — range-bound, neutral RSI, low ATR, high IVR
         return results.filter(r => {
+          if (!r.ironCondor) return false;
           if (!r.passesMainFilters) return false;
           if (r.ivr < sf.ic.minIVR) return false;
           if (Math.abs(r.rsi - 50) > sf.ic.maxRSIDev) return false;

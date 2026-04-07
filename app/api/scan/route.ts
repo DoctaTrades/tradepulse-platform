@@ -360,7 +360,13 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
     }
 
     const uoaRatio = maxOI > 0 ? Math.round((optVol / maxOI) * 10) / 10 : 0;
-    const chg = quote.netPercentChangeInDouble || 0;
+    // Daily % change — prefer Schwab's direct field, but fall back to recomputing
+    // from lastPrice/closePrice because netPercentChangeInDouble is sometimes
+    // missing or zero on the Schwab /quotes response.
+    let chg = quote.netPercentChangeInDouble || 0;
+    if (!chg && quote.lastPrice && quote.closePrice && quote.closePrice > 0) {
+      chg = Math.round(((quote.lastPrice - quote.closePrice) / quote.closePrice) * 10000) / 100;
+    }
 
     // Earnings date estimation
     const fund = allQuotes[ticker]?.fundamental;
