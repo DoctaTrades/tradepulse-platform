@@ -107,20 +107,23 @@ const SECTORS = ["Technology","Healthcare","Financials","Consumer Discretionary"
 
 // ─── PLAY BUILDER HANDOFF ─────────────────────────────────────────────────────
 // Returns true if a trade is eligible to be opened in Play Builder.
-// Eligibility: assetType is Options, has at least one leg, and NO leg has an
-// expiration in the past (Greeks for expired contracts aren't fetchable).
+// Eligibility: assetType is Options, has at least one leg, and at least one leg
+// has an unexpired expiration. (Expired legs are skipped on the Play Builder
+// side — useful for Calendar Press / rolled positions where only some legs are
+// stale.)
 function canViewInPlayBuilder(trade) {
   if (!trade) return false;
   if (trade.assetType !== "Options") return false;
   if (!Array.isArray(trade.legs) || trade.legs.length === 0) return false;
   const today = new Date(); today.setHours(0, 0, 0, 0);
+  // At least one leg with a valid future expiration
   for (const leg of trade.legs) {
-    if (!leg.expiration) return false;
+    if (!leg?.expiration) continue;
     const exp = new Date(leg.expiration + "T00:00:00");
-    if (isNaN(exp.getTime())) return false;
-    if (exp < today) return false;
+    if (isNaN(exp.getTime())) continue;
+    if (exp >= today) return true;
   }
-  return true;
+  return false;
 }
 
 // Dispatches the tp-open-playbuilder event with the trade payload.
@@ -163,7 +166,7 @@ function PlayBuilderButton({ trade, size = 13 }) {
           ? "View in Play Builder"
           : trade?.assetType !== "Options"
             ? "Play Builder is options-only"
-            : "Cannot view — one or more legs have expired"
+            : "Cannot view — all legs have expired"
       }
       style={{
         background: eligible ? "rgba(99,102,241,0.10)" : "transparent",

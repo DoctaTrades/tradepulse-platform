@@ -185,9 +185,12 @@ function flattenChain(chain: ChainResponse): FlatContract[] {
   const out: FlatContract[] = [];
   const walk = (map: Record<string, Record<string, OptionContract[]>>, type: LegType) => {
     for (const expKey in map) {
+      // Schwab key format: "YYYY-MM-DD:DTE" — normalize to canonical "YYYY-MM-DD"
+      // so cross-source lookups (journal stores plain dates) match reliably.
+      const normalizedExp = expKey.split(':')[0];
       for (const strikeKey in map[expKey]) {
         for (const c of map[expKey][strikeKey]) {
-          out.push({ ...c, type });
+          out.push({ ...c, type, expirationDate: normalizedExp });
         }
       }
     }
@@ -1634,16 +1637,23 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
 
       // ─ PATH A: legs payload (from Journal) ─
       if (incomingLegs && incomingLegs.length) {
-        // Validate: any expiration in the past → reject
+        // Drop legs whose expiration is in the past — Greeks for expired contracts
+        // aren't fetchable, but the rest of the structure may still be valid (e.g.
+        // a Calendar Press where leg 1's stale expiration didn't get updated when
+        // a roll happened, but leg 0's long put is still alive).
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        const expired = incomingLegs.some(l => {
-          if (!l.expiration) return false;
+        const isLegExpired = (l: any): boolean => {
+          if (!l?.expiration) return true; // missing date is unusable
           const exp = new Date(l.expiration + 'T00:00:00');
+          if (isNaN(exp.getTime())) return true;
           return exp < today;
-        });
-        if (expired) {
+        };
+        const aliveLegs = incomingLegs.filter(l => !isLegExpired(l));
+        const skippedCount = incomingLegs.length - aliveLegs.length;
+
+        if (aliveLegs.length === 0) {
           setTickerInput(sym);
-          showToast('Cannot view — one or more legs have expired');
+          showToast('Cannot view — all legs have expired');
           return;
         }
 
@@ -1653,10 +1663,10 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         loadChain(sym, 50).then(loadedContracts => {
           if (!loadedContracts.length) return;  // loadChain set its own error
 
-          // Try to find every incoming leg in the chain
+          // Try to find every alive leg in the chain
           const buildPlayBuilderLegs = (chainContracts: FlatContract[]): Leg[] | null => {
             const out: Leg[] = [];
-            for (const jLeg of incomingLegs) {
+            for (const jLeg of aliveLegs) {
               const strike = parseFloat(jLeg.strike);
               const qty = Math.max(1, parseInt(jLeg.contracts) || 1);
               const side: LegSide = String(jLeg.action || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
@@ -1684,6 +1694,14 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             return out;
           };
 
+          const successToast = (count: number) => {
+            const baseMsg = `Loaded ${count} leg${count > 1 ? 's' : ''} from Journal`;
+            const skipMsg = skippedCount > 0
+              ? ` — ${skippedCount} expired leg${skippedCount > 1 ? 's' : ''} skipped`
+              : '';
+            showToast(baseMsg + skipMsg);
+          };
+
           let built = buildPlayBuilderLegs(loadedContracts);
 
           // If a leg wasn't found, retry once with an even wider strike window
@@ -1697,14 +1715,14 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
               }
               setLegs(retry);
               setStrategy(null);   // don't auto-pick a chip — let the legs speak
-              showToast(`Loaded ${retry.length} leg${retry.length > 1 ? 's' : ''} from Journal`);
+              successToast(retry.length);
             });
             return;
           }
 
           setLegs(built);
           setStrategy(null);
-          showToast(`Loaded ${built.length} leg${built.length > 1 ? 's' : ''} from Journal`);
+          successToast(built.length);
         });
         return;
       }
