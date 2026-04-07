@@ -10447,6 +10447,19 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
   }, []);
   const promoteTrade = prefill => { setEditingTrade(emptyTrade(prefill)); setShowTradeModal(true); };
 
+  // ── Play Builder handoff: listen for tp-add-trade-ready and open the prefilled modal ──
+  // Page.tsx catches the original tp-add-trade event from Play Builder, switches the tab
+  // to "log" (which mounts this module), then re-fires as tp-add-trade-ready so this
+  // listener — which only exists once the module is mounted — can pick it up.
+  useEffect(() => {
+    const handler = (e) => {
+      const detail = e?.detail || {};
+      promoteTrade(detail);
+    };
+    window.addEventListener('tp-add-trade-ready', handler);
+    return () => window.removeEventListener('tp-add-trade-ready', handler);
+  }, []);
+
 
 
   // Quick stats for sidebar

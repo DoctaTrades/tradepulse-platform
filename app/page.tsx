@@ -187,6 +187,25 @@ export default function TradePulsePlatform() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ── Play Builder → Journal bridge ──
+  // Page.tsx is always mounted, so it can catch tp-add-trade even when JournalModule
+  // isn't on screen. It switches tab to "log" (mounting JournalModule) then re-dispatches
+  // the event so JournalModule's own listener picks it up and opens the prefilled modal.
+  useEffect(() => {
+    const handler = (e: any) => {
+      const detail = e?.detail;
+      setTab("log");
+      // Re-dispatch after JournalModule has mounted and registered its listener
+      setTimeout(() => {
+        try {
+          window.dispatchEvent(new CustomEvent('tp-add-trade-ready', { detail }));
+        } catch {}
+      }, 120);
+    };
+    window.addEventListener('tp-add-trade', handler);
+    return () => window.removeEventListener('tp-add-trade', handler);
+  }, []);
+
   if (loading) return <div style={{ minHeight:"100vh", background:"var(--shell-bg)", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}><div className="tp-spinner"/><div style={{ color:"var(--text-dim)", fontSize:13, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, letterSpacing:1, textTransform:"uppercase" }}>Loading TradePulse</div></div>;
   if (!user) return <AuthScreen onAuth={setUser}/>;
 

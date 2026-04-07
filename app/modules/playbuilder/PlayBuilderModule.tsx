@@ -1,25 +1,24 @@
 'use client';
 
 /**
- * PlayBuilderModule — Session 2
+ * PlayBuilderModule — Session 3
  *
  * Standalone module for designing options strategies before placing them.
- * Live ticker → chain load → strategy auto-pick → editable legs → real-time metrics + payoff chart.
+ * Live ticker → chain load → strategy auto-pick → editable legs → real-time metrics + visualizations.
  *
- * Session 1:
- *  - Ticker input + live chain loading via /api/schwab/options
- *  - Editable leg table, metrics panel (Greeks, max P/L, breakevens, RoR, POP)
- *  - 4 strategies wired: CSP, Covered Call, Bull Put, Bear Call
- *  - Save to Journal stubbed
+ * Session 1: chain load, 4 strategies (CSP/CC/Bull Put/Bear Call), metrics, stub Save.
+ * Session 2: payoff chart, expected-move bands, IC/IB/PMCC/Straddle.
  *
- * Session 2 adds:
- *  - Canvas payoff-at-expiration chart (±30% auto-widen, breakeven lines, current price marker)
- *  - 1σ / 2σ expected-move bands overlaid on the chart
- *  - 4 more strategies wired: Iron Condor, Iron Butterfly, PMCC, Straddle (under "Custom" chip)
- *  - Layout restructure: chart sits full-width below the legs/metrics row
- *
- * Session 3 will add: P&L heat map, theta decay projection, Diagonal,
- * Calendar Press (custom logic), Screener / SPX Radar / Journal event wiring.
+ * Session 3 adds:
+ *  - Black-Scholes pricing engine for forward valuation
+ *  - Theta decay overlay (purple dotted "P&L if held to today" curve on payoff chart)
+ *  - P&L heat map (price × days-forward grid, color-coded current P&L)
+ *  - Diagonal Spread auto-build
+ *  - Calendar Press auto-build (custom strategy with custom metrics panel:
+ *    cost ratio, weeks-to-breakeven, weekly ROC)
+ *  - Two-step Save to Journal: review fills (mid or actual per-leg) + optional note
+ *    → dispatches `tp-add-trade`, auto-switches to Trade Log
+ *  - Inbound `tp-open-playbuilder` event listener (Screener / SPX Radar handoff)
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -95,8 +94,8 @@ const STRATEGIES: StrategyDef[] = [
   { id:'iron_condor',   name:'Iron Condor',            shortName:'IC',          category:'neutral',     legs:4, enabled:true,  description:'Bull put + bear call — range-bound profit' },
   { id:'iron_butterfly',name:'Iron Butterfly',         shortName:'IB',          category:'neutral',     legs:4, enabled:true,  description:'Tighter IC centered at the money' },
   { id:'pmcc',          name:"Poor Man's Covered Call",shortName:'PMCC',        category:'leveraged',   legs:2, enabled:true,  description:'Long LEAP call + short near-term call' },
-  { id:'diagonal',      name:'Diagonal Spread',        shortName:'Diagonal',    category:'leveraged',   legs:2, enabled:false, description:'Different strikes + different expiries' },
-  { id:'calendar_press',name:'Calendar Press',         shortName:'CalPress',    category:'custom',      legs:2, enabled:false, description:'Long-dated put + weekly short puts (custom)' },
+  { id:'diagonal',      name:'Diagonal Spread',        shortName:'Diagonal',    category:'leveraged',   legs:2, enabled:true,  description:'Different strikes + different expiries' },
+  { id:'calendar_press',name:'Calendar Press',         shortName:'CalPress',    category:'custom',      legs:2, enabled:true,  description:'Long-dated put + weekly short puts (custom)' },
   { id:'custom',        name:'Long Straddle',          shortName:'Straddle',    category:'custom',      legs:2, enabled:true,  description:'Long ATM call + long ATM put — volatility play' },
 ];
 
@@ -109,6 +108,17 @@ const SPREAD_WIDTH_LOW  = 5;    // for stocks <= $100
 const PMCC_LEAP_DELTA = 0.70;
 const PMCC_LEAP_DTE_MIN = 180;
 const PMCC_LEAP_DTE_MAX = 730;
+// Diagonal: tighter LEAP window than PMCC, oriented for rolls
+const DIAGONAL_LONG_DELTA = 0.70;
+const DIAGONAL_LONG_DTE_MIN = 60;
+const DIAGONAL_LONG_DTE_MAX = 180;
+// Calendar Press (custom strategy)
+const CALPRESS_LONG_DTE_MIN = 60;
+const CALPRESS_LONG_DTE_MAX = 150;
+const CALPRESS_SHORT_DTE_MIN = 3;
+const CALPRESS_SHORT_DTE_MAX = 21;
+const CALPRESS_COST_RATIO_IDEAL = 2.5;
+const CALPRESS_COST_RATIO_MAX = 3.0;
 
 // ─── UTIL: math ──────────────────────────────────────────────────────────────
 const mid = (bid: number, ask: number) => {
@@ -384,6 +394,51 @@ function buildStrategy(
       if (!atmPut) return [contractToLeg(atmCall, 'BUY')];
       return [contractToLeg(atmCall, 'BUY'), contractToLeg(atmPut, 'BUY')];
     }
+    case 'diagonal': {
+      // Long longer-dated call (~0.70 delta, 60–180 DTE) + short shorter-dated call (~0.30 delta)
+      // Different strikes AND different expiries (vs PMCC which is same).
+      const longExp = pickExpiration(contracts, DIAGONAL_LONG_DTE_MIN, DIAGONAL_LONG_DTE_MAX);
+      if (!longExp) return [];
+      const longCall  = pickByDelta(contracts, longExp, 'CALL', DIAGONAL_LONG_DELTA);
+      const shortCall = pickByDelta(contracts, exp,     'CALL', TARGET_SHORT_DELTA);
+      if (!longCall || !shortCall) return [];
+      // Ensure short strike strictly above long strike
+      if ((shortCall.strikePrice ?? 0) <= (longCall.strikePrice ?? 0)) {
+        const callStrikes = strikesForExp(contracts, exp, 'CALL').filter(s => s > (longCall.strikePrice ?? 0));
+        if (!callStrikes.length) return [contractToLeg(longCall, 'BUY')];
+        const altShort = findContract(contracts, exp, callStrikes[0], 'CALL');
+        if (!altShort) return [contractToLeg(longCall, 'BUY')];
+        return [contractToLeg(longCall, 'BUY'), contractToLeg(altShort, 'SELL')];
+      }
+      return [contractToLeg(longCall, 'BUY'), contractToLeg(shortCall, 'SELL')];
+    }
+    case 'calendar_press': {
+      // Custom strategy:
+      //   Buy a longer-dated put (60–150 DTE)
+      //   Sell a near-term weekly put (3–21 DTE) at the SAME strike (tightest spread first)
+      // Capital required = spread width × 100; for same-strike calendar, width is 0,
+      // so capital is special-cased downstream (= 1 contract × 100 nominal slot).
+      const longExp  = pickExpiration(contracts, CALPRESS_LONG_DTE_MIN,  CALPRESS_LONG_DTE_MAX);
+      const shortExp = pickExpiration(contracts, CALPRESS_SHORT_DTE_MIN, CALPRESS_SHORT_DTE_MAX);
+      if (!longExp || !shortExp) return [];
+      // Anchor on the long put closest to ATM (highest |delta| put nearest 0.50)
+      const longPut = pickByDelta(contracts, longExp, 'PUT', 0.50);
+      if (!longPut) return [];
+      const targetStrike = longPut.strikePrice ?? 0;
+      // Try same strike on the short side first (tightest spread)
+      let shortPut = findContract(contracts, shortExp, targetStrike, 'PUT');
+      if (!shortPut) {
+        // Fall back to closest-strike short put on the same expiry
+        const shortStrikes = strikesForExp(contracts, shortExp, 'PUT');
+        if (!shortStrikes.length) return [contractToLeg(longPut, 'BUY')];
+        const closest = shortStrikes.sort((a, b) =>
+          Math.abs(a - targetStrike) - Math.abs(b - targetStrike)
+        )[0];
+        shortPut = findContract(contracts, shortExp, closest, 'PUT');
+      }
+      if (!shortPut) return [contractToLeg(longPut, 'BUY')];
+      return [contractToLeg(longPut, 'BUY'), contractToLeg(shortPut, 'SELL')];
+    }
     default:
       return [];
   }
@@ -551,7 +606,26 @@ function computeMetrics(legs: Leg[], underlying: number): Metrics {
     if (w != null) {
       capitalRequired = w * 100 * Math.min(legs[0].qty, legs[1].qty);
     } else {
-      capitalRequired = isFinite(maxLoss) ? maxLoss : Math.abs(Math.min(netCredit, 0));
+      // Could be a calendar / diagonal: same type, different expirations
+      // Per Calendar Press spec: capital = strike-spread width × 100 (NOT long put cost)
+      const sameType = legs[0].type === legs[1].type;
+      const oppSides = legs[0].side !== legs[1].side;
+      const diffExp  = legs[0].expiration !== legs[1].expiration;
+      if (sameType && oppSides && diffExp) {
+        const strikeDiff = Math.abs(legs[0].strike - legs[1].strike);
+        if (strikeDiff > 0) {
+          // Diagonal calendar: width × 100
+          capitalRequired = strikeDiff * 100 * Math.min(legs[0].qty, legs[1].qty);
+        } else {
+          // Same-strike calendar: long-leg cost is the max possible loss
+          const longLeg = legs.find(l => l.side === 'BUY');
+          capitalRequired = longLeg
+            ? mid(longLeg.bid, longLeg.ask) * 100 * longLeg.qty
+            : (isFinite(maxLoss) ? maxLoss : Math.abs(Math.min(netCredit, 0)));
+        }
+      } else {
+        capitalRequired = isFinite(maxLoss) ? maxLoss : Math.abs(Math.min(netCredit, 0));
+      }
     }
   } else if (legs.length === 4) {
     // Iron Condor / Butterfly: split into put-side and call-side, take the larger width
@@ -632,9 +706,105 @@ function computeExpectedMove(legs: Leg[], underlying: number): { sigma1: number;
   return { sigma1: sigma, sigma2: sigma * 2, iv: anchor.iv, dte: anchor.dte };
 }
 
+// ─── BLACK-SCHOLES PRICING ───────────────────────────────────────────────────
+// Standard European-option pricing. Risk-free rate hardcoded to 4.5% (close enough
+// for short-dated relative valuations); dividends ignored.
+const RISK_FREE_RATE = 0.045;
+
+function bsPrice(
+  S: number,        // spot
+  K: number,        // strike
+  T: number,        // time to expiry in years
+  iv: number,       // implied vol as fraction (0.32 = 32%)
+  type: LegType
+): number {
+  if (T <= 0) {
+    // At/after expiry, value = intrinsic
+    return type === 'CALL' ? Math.max(0, S - K) : Math.max(0, K - S);
+  }
+  if (iv <= 0 || S <= 0 || K <= 0) {
+    return type === 'CALL' ? Math.max(0, S - K) : Math.max(0, K - S);
+  }
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (RISK_FREE_RATE + 0.5 * iv * iv) * T) / (iv * sqrtT);
+  const d2 = d1 - iv * sqrtT;
+  if (type === 'CALL') {
+    return S * ncdf(d1) - K * Math.exp(-RISK_FREE_RATE * T) * ncdf(d2);
+  } else {
+    return K * Math.exp(-RISK_FREE_RATE * T) * ncdf(-d2) - S * ncdf(-d1);
+  }
+}
+
+// Compute the position's *current* theoretical P&L if held until `daysForward` from now,
+// at underlying price S. Each leg's value is its current BS price minus its entry mid.
+// daysForward = 0 → "if I closed it right now". daysForward = leg.dte → expiration.
+function positionTheoreticalPnL(legs: Leg[], S: number, daysForward: number): number {
+  let total = 0;
+  for (const leg of legs) {
+    const remainingDays = Math.max(0, leg.dte - daysForward);
+    const T = remainingDays / 365;
+    const theo = bsPrice(S, leg.strike, T, leg.iv, leg.type);
+    const entry = mid(leg.bid, leg.ask);
+    if (leg.side === 'SELL') {
+      // Sold at entry, must buy back at theo to close. P&L = (entry - theo) × 100 × qty
+      total += (entry - theo) * 100 * leg.qty;
+    } else {
+      // Bought at entry, can sell at theo. P&L = (theo - entry) × 100 × qty
+      total += (theo - entry) * 100 * leg.qty;
+    }
+  }
+  return total;
+}
+
+// ─── CALENDAR PRESS METRICS ──────────────────────────────────────────────────
+type CalendarPressMetrics = {
+  longCost: number;          // dollars paid for the long put (per contract × 100)
+  weeklyCredit: number;      // dollars collected for the weekly short (per contract × 100)
+  costRatio: number;         // longCost / weeklyCredit
+  costRatioGrade: 'ideal' | 'acceptable' | 'too-high';
+  weeksToBreakeven: number;  // ceil(longCost / weeklyCredit)
+  weeklyROC: number;         // weeklyCredit / capital, as decimal (0.0X)
+  totalProjectedCredits: number; // weeklyCredit × (longDTE / 7)
+  longDTE: number;
+  shortDTE: number;
+};
+
+function computeCalendarPressMetrics(legs: Leg[], capitalRequired: number): CalendarPressMetrics | null {
+  if (legs.length !== 2) return null;
+  // Identify long (longer DTE) and short (shorter DTE) — both should be puts
+  const sorted = [...legs].sort((a, b) => b.dte - a.dte);
+  const longLeg  = sorted[0];
+  const shortLeg = sorted[1];
+  if (longLeg.side !== 'BUY' || shortLeg.side !== 'SELL') return null;
+
+  const longCost     = mid(longLeg.bid,  longLeg.ask)  * 100 * longLeg.qty;
+  const weeklyCredit = mid(shortLeg.bid, shortLeg.ask) * 100 * shortLeg.qty;
+  if (weeklyCredit <= 0) {
+    return {
+      longCost, weeklyCredit, costRatio: Infinity, costRatioGrade: 'too-high',
+      weeksToBreakeven: Infinity, weeklyROC: 0, totalProjectedCredits: 0,
+      longDTE: longLeg.dte, shortDTE: shortLeg.dte,
+    };
+  }
+  const costRatio = longCost / weeklyCredit;
+  const grade: CalendarPressMetrics['costRatioGrade'] =
+    costRatio <= CALPRESS_COST_RATIO_IDEAL ? 'ideal'
+    : costRatio <= CALPRESS_COST_RATIO_MAX ? 'acceptable'
+    : 'too-high';
+  const weeksToBreakeven = Math.ceil(costRatio);
+  const weeklyROC = capitalRequired > 0 ? weeklyCredit / capitalRequired : 0;
+  const totalProjectedCredits = weeklyCredit * (longLeg.dte / 7);
+  return {
+    longCost, weeklyCredit, costRatio, costRatioGrade: grade,
+    weeksToBreakeven, weeklyROC, totalProjectedCredits,
+    longDTE: longLeg.dte, shortDTE: shortLeg.dte,
+  };
+}
+
 // ─── PAYOFF CHART ────────────────────────────────────────────────────────────
 type PayoffChartProps = {
   samples: PayoffSample[];
+  todaySamples?: PayoffSample[];   // optional "P&L if held to today" curve (BS-driven)
   underlying: number;
   breakevens: number[];
   expectedMove: { sigma1: number; sigma2: number } | null;
@@ -642,7 +812,7 @@ type PayoffChartProps = {
   height?: number;
 };
 
-function PayoffChart({ samples, underlying, breakevens, expectedMove, legs, height = 320 }: PayoffChartProps) {
+function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMove, legs, height = 320 }: PayoffChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(800);
@@ -688,6 +858,13 @@ function PayoffChart({ samples, underlying, breakevens, expectedMove, legs, heig
     for (const s of samples) {
       if (s.pnl < pMin) pMin = s.pnl;
       if (s.pnl > pMax) pMax = s.pnl;
+    }
+    // Also include today-curve range if present, so the dotted line never clips
+    if (todaySamples) {
+      for (const s of todaySamples) {
+        if (s.pnl < pMin) pMin = s.pnl;
+        if (s.pnl > pMax) pMax = s.pnl;
+      }
     }
     // Add 10% headroom; ensure zero is always visible
     const pRange = Math.max(1, pMax - pMin);
@@ -758,7 +935,22 @@ function PayoffChart({ samples, underlying, breakevens, expectedMove, legs, heig
     drawFill(true,  'rgba(74,222,128,0.18)');   // profit (green)
     drawFill(false, 'rgba(248,113,113,0.18)');  // loss (red)
 
-    // ─── Payoff curve ──
+    // ─── "Held to today" curve (theta decay overlay) — purple dotted ──
+    if (todaySamples && todaySamples.length) {
+      ctx.strokeStyle = '#c4b5fd';   // soft purple
+      ctx.lineWidth = 1.75;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      todaySamples.forEach((s, i) => {
+        const x = xFor(s.S), y = yFor(s.pnl);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ─── Payoff curve (at expiration) ──
     ctx.strokeStyle = '#a5b4fc';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -874,7 +1066,7 @@ function PayoffChart({ samples, underlying, breakevens, expectedMove, legs, heig
       ctx.fillStyle = hover.pnl >= 0 ? '#4ade80' : '#f87171';
       ctx.fillText(txt2, tx + 8, ty + 28);
     }
-  }, [samples, width, height, underlying, breakevens, expectedMove, legs, hover]);
+  }, [samples, todaySamples, width, height, underlying, breakevens, expectedMove, legs, hover]);
 
   // Mouse handlers — convert mouse X back to S, find nearest sample
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -894,6 +1086,208 @@ function PayoffChart({ samples, underlying, breakevens, expectedMove, legs, heig
       if (d < bestD) { best = s; bestD = d; }
     }
     setHover({ x: mx, y: e.clientY - rect.top, S: best.S, pnl: best.pnl });
+  };
+  const onMouseLeave = () => setHover(null);
+
+  return (
+    <div ref={wrapRef} style={{ width: '100%' }}>
+      <canvas
+        ref={canvasRef}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        style={{ display: 'block', cursor: 'crosshair' }}
+      />
+    </div>
+  );
+}
+
+// ─── HEAT MAP ────────────────────────────────────────────────────────────────
+type HeatMapProps = {
+  legs: Leg[];
+  priceLo: number;
+  priceHi: number;
+  underlying: number;
+  height?: number;
+};
+
+function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(800);
+  const [hover, setHover] = useState<{ x: number; y: number; S: number; days: number; pnl: number } | null>(null);
+
+  // Max DTE from legs (heat map runs from now to last expiration)
+  const maxDTE = useMemo(() => {
+    if (!legs.length) return 30;
+    return Math.max(...legs.map(l => l.dte));
+  }, [legs]);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const w = Math.floor(e.contentRect.width);
+        if (w > 0) setWidth(w);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Build the grid once per legs/price-range change
+  const grid = useMemo(() => {
+    if (!legs.length || maxDTE <= 0) return null;
+    const cols = 60;  // price granularity
+    const rows = Math.min(60, Math.max(8, maxDTE)); // day granularity capped
+    const cells: number[][] = [];
+    let absMax = 0;
+    for (let r = 0; r < rows; r++) {
+      const daysForward = (r / (rows - 1)) * maxDTE;
+      const row: number[] = [];
+      for (let c = 0; c < cols; c++) {
+        const S = priceLo + ((priceHi - priceLo) * c) / (cols - 1);
+        const pnl = positionTheoreticalPnL(legs, S, daysForward);
+        row.push(pnl);
+        const a = Math.abs(pnl);
+        if (a > absMax) absMax = a;
+      }
+      cells.push(row);
+    }
+    return { cells, rows, cols, absMax };
+  }, [legs, priceLo, priceHi, maxDTE]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !grid) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    const padL = 56, padR = 16, padT = 14, padB = 28;
+    const W = width - padL - padR;
+    const H = height - padT - padB;
+    const { cells, rows, cols, absMax } = grid;
+    const cellW = W / cols;
+    const cellH = H / rows;
+
+    // Color: green for profit, red for loss, intensity by |pnl|/absMax
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const v = cells[r][c];
+        const t = absMax > 0 ? Math.abs(v) / absMax : 0;
+        const intensity = Math.min(1, t * 1.2);   // gentle saturation curve
+        const x = padL + c * cellW;
+        // Row 0 = today (top), row rows-1 = expiration (bottom)
+        const y = padT + r * cellH;
+        if (v >= 0) {
+          ctx.fillStyle = `rgba(74,222,128,${intensity})`;
+        } else {
+          ctx.fillStyle = `rgba(248,113,113,${intensity})`;
+        }
+        ctx.fillRect(x, y, cellW + 0.5, cellH + 0.5);
+      }
+    }
+
+    // Axes
+    ctx.fillStyle = '#8a8f9e';
+    ctx.font = '10px Inter, system-ui, sans-serif';
+
+    // Y-axis: days forward labels
+    ctx.textAlign = 'right';
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const days = (i / yTicks) * maxDTE;
+      const y = padT + (i / yTicks) * H;
+      ctx.fillText(`${Math.round(days)}d`, padL - 6, y + 3);
+    }
+
+    // X-axis: price labels
+    ctx.textAlign = 'center';
+    const xTicks = 6;
+    for (let i = 0; i <= xTicks; i++) {
+      const v = priceLo + ((priceHi - priceLo) * i) / xTicks;
+      const x = padL + (i / xTicks) * W;
+      ctx.fillText(`$${v.toFixed(0)}`, x, padT + H + 16);
+    }
+
+    // Current-price vertical guide
+    const xCur = padL + ((underlying - priceLo) / (priceHi - priceLo)) * W;
+    if (xCur >= padL && xCur <= padL + W) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1.25;
+      ctx.beginPath();
+      ctx.moveTo(xCur, padT);
+      ctx.lineTo(xCur, padT + H);
+      ctx.stroke();
+    }
+
+    // "Today" label on the top edge
+    ctx.fillStyle = '#a5b4fc';
+    ctx.textAlign = 'left';
+    ctx.font = '9px Inter, system-ui, sans-serif';
+    ctx.fillText('TODAY →', padL + 3, padT - 3);
+    ctx.textAlign = 'right';
+    ctx.fillText('EXPIRY ↓', padL + W - 3, padT + H + 16);
+
+    // Hover crosshair + tooltip
+    if (hover) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.strokeRect(hover.x - cellW / 2, hover.y - cellH / 2, cellW, cellH);
+      ctx.setLineDash([]);
+
+      const t1 = `$${hover.S.toFixed(2)} · ${Math.round(hover.days)}d`;
+      const t2 = `${hover.pnl >= 0 ? '+' : ''}$${hover.pnl.toFixed(0)}`;
+      ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+      const tw = Math.max(ctx.measureText(t1).width, ctx.measureText(t2).width) + 16;
+      const tx = Math.min(padL + W - tw, Math.max(padL, hover.x - tw / 2));
+      const ty = Math.max(padT, hover.y - 44);
+      ctx.fillStyle = 'rgba(20,22,30,0.95)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.rect(tx, ty, tw, 36);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e2e4ea';
+      ctx.textAlign = 'left';
+      ctx.fillText(t1, tx + 8, ty + 14);
+      ctx.fillStyle = hover.pnl >= 0 ? '#4ade80' : '#f87171';
+      ctx.fillText(t2, tx + 8, ty + 28);
+    }
+  }, [grid, width, height, priceLo, priceHi, underlying, hover]);
+
+  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!grid) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const padL = 56, padR = 16, padT = 14, padB = 28;
+    const W = width - padL - padR;
+    const H = height - padT - padB;
+    if (mx < padL || mx > padL + W || my < padT || my > padT + H) {
+      setHover(null);
+      return;
+    }
+    const cellW = W / grid.cols;
+    const cellH = H / grid.rows;
+    const c = Math.min(grid.cols - 1, Math.max(0, Math.floor((mx - padL) / cellW)));
+    const r = Math.min(grid.rows - 1, Math.max(0, Math.floor((my - padT) / cellH)));
+    const S = priceLo + ((priceHi - priceLo) * c) / (grid.cols - 1);
+    const days = (r / (grid.rows - 1)) * maxDTE;
+    setHover({
+      x: padL + c * cellW + cellW / 2,
+      y: padT + r * cellH + cellH / 2,
+      S, days, pnl: grid.cells[r][c],
+    });
   };
   const onMouseLeave = () => setHover(null);
 
@@ -1032,36 +1426,194 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
   // Expected move for chart bands
   const expectedMove = useMemo(() => computeExpectedMove(legs, underlying), [legs, underlying]);
 
+  // "Held to today" curve — Black-Scholes valuation across the same price range
+  // as the at-expiration curve, with daysForward = 0
+  const todaySamples = useMemo(() => {
+    if (!legs.length || !metrics.samples.length) return undefined;
+    return metrics.samples.map(s => ({
+      S: s.S,
+      pnl: positionTheoreticalPnL(legs, s.S, 0),
+    }));
+  }, [legs, metrics.samples]);
+
+  // Calendar Press metrics (only meaningful when that strategy is active)
+  const calPressMetrics = useMemo(() => {
+    if (strategy !== 'calendar_press') return null;
+    return computeCalendarPressMetrics(legs, metrics.capitalRequired);
+  }, [strategy, legs, metrics.capitalRequired]);
+
   // Available expirations & strike lists for dropdowns
   const expirations = useMemo(() => uniqueExpirations(contracts), [contracts]);
 
-  // Save to Journal — STUBBED for Session 1
-  const saveToJournal = useCallback(() => {
+  // ─── SAVE FLOW STATE ──────────────────────────────────────────────────────
+  // Two-step Save: idle → reviewing → (Send) → dispatched
+  const [saveStage, setSaveStage] = useState<'idle' | 'reviewing'>('idle');
+  const [useMidPrices, setUseMidPrices] = useState(true);
+  // Per-leg fill price overrides (string-keyed by leg.id)
+  const [fillOverrides, setFillOverrides] = useState<Record<string, string>>({});
+  const [saveNote, setSaveNote] = useState('');
+
+  // Reset save state whenever the legs change so stale overrides don't carry over
+  useEffect(() => {
+    setSaveStage('idle');
+    setFillOverrides({});
+    setUseMidPrices(true);
+    setSaveNote('');
+  }, [legs]);
+
+  // ─── INBOUND EVENT LISTENER (Screener / SPX Radar handoff) ───────────────
+  useEffect(() => {
+    const handler = (e: any) => {
+      const detail = e?.detail || {};
+      const sym = (detail.ticker || '').toUpperCase().trim();
+      const reqStrategy: StrategyId | undefined = detail.strategy;
+      if (!sym) return;
+      // Stash the requested strategy so onPickStrategy can fire after the chain loads
+      setTickerInput(sym);
+      loadChain(sym).then(() => {
+        if (reqStrategy && STRATEGIES.find(s => s.id === reqStrategy)) {
+          // onPickStrategy reads `contracts` from state, which has just been set
+          // by loadChain — but state updates are async, so we wrap in a microtask
+          // and re-derive via the latest state inside a setter pattern:
+          setTimeout(() => {
+            // We re-call buildStrategy directly here to avoid any race with useCallback
+            // closures that captured stale `contracts`. This mirrors onPickStrategy's
+            // logic.
+            setContracts(prevContracts => {
+              const built = prevContracts.length
+                ? buildStrategy(reqStrategy, prevContracts, underlying || 0)
+                : [];
+              if (built.length) {
+                setLegs(built);
+                setStrategy(reqStrategy);
+                showToast(`${STRATEGIES.find(s => s.id === reqStrategy)?.name} built from ${sym}`);
+              }
+              return prevContracts;
+            });
+          }, 0);
+        }
+      });
+    };
+    window.addEventListener('tp-open-playbuilder', handler);
+    return () => window.removeEventListener('tp-open-playbuilder', handler);
+  }, [loadChain, underlying, showToast]);
+
+  // ─── STRATEGY MAPPING (Play Builder → Journal) ───────────────────────────
+  const STRATEGY_TO_JOURNAL: Record<StrategyId, string> = {
+    csp: 'Single Leg',
+    cc: 'Single Leg',
+    bullput: 'Vertical Spread',
+    bearcall: 'Vertical Spread',
+    iron_condor: 'Iron Condor',
+    iron_butterfly: 'Iron Butterfly',
+    pmcc: 'PMCC / Diagonal',
+    diagonal: 'PMCC / Diagonal',
+    calendar_press: 'Calendar Press',
+    custom: 'Straddle / Strangle',
+  };
+
+  // Convert a Play Builder leg → Journal leg shape (matches emptyLeg() in JournalModule.jsx)
+  // Journal expects all string values; action/type are title-cased.
+  const toJournalLeg = useCallback((leg: Leg, fillPriceOverride?: number) => {
+    const fillPrice = fillPriceOverride != null ? fillPriceOverride : mid(leg.bid, leg.ask);
+    return {
+      id: Date.now() + Math.random(),
+      action: leg.side === 'SELL' ? 'Sell' : 'Buy',
+      type: leg.type === 'CALL' ? 'Call' : 'Put',
+      strike: String(leg.strike),
+      expiration: leg.expiration,
+      contracts: String(leg.qty),
+      entryPremium: fillPrice.toFixed(2),
+      exitPremium: '',
+      partialCloses: [],
+      rolls: [],
+    };
+  }, []);
+
+  // Reorder Iron Butterfly legs to match Journal's expected order
+  // Journal: [Buy-Put, Sell-Put, Sell-Call, Buy-Call]
+  // Play Builder builds: [Sell-Put, Buy-Put, Sell-Call, Buy-Call]
+  const reorderForJournal = useCallback((strategyId: StrategyId, builderLegs: Leg[]): Leg[] => {
+    if (strategyId !== 'iron_butterfly' || builderLegs.length !== 4) return builderLegs;
+    const buyPut   = builderLegs.find(l => l.side === 'BUY'  && l.type === 'PUT');
+    const sellPut  = builderLegs.find(l => l.side === 'SELL' && l.type === 'PUT');
+    const sellCall = builderLegs.find(l => l.side === 'SELL' && l.type === 'CALL');
+    const buyCall  = builderLegs.find(l => l.side === 'BUY'  && l.type === 'CALL');
+    if (buyPut && sellPut && sellCall && buyCall) {
+      return [buyPut, sellPut, sellCall, buyCall];
+    }
+    return builderLegs;
+  }, []);
+
+  // Begin save flow — opens the inline review panel
+  const beginSave = useCallback(() => {
     if (!legs.length) {
       showToast('No legs to save');
       return;
     }
-    const payload = {
+    // Pre-populate fill overrides with mid prices
+    const initial: Record<string, string> = {};
+    for (const l of legs) {
+      initial[l.id] = mid(l.bid, l.ask).toFixed(2);
+    }
+    setFillOverrides(initial);
+    setUseMidPrices(true);
+    setSaveStage('reviewing');
+  }, [legs, showToast]);
+
+  // Cancel review — back to idle
+  const cancelSave = useCallback(() => {
+    setSaveStage('idle');
+  }, []);
+
+  // Send to Journal — dispatches `tp-add-trade` event with full prefill payload
+  const sendToJournal = useCallback(() => {
+    if (!legs.length) return;
+    const journalStrategyType = strategy ? STRATEGY_TO_JOURNAL[strategy] : 'Single Leg';
+    const orderedLegs = strategy ? reorderForJournal(strategy, legs) : legs;
+
+    // Build journal-shape legs with appropriate fill prices
+    const journalLegs = orderedLegs.map(leg => {
+      if (useMidPrices) return toJournalLeg(leg);
+      const override = parseFloat(fillOverrides[leg.id]);
+      return toJournalLeg(leg, isFinite(override) ? override : undefined);
+    });
+
+    // Auto-generated note + user's optional note
+    const sName = STRATEGIES.find(s => s.id === strategy)?.name || 'Custom';
+    const autoNote = [
+      `Built in Play Builder · ${sName}`,
+      `POP ${(metrics.pop * 100).toFixed(0)}%`,
+      `Max Profit ${isFinite(metrics.maxProfit) ? '$' + metrics.maxProfit.toFixed(0) : 'Unlimited'}`,
+      `Max Loss ${isFinite(metrics.maxLoss) ? '$' + metrics.maxLoss.toFixed(0) : 'Unlimited'}`,
+      metrics.breakevens.length ? `BE ${metrics.breakevens.map(b => '$' + b.toFixed(2)).join(' / ')}` : '',
+    ].filter(Boolean).join(' · ');
+    const fullNote = saveNote.trim() ? `${autoNote}\n${saveNote.trim()}` : autoNote;
+
+    // Build the prefill payload that emptyTrade(prefill) will spread over defaults
+    const prefill = {
       ticker,
-      strategy,
-      strategyName: STRATEGIES.find(s => s.id === strategy)?.name || 'Custom',
-      underlying,
-      legs,
-      metrics: {
-        netCredit: metrics.netCredit,
-        maxProfit: metrics.maxProfit,
-        maxLoss: metrics.maxLoss,
-        breakevens: metrics.breakevens,
-        pop: metrics.pop,
-        ror: metrics.ror,
-        capitalRequired: metrics.capitalRequired,
-      },
-      timestamp: new Date().toISOString(),
+      assetType: 'Options',
+      optionsStrategyType: journalStrategyType,
+      legs: journalLegs,
+      notes: fullNote,
+      status: 'Open',
+      date: new Date().toISOString().split('T')[0],
     };
-    // eslint-disable-next-line no-console
-    console.log('[PlayBuilder] Save to Journal payload:', payload);
-    showToast('Save to Journal — stubbed (logged to console). Wiring in a later session.');
-  }, [legs, ticker, strategy, underlying, metrics, showToast]);
+
+    // Dispatch the event — JournalModule's listener picks it up
+    try {
+      window.dispatchEvent(new CustomEvent('tp-add-trade', { detail: prefill }));
+      showToast(`Sent to Journal — opening Trade Log…`);
+      setSaveStage('idle');
+    } catch (err) {
+      console.error('[PlayBuilder] Failed to dispatch tp-add-trade:', err);
+      showToast('Failed to send to Journal — see console');
+    }
+  }, [legs, strategy, ticker, useMidPrices, fillOverrides, saveNote, metrics, toJournalLeg, reorderForJournal, showToast]);
+
+  // Legacy stub kept for the disabled state (replaced by beginSave/sendToJournal)
+  const saveToJournal = beginSave;
 
   // ─── STYLES ──
   const panel: React.CSSProperties = {
@@ -1370,7 +1922,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
             <div style={label}>Payoff at Expiration</div>
             <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', alignItems: 'center', flexWrap: 'wrap' }}>
-              <LegendDot color="#a5b4fc" label="P/L curve" />
+              <LegendDot color="#a5b4fc" label="At expiration" />
+              <LegendDot color="#c4b5fd" label="If held to today" dashed />
               <LegendDot color="#ffffff" label="Current price" />
               <LegendDot color="#eab308" label="Breakeven" dashed />
               <LegendDot color="rgba(74,222,128,0.7)" label="Short strike" dashed />
@@ -1382,6 +1935,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
           </div>
           <PayoffChart
             samples={metrics.samples}
+            todaySamples={todaySamples}
             underlying={underlying}
             breakevens={metrics.breakevens}
             expectedMove={expectedMove}
@@ -1391,25 +1945,182 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         </div>
       )}
 
-      {/* ACTIONS */}
-      <div style={{ ...panel, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 11, color: 'var(--text-dim, #8a8f9e)' }}>
-          Coming in Session 3: P&amp;L heat map, theta decay projection, Diagonal &amp; Calendar Press, Save-to-Journal wiring.
+      {/* HEAT MAP — P&L over price × time */}
+      {legs.length > 0 && metrics.priceHi > metrics.priceLo && (
+        <div style={{ ...panel, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+            <div style={label}>P&amp;L Heat Map (price × days forward)</div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', alignItems: 'center', flexWrap: 'wrap' }}>
+              <LegendDot color="rgba(74,222,128,0.7)" label="Profit" />
+              <LegendDot color="rgba(248,113,113,0.7)" label="Loss" />
+              <span style={{ color: 'var(--text-dim, #8a8f9e)' }}>Intensity = magnitude · Black-Scholes valued</span>
+            </div>
+          </div>
+          <HeatMap
+            legs={legs}
+            priceLo={metrics.priceLo}
+            priceHi={metrics.priceHi}
+            underlying={underlying}
+            height={260}
+          />
         </div>
-        <button
-          onClick={saveToJournal}
-          disabled={!legs.length}
-          style={{
-            padding: '10px 20px', borderRadius: 8, border: 'none',
-            background: legs.length ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'var(--input-bg, #1e2028)',
-            color: legs.length ? '#fff' : 'var(--text-dim, #8a8f9e)',
-            cursor: legs.length ? 'pointer' : 'not-allowed',
-            fontSize: 12, fontWeight: 600,
-            opacity: legs.length ? 1 : 0.5,
-          }}
-        >
-          Save to Journal (stub)
-        </button>
+      )}
+
+      {/* CALENDAR PRESS METRICS PANEL — only when that strategy is active */}
+      {strategy === 'calendar_press' && calPressMetrics && (
+        <div style={{ ...panel, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <div style={label}>Calendar Press Metrics</div>
+            <CostRatioBadge grade={calPressMetrics.costRatioGrade} ratio={calPressMetrics.costRatio} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <CalPressStat label="Long Cost" value={fmtMoney(calPressMetrics.longCost, 0)} sub={`${calPressMetrics.longDTE} DTE`} />
+            <CalPressStat label="Weekly Credit" value={fmtMoney(calPressMetrics.weeklyCredit, 0)} sub={`${calPressMetrics.shortDTE} DTE short`} />
+            <CalPressStat label="Cost Ratio" value={isFinite(calPressMetrics.costRatio) ? `${calPressMetrics.costRatio.toFixed(2)}x` : '∞'} sub={`Ideal ≤${CALPRESS_COST_RATIO_IDEAL}x · Max ≤${CALPRESS_COST_RATIO_MAX}x`} />
+            <CalPressStat label="Weeks to Breakeven" value={isFinite(calPressMetrics.weeksToBreakeven) ? `${calPressMetrics.weeksToBreakeven}w` : '—'} sub={`@ ${fmtMoney(calPressMetrics.weeklyCredit, 0)}/wk pace`} />
+            <CalPressStat label="Weekly ROC" value={fmtPct(calPressMetrics.weeklyROC, 2)} sub="vs capital required" />
+            <CalPressStat label="Total Projected Credits" value={fmtMoney(calPressMetrics.totalProjectedCredits, 0)} sub={`Over ${Math.floor(calPressMetrics.longDTE / 7)} weeks`} />
+          </div>
+        </div>
+      )}
+
+      {/* SAVE TO JOURNAL — two-step inline flow */}
+      <div style={{ ...panel }}>
+        {saveStage === 'idle' ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-dim, #8a8f9e)' }}>
+              Click Save to Journal to review fills and send this play to your Trade Log.
+            </div>
+            <button
+              onClick={beginSave}
+              disabled={!legs.length}
+              style={{
+                padding: '10px 20px', borderRadius: 8, border: 'none',
+                background: legs.length ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'var(--input-bg, #1e2028)',
+                color: legs.length ? '#fff' : 'var(--text-dim, #8a8f9e)',
+                cursor: legs.length ? 'pointer' : 'not-allowed',
+                fontSize: 12, fontWeight: 600,
+                opacity: legs.length ? 1 : 0.5,
+              }}
+            >
+              Save to Journal
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={label}>Review Fills</div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)' }}>
+                Step 2 of 2 — confirm prices then send
+              </div>
+            </div>
+
+            {/* Mid vs Actual radio toggle */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: useMidPrices ? '#a5b4fc' : 'var(--text-dim, #8a8f9e)' }}>
+                <input type="radio" checked={useMidPrices} onChange={() => setUseMidPrices(true)} />
+                Use mid prices (theoretical)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: !useMidPrices ? '#a5b4fc' : 'var(--text-dim, #8a8f9e)' }}>
+                <input type="radio" checked={!useMidPrices} onChange={() => setUseMidPrices(false)} />
+                Enter actual fills (per leg)
+              </label>
+            </div>
+
+            {/* Per-leg fills table */}
+            <div style={{ background: 'var(--input-bg, rgba(255,255,255,0.02))', borderRadius: 8, padding: '10px 12px', marginBottom: 14, border: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-dim, #8a8f9e)', textTransform: 'uppercase', fontSize: 9, letterSpacing: 1 }}>
+                    <th style={{ padding: '6px 4px', textAlign: 'left' }}>Side</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'left' }}>Type</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'left' }}>Strike</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'left' }}>Expiry</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'left' }}>Qty</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'left' }}>Mid</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'left' }}>Fill $</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {legs.map(leg => {
+                    const m = mid(leg.bid, leg.ask);
+                    return (
+                      <tr key={leg.id} style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.04))' }}>
+                        <td style={{ padding: '6px 4px', color: leg.side === 'SELL' ? '#4ade80' : '#f87171', fontWeight: 700 }}>{leg.side}</td>
+                        <td style={{ padding: '6px 4px' }}>{leg.type}</td>
+                        <td style={{ padding: '6px 4px' }}>{leg.strike.toFixed(2)}</td>
+                        <td style={{ padding: '6px 4px' }}>{leg.expiration}</td>
+                        <td style={{ padding: '6px 4px' }}>{leg.qty}</td>
+                        <td style={{ padding: '6px 4px', color: 'var(--text-dim, #8a8f9e)' }}>${m.toFixed(2)}</td>
+                        <td style={{ padding: '6px 4px' }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={fillOverrides[leg.id] ?? m.toFixed(2)}
+                            disabled={useMidPrices}
+                            onChange={e => setFillOverrides(prev => ({ ...prev, [leg.id]: e.target.value }))}
+                            style={{
+                              width: 70,
+                              background: useMidPrices ? 'transparent' : 'var(--input-bg, #1e2028)',
+                              border: '1px solid var(--border, rgba(255,255,255,0.08))',
+                              color: useMidPrices ? 'var(--text-dim, #8a8f9e)' : 'var(--text, #e2e4ea)',
+                              borderRadius: 4, padding: '4px 6px', fontSize: 11, outline: 'none',
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Optional note */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={label}>Note (optional)</div>
+              <input
+                type="text"
+                value={saveNote}
+                onChange={e => setSaveNote(e.target.value)}
+                placeholder="e.g. Earnings play, IV crush thesis"
+                style={{
+                  width: '100%',
+                  background: 'var(--input-bg, #1e2028)',
+                  border: '1px solid var(--border, rgba(255,255,255,0.08))',
+                  color: 'var(--text, #e2e4ea)',
+                  borderRadius: 6, padding: '8px 10px', fontSize: 12, outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelSave}
+                style={{
+                  padding: '9px 18px', borderRadius: 8,
+                  border: '1px solid var(--border, rgba(255,255,255,0.12))',
+                  background: 'transparent', color: 'var(--text-dim, #8a8f9e)',
+                  cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={sendToJournal}
+                style={{
+                  padding: '9px 22px', borderRadius: 8, border: 'none',
+                  background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                  color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                  boxShadow: '0 4px 14px rgba(99,102,241,0.3)',
+                }}
+              >
+                Send to Journal
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* TOAST */}
@@ -1459,5 +2170,44 @@ function LegendDot({ color, label, dashed }: { color: string; label: string; das
       }}/>
       <span>{label}</span>
     </span>
+  );
+}
+
+function CostRatioBadge({ grade, ratio }: { grade: 'ideal' | 'acceptable' | 'too-high'; ratio: number }) {
+  const config = {
+    'ideal':      { bg: 'rgba(74,222,128,0.15)',  color: '#4ade80', label: 'IDEAL' },
+    'acceptable': { bg: 'rgba(234,179,8,0.15)',   color: '#eab308', label: 'ACCEPTABLE' },
+    'too-high':   { bg: 'rgba(248,113,113,0.15)', color: '#f87171', label: 'TOO HIGH' },
+  }[grade];
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      padding: '5px 12px', borderRadius: 6,
+      background: config.bg,
+      border: `1px solid ${config.color}40`,
+    }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: config.color, letterSpacing: 1 }}>{config.label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: config.color }}>
+        {isFinite(ratio) ? `${ratio.toFixed(2)}x` : '∞'}
+      </span>
+    </div>
+  );
+}
+
+function CalPressStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div style={{
+      background: 'var(--input-bg, rgba(255,255,255,0.02))',
+      border: '1px solid var(--border, rgba(255,255,255,0.06))',
+      borderRadius: 8, padding: '12px 14px',
+    }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text, #e2e4ea)', marginBottom: sub ? 3 : 0 }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)' }}>{sub}</div>}
+    </div>
   );
 }
