@@ -1418,9 +1418,11 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     toastTimer.current = setTimeout(() => setToast(null), 2800);
   }, []);
 
-  // Load chain for a ticker
-  const loadChain = useCallback(async (sym: string) => {
-    if (!sym) return;
+  // Load chain for a ticker. Returns the loaded contracts so async chain
+  // consumers (e.g. the View-in-Play-Builder handoff) can wire legs without
+  // racing React state updates.
+  const loadChain = useCallback(async (sym: string, strikeCount = 30): Promise<FlatContract[]> => {
+    if (!sym) return [];
     setLoading(true);
     setError(null);
     setChain(null);
@@ -1428,8 +1430,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     setLegs([]);
     setStrategy(null);
     try {
-      // strikeCount=30 gives a wide enough window for spread building
-      const res = await authFetch(`/api/schwab/options?symbol=${encodeURIComponent(sym)}&contractType=ALL&strikeCount=30`);
+      const res = await authFetch(`/api/schwab/options?symbol=${encodeURIComponent(sym)}&contractType=ALL&strikeCount=${strikeCount}`);
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || `HTTP ${res.status}`);
@@ -1439,10 +1440,13 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         throw new Error('Empty option chain');
       }
       setChain(data);
-      setContracts(flattenChain(data));
+      const flat = flattenChain(data);
+      setContracts(flat);
       setTicker(sym);
+      return flat;
     } catch (e: any) {
       setError(e?.message || 'Failed to load chain');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -1612,42 +1616,124 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     setSaveNote('');
   }, [legs]);
 
-  // ─── INBOUND EVENT LISTENER (Screener / SPX Radar handoff) ───────────────
+  // ─── INBOUND EVENT LISTENER ──────────────────────────────────────────────
+  // Two payload shapes:
+  //   1. { ticker, strategy }      → load chain, auto-build the named strategy
+  //   2. { ticker, legs: [...] }   → load chain, hydrate Play Builder with the
+  //                                  given legs (used by Journal "View in Play
+  //                                  Builder" buttons). Each incoming leg has
+  //                                  Journal's shape: { action, type, strike,
+  //                                  expiration, contracts, entryPremium }.
   useEffect(() => {
     const handler = (e: any) => {
       const detail = e?.detail || {};
       const sym = (detail.ticker || '').toUpperCase().trim();
       const reqStrategy: StrategyId | undefined = detail.strategy;
+      const incomingLegs: any[] | undefined = Array.isArray(detail.legs) ? detail.legs : undefined;
       if (!sym) return;
-      // Stash the requested strategy so onPickStrategy can fire after the chain loads
-      setTickerInput(sym);
-      loadChain(sym).then(() => {
-        if (reqStrategy && STRATEGIES.find(s => s.id === reqStrategy)) {
-          // onPickStrategy reads `contracts` from state, which has just been set
-          // by loadChain — but state updates are async, so we wrap in a microtask
-          // and re-derive via the latest state inside a setter pattern:
-          setTimeout(() => {
-            // We re-call buildStrategy directly here to avoid any race with useCallback
-            // closures that captured stale `contracts`. This mirrors onPickStrategy's
-            // logic.
-            setContracts(prevContracts => {
-              const built = prevContracts.length
-                ? buildStrategy(reqStrategy, prevContracts, underlying || 0)
-                : [];
-              if (built.length) {
-                setLegs(built);
-                setStrategy(reqStrategy);
-                showToast(`${STRATEGIES.find(s => s.id === reqStrategy)?.name} built from ${sym}`);
+
+      // ─ PATH A: legs payload (from Journal) ─
+      if (incomingLegs && incomingLegs.length) {
+        // Validate: any expiration in the past → reject
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const expired = incomingLegs.some(l => {
+          if (!l.expiration) return false;
+          const exp = new Date(l.expiration + 'T00:00:00');
+          return exp < today;
+        });
+        if (expired) {
+          setTickerInput(sym);
+          showToast('Cannot view — one or more legs have expired');
+          return;
+        }
+
+        setTickerInput(sym);
+
+        // Load chain wide enough to find deep ITM/OTM legs
+        loadChain(sym, 50).then(loadedContracts => {
+          if (!loadedContracts.length) return;  // loadChain set its own error
+
+          // Try to find every incoming leg in the chain
+          const buildPlayBuilderLegs = (chainContracts: FlatContract[]): Leg[] | null => {
+            const out: Leg[] = [];
+            for (const jLeg of incomingLegs) {
+              const strike = parseFloat(jLeg.strike);
+              const qty = Math.max(1, parseInt(jLeg.contracts) || 1);
+              const side: LegSide = String(jLeg.action || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+              const type: LegType = String(jLeg.type || '').toUpperCase() === 'PUT' ? 'PUT' : 'CALL';
+              const entry = parseFloat(jLeg.entryPremium);
+              const c = findContract(chainContracts, jLeg.expiration, strike, type);
+              if (!c) return null;  // missing leg → caller decides what to do
+              out.push({
+                id: `journal-${jLeg.id || Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                side, type,
+                strike,
+                expiration: jLeg.expiration,
+                dte: c.daysToExpiration,
+                qty,
+                bid: c.bid || 0,
+                ask: c.ask || 0,
+                delta: c.delta || 0,
+                gamma: c.gamma || 0,
+                theta: c.theta || 0,
+                vega: c.vega || 0,
+                iv: normIV(c.volatility || 0),
+                entryOverride: isFinite(entry) && entry >= 0 ? entry : null,
+              });
+            }
+            return out;
+          };
+
+          let built = buildPlayBuilderLegs(loadedContracts);
+
+          // If a leg wasn't found, retry once with an even wider strike window
+          if (!built) {
+            loadChain(sym, 80).then(widerContracts => {
+              if (!widerContracts.length) return;
+              const retry = buildPlayBuilderLegs(widerContracts);
+              if (!retry) {
+                showToast('Could not find some legs in current chain');
+                return;
               }
-              return prevContracts;
+              setLegs(retry);
+              setStrategy(null);   // don't auto-pick a chip — let the legs speak
+              showToast(`Loaded ${retry.length} leg${retry.length > 1 ? 's' : ''} from Journal`);
             });
-          }, 0);
+            return;
+          }
+
+          setLegs(built);
+          setStrategy(null);
+          showToast(`Loaded ${built.length} leg${built.length > 1 ? 's' : ''} from Journal`);
+        });
+        return;
+      }
+
+      // ─ PATH B: strategy payload (from Screener / SPX Radar) ─
+      setTickerInput(sym);
+      loadChain(sym).then((loadedContracts) => {
+        if (reqStrategy && STRATEGIES.find(s => s.id === reqStrategy) && loadedContracts.length) {
+          const built = buildStrategy(reqStrategy, loadedContracts, loadedContracts[0] ? 0 : 0);
+          // Use the freshly returned contracts (avoids the stale-closure race)
+          // Underlying isn't directly returned but is in chain.underlyingPrice;
+          // we re-derive it from the chain via state on the next tick. For
+          // strategy auto-build, buildStrategy doesn't need precise spot — it
+          // picks by delta and DTE.
+          if (built.length) {
+            setLegs(built);
+            setStrategy(reqStrategy);
+            showToast(`${STRATEGIES.find(s => s.id === reqStrategy)?.name} built from ${sym}`);
+          }
         }
       });
     };
     window.addEventListener('tp-open-playbuilder', handler);
-    return () => window.removeEventListener('tp-open-playbuilder', handler);
-  }, [loadChain, underlying, showToast]);
+    window.addEventListener('tp-open-playbuilder-ready', handler);
+    return () => {
+      window.removeEventListener('tp-open-playbuilder', handler);
+      window.removeEventListener('tp-open-playbuilder-ready', handler);
+    };
+  }, [loadChain, showToast]);
 
   // ─── STRATEGY MAPPING (Play Builder → Journal) ───────────────────────────
   const STRATEGY_TO_JOURNAL: Record<StrategyId, string> = {

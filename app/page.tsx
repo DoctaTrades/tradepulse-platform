@@ -206,6 +206,25 @@ export default function TradePulsePlatform() {
     return () => window.removeEventListener('tp-add-trade', handler);
   }, []);
 
+  // ── Journal → Play Builder bridge ──
+  // Same pattern in reverse: Journal dispatches tp-open-playbuilder, page.tsx
+  // catches it (always mounted), switches tab to "playbuilder", then re-dispatches
+  // as tp-open-playbuilder-ready so PlayBuilderModule's listener — only alive when
+  // mounted — picks it up and hydrates.
+  useEffect(() => {
+    const handler = (e: any) => {
+      const detail = e?.detail;
+      setTab("playbuilder");
+      setTimeout(() => {
+        try {
+          window.dispatchEvent(new CustomEvent('tp-open-playbuilder-ready', { detail }));
+        } catch {}
+      }, 120);
+    };
+    window.addEventListener('tp-open-playbuilder', handler);
+    return () => window.removeEventListener('tp-open-playbuilder', handler);
+  }, []);
+
   if (loading) return <div style={{ minHeight:"100vh", background:"var(--shell-bg)", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}><div className="tp-spinner"/><div style={{ color:"var(--text-dim)", fontSize:13, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, letterSpacing:1, textTransform:"uppercase" }}>Loading TradePulse</div></div>;
   if (!user) return <AuthScreen onAuth={setUser}/>;
 

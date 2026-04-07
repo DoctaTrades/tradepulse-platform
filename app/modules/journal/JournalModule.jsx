@@ -105,6 +105,107 @@ const OPTIONS_STRATEGY_TYPES = ["Single Leg", "Vertical Spread", "PMCC / Diagona
 const GRADES = ["A+", "A", "B+", "B", "C", "D", "F"];
 const SECTORS = ["Technology","Healthcare","Financials","Consumer Discretionary","Industrials","Communication Services","Consumer Staples","Energy","Materials","Real Estate","Utilities","Crypto","ETFs / Indices","Commodities","Other"];
 
+// ─── PLAY BUILDER HANDOFF ─────────────────────────────────────────────────────
+// Returns true if a trade is eligible to be opened in Play Builder.
+// Eligibility: assetType is Options, has at least one leg, and NO leg has an
+// expiration in the past (Greeks for expired contracts aren't fetchable).
+function canViewInPlayBuilder(trade) {
+  if (!trade) return false;
+  if (trade.assetType !== "Options") return false;
+  if (!Array.isArray(trade.legs) || trade.legs.length === 0) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  for (const leg of trade.legs) {
+    if (!leg.expiration) return false;
+    const exp = new Date(leg.expiration + "T00:00:00");
+    if (isNaN(exp.getTime())) return false;
+    if (exp < today) return false;
+  }
+  return true;
+}
+
+// Dispatches the tp-open-playbuilder event with the trade payload.
+// Page.tsx catches it, switches the tab to "playbuilder", and re-dispatches as
+// tp-open-playbuilder-ready for PlayBuilderModule's listener to consume.
+function viewInPlayBuilder(trade) {
+  if (!canViewInPlayBuilder(trade)) return;
+  try {
+    window.dispatchEvent(new CustomEvent("tp-open-playbuilder", {
+      detail: {
+        ticker: trade.ticker,
+        legs: trade.legs.map(l => ({
+          id: l.id,
+          action: l.action,
+          type: l.type,
+          strike: l.strike,
+          expiration: l.expiration,
+          contracts: l.contracts,
+          entryPremium: l.entryPremium,
+        })),
+        sourceTradeId: trade.id,
+      },
+    }));
+  } catch (err) {
+    console.error("viewInPlayBuilder dispatch failed:", err);
+  }
+}
+
+// Small inline icon button used at trade-row action sites. Greys out and
+// disables when canViewInPlayBuilder returns false.
+function PlayBuilderButton({ trade, size = 13 }) {
+  const eligible = canViewInPlayBuilder(trade);
+  const stop = (e) => { e.stopPropagation(); if (eligible) viewInPlayBuilder(trade); };
+  return (
+    <button
+      onClick={stop}
+      disabled={!eligible}
+      title={
+        eligible
+          ? "View in Play Builder"
+          : trade?.assetType !== "Options"
+            ? "Play Builder is options-only"
+            : "Cannot view — one or more legs have expired"
+      }
+      style={{
+        background: eligible ? "rgba(99,102,241,0.10)" : "transparent",
+        border: eligible ? "1px solid rgba(99,102,241,0.25)" : "1px solid var(--tp-border-l)",
+        borderRadius: 4,
+        padding: "3px 7px",
+        cursor: eligible ? "pointer" : "not-allowed",
+        color: eligible ? "#a5b4fc" : "var(--tp-faintest, #3d4150)",
+        fontSize: size - 3,
+        fontWeight: 700,
+        letterSpacing: 0.5,
+        opacity: eligible ? 1 : 0.4,
+      }}
+    >
+      PB
+    </button>
+  );
+}
+
+// Adapter: convert a Wheel-tab trade (flat shape with type/strike/expiry/openPremium)
+// into the multi-leg shape canViewInPlayBuilder/viewInPlayBuilder expect.
+// Wheel "Shares" rows return null (Play Builder is options-only).
+function wheelTradeToMultiLeg(wheelTrade) {
+  if (!wheelTrade) return null;
+  if (wheelTrade.type !== "CSP" && wheelTrade.type !== "CC") return null;
+  if (!wheelTrade.strike || !wheelTrade.expiry) return null;
+  return {
+    id: wheelTrade.id,
+    ticker: wheelTrade.ticker,
+    assetType: "Options",
+    legs: [{
+      id: wheelTrade.id,
+      action: "Sell",
+      type: wheelTrade.type === "CSP" ? "Put" : "Call",
+      strike: String(wheelTrade.strike),
+      expiration: wheelTrade.expiry,
+      contracts: String(wheelTrade.contracts || "1"),
+      entryPremium: String(wheelTrade.openPremium || ""),
+    }],
+  };
+}
+
 // ─── WEEK HELPERS ─────────────────────────────────────────────────────────────
 function getWeekStart(date = new Date()) { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0,0,0,0); return d.toISOString().split("T")[0]; }
 function formatWeekLabel(ws) { const d = new Date(ws + "T12:00:00"); const e = new Date(d); e.setDate(e.getDate()+4); const o = {month:"short",day:"numeric"}; return `Week of ${d.toLocaleDateString("en-US",o)} – ${e.toLocaleDateString("en-US",o)}`; }
@@ -2639,7 +2740,8 @@ function TradeLog({ trades, onEdit, onDelete, prefs }) {
               </span>
             </div>
             <div style={colStyle(0.45)}>{t.grade && <span style={{ fontSize:12, fontWeight:700, color:gradeColor(t.grade) }}>{t.grade}</span>}</div>
-            <div style={{ flex:0.5, display:"flex", justifyContent:"center" }}>
+            <div style={{ flex:0.5, display:"flex", justifyContent:"center", gap:4 }}>
+              <PlayBuilderButton trade={t}/>
               <button onClick={e=>{e.stopPropagation();onDelete(t.id);}} style={{ background:"none", border:"none", cursor:"pointer", color:"var(--tp-faint)", padding:4 }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color="#5c6070"}><Trash2 size={14}/></button>
             </div>
           </div>
@@ -3499,6 +3601,7 @@ function TradeHistoryRow({ trade, onEdit, onDelete }) {
         {trade.notes && <div style={{ fontSize:11, color:"var(--tp-faint)", marginTop:4, fontStyle:"italic" }}>{trade.notes}</div>}
       </div>
       <div style={{ display:"flex", gap:4 }}>
+        <PlayBuilderButton trade={wheelTradeToMultiLeg(trade)}/>
         <button onClick={onEdit} style={{ padding:"4px 8px", borderRadius:4, border:"1px solid var(--tp-border-l)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:10 }}>Edit</button>
         <button onClick={onDelete} style={{ padding:"4px 6px", borderRadius:4, border:"none", background:"transparent", color:"var(--tp-faint)", cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color="#5c6070"}><Trash2 size={11}/></button>
       </div>
@@ -5131,7 +5234,10 @@ function HoldingsTab({ trades, accountBalances, onEditTrade, theme, dividends, o
                                         <span style={{ fontSize:10, fontWeight:600, color:"#a78bfa", background:"rgba(167,139,250,0.15)", padding:"1px 6px", borderRadius:3 }}>{opt.strategy}</span>
                                         {(opt.trade.screenshots||[]).length > 0 && <Camera size={10} color="var(--tp-faint)"/>}
                                       </div>
-                                      {opt.trade.notes && <span style={{ fontSize:9, color:"var(--tp-faintest)", fontStyle:"italic", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{opt.trade.notes}</span>}
+                                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                        {opt.trade.notes && <span style={{ fontSize:9, color:"var(--tp-faintest)", fontStyle:"italic", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{opt.trade.notes}</span>}
+                                        <PlayBuilderButton trade={opt.trade}/>
+                                      </div>
                                     </div>
                                     <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                                       {opt.legs.map((leg, li) => (
