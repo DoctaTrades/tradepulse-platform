@@ -1,24 +1,23 @@
 'use client';
 
 /**
- * PlayBuilderModule — Session 3
+ * PlayBuilderModule — Session 4
  *
  * Standalone module for designing options strategies before placing them.
  * Live ticker → chain load → strategy auto-pick → editable legs → real-time metrics + visualizations.
  *
- * Session 1: chain load, 4 strategies (CSP/CC/Bull Put/Bear Call), metrics, stub Save.
+ * Session 1: chain load, 4 strategies, metrics, stub Save.
  * Session 2: payoff chart, expected-move bands, IC/IB/PMCC/Straddle.
+ * Session 3: BS engine, theta overlay, heat map, Diagonal/CalPress, Journal handoff.
  *
- * Session 3 adds:
- *  - Black-Scholes pricing engine for forward valuation
- *  - Theta decay overlay (purple dotted "P&L if held to today" curve on payoff chart)
- *  - P&L heat map (price × days-forward grid, color-coded current P&L)
- *  - Diagonal Spread auto-build
- *  - Calendar Press auto-build (custom strategy with custom metrics panel:
- *    cost ratio, weeks-to-breakeven, weekly ROC)
- *  - Two-step Save to Journal: review fills (mid or actual per-leg) + optional note
- *    → dispatches `tp-add-trade`, auto-switches to Trade Log
- *  - Inbound `tp-open-playbuilder` event listener (Screener / SPX Radar handoff)
+ * Session 4 adds:
+ *  - Manual underlying-price override (editable input in the header) — drives all
+ *    metrics, charts, and BS-recomputed Greeks for "what-if my play moves" analysis
+ *  - Black-Scholes Greeks recompute when underlying is overridden (no stale Greeks)
+ *  - Strike comparison cards for single-leg strategies — 5 cards (2 lower, selected,
+ *    2 higher) with click-to-swap, driven by price + date sliders for scenario planning
+ *  - Date format polish: mm-dd within current calendar year, mm-dd-yy beyond
+ *  - Calendar Press metrics panel shows expiration dates alongside DTE
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -150,6 +149,19 @@ const fmtMoney = (n: number, decimals = 2) => {
 };
 const fmtPct = (n: number, decimals = 1) => isFinite(n) ? `${(n * 100).toFixed(decimals)}%` : '—';
 const fmtNum = (n: number, decimals = 2) => isFinite(n) ? n.toFixed(decimals) : '—';
+
+// Format an expiration date string ("YYYY-MM-DD") for display.
+// Within the current calendar year → "MM-DD". In a later year → "MM-DD-YY".
+const fmtExpiry = (iso: string): string => {
+  if (!iso || iso.length < 10) return iso || '';
+  const yyyy = iso.slice(0, 4);
+  const mm = iso.slice(5, 7);
+  const dd = iso.slice(8, 10);
+  const currentYear = new Date().getFullYear();
+  const expYear = parseInt(yyyy, 10);
+  if (expYear === currentYear) return `${mm}-${dd}`;
+  return `${mm}-${dd}-${yyyy.slice(2)}`;
+};
 
 // Normalize IV — Schwab returns percent (32.5), Tradier returns fraction (0.325).
 // Heuristic: if value > 5 we assume percent.
@@ -735,6 +747,61 @@ function bsPrice(
   }
 }
 
+// Standard-normal probability density function — needed for Greeks
+const npdf = (x: number) => Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+
+// Black-Scholes Greeks. Returns delta, gamma, theta (per day), vega (per 1% IV).
+// Theta is the standard "per calendar day" convention used by retail platforms.
+// Vega is per 1 vol-point (so 0.32 → 0.33 = +1).
+type BSGreeks = { price: number; delta: number; gamma: number; theta: number; vega: number };
+
+function bsGreeks(S: number, K: number, T: number, iv: number, type: LegType): BSGreeks {
+  // Degenerate cases — return intrinsic value with zero Greeks
+  if (T <= 0 || iv <= 0 || S <= 0 || K <= 0) {
+    const intrinsic = type === 'CALL' ? Math.max(0, S - K) : Math.max(0, K - S);
+    return { price: intrinsic, delta: type === 'CALL' ? (S > K ? 1 : 0) : (S < K ? -1 : 0), gamma: 0, theta: 0, vega: 0 };
+  }
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (RISK_FREE_RATE + 0.5 * iv * iv) * T) / (iv * sqrtT);
+  const d2 = d1 - iv * sqrtT;
+  const Nd1 = ncdf(d1);
+  const Nd2 = ncdf(d2);
+  const nd1 = npdf(d1);
+  const discount = Math.exp(-RISK_FREE_RATE * T);
+
+  const price = type === 'CALL'
+    ? S * Nd1 - K * discount * Nd2
+    : K * discount * ncdf(-d2) - S * ncdf(-d1);
+
+  const delta = type === 'CALL' ? Nd1 : Nd1 - 1;
+  const gamma = nd1 / (S * iv * sqrtT);
+  // Theta is annualized in standard BS — divide by 365 for "per day"
+  const thetaAnnual = type === 'CALL'
+    ? -(S * nd1 * iv) / (2 * sqrtT) - RISK_FREE_RATE * K * discount * Nd2
+    : -(S * nd1 * iv) / (2 * sqrtT) + RISK_FREE_RATE * K * discount * ncdf(-d2);
+  const theta = thetaAnnual / 365;
+  // Vega is per "1.0" of vol in standard BS — divide by 100 for "per 1 vol-point"
+  const vega = (S * nd1 * sqrtT) / 100;
+
+  return { price, delta, gamma, theta, vega };
+}
+
+// Recompute a leg's Greeks (delta/gamma/theta/vega) at a new spot price using BS.
+// IV and DTE are taken from the leg itself (we trust the chain's IV).
+// Returns a NEW leg object with the adjusted Greeks; bid/ask/iv/strike/expiration unchanged.
+function recomputeLegGreeks(leg: Leg, S: number): Leg {
+  const T = Math.max(0, leg.dte) / 365;
+  if (T <= 0 || leg.iv <= 0) return leg;
+  const g = bsGreeks(S, leg.strike, T, leg.iv, leg.type);
+  return {
+    ...leg,
+    delta: g.delta,
+    gamma: g.gamma,
+    theta: g.theta,
+    vega: g.vega,
+  };
+}
+
 // Compute the position's *current* theoretical P&L if held until `daysForward` from now,
 // at underlying price S. Each leg's value is its current BS price minus its entry mid.
 // daysForward = 0 → "if I closed it right now". daysForward = leg.dte → expiration.
@@ -754,6 +821,23 @@ function positionTheoreticalPnL(legs: Leg[], S: number, daysForward: number): nu
     }
   }
   return total;
+}
+
+// ─── RISK PROFILE CLASSIFIER ─────────────────────────────────────────────────
+type RiskProfile = 'cash-secured' | 'share-covered' | 'defined' | 'undefined';
+
+function classifyRisk(legs: Leg[], maxLoss: number): RiskProfile {
+  if (!legs.length) return 'defined';
+  // Single leg
+  if (legs.length === 1) {
+    const l = legs[0];
+    if (l.side === 'SELL' && l.type === 'PUT')  return 'cash-secured';   // CSP
+    if (l.side === 'SELL' && l.type === 'CALL') return 'share-covered';  // CC (assumes covered)
+    return 'defined'; // long single — defined risk = premium paid
+  }
+  // Any structure where loss is finite (computed from sampled payoff) is "defined"
+  if (isFinite(maxLoss)) return 'defined';
+  return 'undefined';
 }
 
 // ─── CALENDAR PRESS METRICS ──────────────────────────────────────────────────
@@ -1352,11 +1436,90 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     }
   }, []);
 
-  // Underlying price (fall back to underlying.last if needed)
-  const underlying = useMemo(() => {
+  // Live underlying price from chain (immutable, what Schwab returned)
+  const liveUnderlying = useMemo(() => {
     if (!chain) return 0;
     return chain.underlyingPrice || chain.underlying?.last || 0;
   }, [chain]);
+
+  // ── Manual underlying override ──
+  // null = use live; number = "what-if" override that drives all metrics, charts,
+  // and BS-recomputed Greeks. The leg table will show recomputed Greeks when active.
+  const [underlyingOverride, setUnderlyingOverride] = useState<number | null>(null);
+  const [overrideInput, setOverrideInput] = useState('');     // raw text in the input box
+
+  // Effective underlying — what every downstream calculation uses
+  const underlying = useMemo(
+    () => (underlyingOverride != null && underlyingOverride > 0 ? underlyingOverride : liveUnderlying),
+    [underlyingOverride, liveUnderlying]
+  );
+  const isOverridden = underlyingOverride != null && underlyingOverride > 0 && underlyingOverride !== liveUnderlying;
+
+  // Reset override when a new ticker is loaded
+  useEffect(() => {
+    setUnderlyingOverride(null);
+    setOverrideInput('');
+  }, [ticker]);
+
+  // Sync the input box display when liveUnderlying loads or override clears
+  useEffect(() => {
+    if (underlyingOverride == null) {
+      setOverrideInput(liveUnderlying ? liveUnderlying.toFixed(2) : '');
+    }
+  }, [liveUnderlying, underlyingOverride]);
+
+  const applyOverride = useCallback(() => {
+    const v = parseFloat(overrideInput);
+    if (!isFinite(v) || v <= 0) {
+      showToast('Enter a positive price');
+      return;
+    }
+    if (Math.abs(v - liveUnderlying) < 0.005) {
+      // Effectively the same as live → just clear
+      setUnderlyingOverride(null);
+      return;
+    }
+    setUnderlyingOverride(v);
+  }, [overrideInput, liveUnderlying, showToast]);
+
+  const resetOverride = useCallback(() => {
+    setUnderlyingOverride(null);
+    setOverrideInput(liveUnderlying ? liveUnderlying.toFixed(2) : '');
+  }, [liveUnderlying]);
+
+  // ── Effective legs (with BS-recomputed Greeks when overridden) ──
+  // This is what every downstream consumer (metrics, charts, leg table) reads.
+  // When override is OFF, legs pass through unchanged (live Greeks from chain).
+  // When override is ON, each leg's delta/gamma/theta/vega is recomputed via BS at
+  // the override price using the leg's existing IV and DTE.
+  const effectiveLegs = useMemo(() => {
+    if (!isOverridden) return legs;
+    return legs.map(l => recomputeLegGreeks(l, underlying));
+  }, [legs, isOverridden, underlying]);
+
+  // ── Strike comparison sliders (cards-only, never affect main view) ──
+  // All three default to "no shift" so the cards show live chain values until the
+  // user moves a slider. As soon as ANY slider is off default, cards switch to
+  // BS-projected values.
+  const [scenarioPrice, setScenarioPrice] = useState<number | null>(null);  // null = use live
+  const [scenarioIvShift, setScenarioIvShift] = useState(0);               // % shift, 0 = no shift
+  const [scenarioDaysFwd, setScenarioDaysFwd] = useState(0);               // days forward, 0 = today
+
+  // Reset all sliders whenever a new ticker loads or legs are cleared
+  useEffect(() => {
+    setScenarioPrice(null);
+    setScenarioIvShift(0);
+    setScenarioDaysFwd(0);
+  }, [ticker]);
+
+  const scenarioActive = scenarioPrice != null || scenarioIvShift !== 0 || scenarioDaysFwd !== 0;
+  const scenarioEffectivePrice = scenarioPrice != null ? scenarioPrice : liveUnderlying;
+
+  const resetScenario = useCallback(() => {
+    setScenarioPrice(null);
+    setScenarioIvShift(0);
+    setScenarioDaysFwd(0);
+  }, []);
 
   // When user picks a strategy, auto-build legs
   const onPickStrategy = useCallback((id: StrategyId) => {
@@ -1420,27 +1583,54 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     setLegs(prev => [...prev, contractToLeg(atm, 'SELL')]);
   }, [contracts, showToast]);
 
-  // Live metrics
-  const metrics = useMemo(() => computeMetrics(legs, underlying), [legs, underlying]);
+  // Live metrics — driven by effectiveLegs so override-recomputed Greeks flow through
+  const metrics = useMemo(() => computeMetrics(effectiveLegs, underlying), [effectiveLegs, underlying]);
 
   // Expected move for chart bands
-  const expectedMove = useMemo(() => computeExpectedMove(legs, underlying), [legs, underlying]);
+  const expectedMove = useMemo(() => computeExpectedMove(effectiveLegs, underlying), [effectiveLegs, underlying]);
 
   // "Held to today" curve — Black-Scholes valuation across the same price range
   // as the at-expiration curve, with daysForward = 0
   const todaySamples = useMemo(() => {
-    if (!legs.length || !metrics.samples.length) return undefined;
+    if (!effectiveLegs.length || !metrics.samples.length) return undefined;
     return metrics.samples.map(s => ({
       S: s.S,
-      pnl: positionTheoreticalPnL(legs, s.S, 0),
+      pnl: positionTheoreticalPnL(effectiveLegs, s.S, 0),
     }));
-  }, [legs, metrics.samples]);
+  }, [effectiveLegs, metrics.samples]);
 
   // Calendar Press metrics (only meaningful when that strategy is active)
   const calPressMetrics = useMemo(() => {
     if (strategy !== 'calendar_press') return null;
-    return computeCalendarPressMetrics(legs, metrics.capitalRequired);
-  }, [strategy, legs, metrics.capitalRequired]);
+    return computeCalendarPressMetrics(effectiveLegs, metrics.capitalRequired);
+  }, [strategy, effectiveLegs, metrics.capitalRequired]);
+
+  // Risk profile classification — drives the badge in the metrics panel
+  const riskProfile = useMemo(
+    () => classifyRisk(effectiveLegs, metrics.maxLoss),
+    [effectiveLegs, metrics.maxLoss]
+  );
+
+  // Swap a leg's strike (used by strike comparison cards)
+  const swapLegStrike = useCallback((legId: string, newStrike: number) => {
+    setLegs(prev => prev.map(l => {
+      if (l.id !== legId) return l;
+      const c = findContract(contracts, l.expiration, newStrike, l.type);
+      if (!c) return l;
+      return {
+        ...l,
+        strike: newStrike,
+        bid: c.bid || 0,
+        ask: c.ask || 0,
+        delta: c.delta || 0,
+        gamma: c.gamma || 0,
+        theta: c.theta || 0,
+        vega: c.vega || 0,
+        iv: normIV(c.volatility || 0),
+        dte: c.daysToExpiration,
+      };
+    }));
+  }, [contracts]);
 
   // Available expirations & strike lists for dropdowns
   const expirations = useMemo(() => uniqueExpirations(contracts), [contracts]);
@@ -1682,8 +1872,38 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{ticker}</div>
               </div>
               <div>
-                <div style={label}>Underlying</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#a5b4fc' }}>{fmtMoney(underlying)}</div>
+                <div style={label}>Underlying {isOverridden && <span style={{ color: '#eab308', fontWeight: 700 }}>· OVERRIDDEN</span>}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 14, color: 'var(--text-dim, #8a8f9e)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={overrideInput}
+                    onChange={e => setOverrideInput(e.target.value)}
+                    onBlur={applyOverride}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+                    style={{
+                      width: 90, fontSize: 18, fontWeight: 700,
+                      color: isOverridden ? '#eab308' : '#a5b4fc',
+                      background: isOverridden ? 'rgba(234,179,8,0.06)' : 'transparent',
+                      border: `1px solid ${isOverridden ? 'rgba(234,179,8,0.35)' : 'var(--border, rgba(255,255,255,0.08))'}`,
+                      borderRadius: 6, padding: '4px 8px', outline: 'none',
+                    }}
+                  />
+                  {isOverridden && (
+                    <button
+                      onClick={resetOverride}
+                      title={`Reset to live price $${liveUnderlying.toFixed(2)}`}
+                      style={{
+                        padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border, rgba(255,255,255,0.08))',
+                        background: 'transparent', color: 'var(--text-dim, #8a8f9e)', cursor: 'pointer',
+                        fontSize: 11, fontWeight: 600,
+                      }}
+                    >
+                      ↻
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <div style={label}>Expirations</div>
@@ -1798,6 +2018,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 <tbody>
                   {legs.map(leg => {
                     const strikeOptions = strikesForExp(contracts, leg.expiration, leg.type);
+                    // For display, show recomputed Greeks if underlying is overridden
+                    const effLeg = effectiveLegs.find(l => l.id === leg.id) || leg;
                     return (
                       <tr key={leg.id} style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
                         <td style={tdStyle}>
@@ -1827,7 +2049,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                             style={selectStyle}
                           >
                             {expirations.map(({ exp, dte }) => (
-                              <option key={exp} value={exp}>{exp} ({dte}d)</option>
+                              <option key={exp} value={exp}>{fmtExpiry(exp)} ({dte}d)</option>
                             ))}
                           </select>
                         </td>
@@ -1854,9 +2076,9 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                         <td style={tdStyle}>{fmtNum(leg.bid)}</td>
                         <td style={tdStyle}>{fmtNum(leg.ask)}</td>
                         <td style={{ ...tdStyle, fontWeight: 700, color: '#a5b4fc' }}>{fmtNum(mid(leg.bid, leg.ask))}</td>
-                        <td style={tdStyle}>{fmtNum(leg.delta, 3)}</td>
-                        <td style={tdStyle}>{fmtNum(leg.theta, 3)}</td>
-                        <td style={tdStyle}>{fmtPct(leg.iv, 1)}</td>
+                        <td style={{ ...tdStyle, color: isOverridden ? '#c4b5fd' : undefined }}>{fmtNum(effLeg.delta, 3)}</td>
+                        <td style={{ ...tdStyle, color: isOverridden ? '#c4b5fd' : undefined }}>{fmtNum(effLeg.theta, 3)}</td>
+                        <td style={tdStyle}>{fmtPct(effLeg.iv, 1)}</td>
                         <td style={tdStyle}>
                           <button
                             onClick={() => removeLeg(leg.id)}
@@ -1876,7 +2098,10 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
 
         {/* METRICS PANEL */}
         <div style={panel}>
-          <div style={label}>Metrics</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={label}>Metrics</div>
+            {legs.length > 0 && <RiskBadge profile={riskProfile} />}
+          </div>
           {!legs.length ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim, #8a8f9e)', fontSize: 12 }}>
               No legs yet.
@@ -1939,7 +2164,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             underlying={underlying}
             breakevens={metrics.breakevens}
             expectedMove={expectedMove}
-            legs={legs}
+            legs={effectiveLegs}
             height={340}
           />
         </div>
@@ -1957,11 +2182,31 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             </div>
           </div>
           <HeatMap
-            legs={legs}
+            legs={effectiveLegs}
             priceLo={metrics.priceLo}
             priceHi={metrics.priceHi}
             underlying={underlying}
             height={260}
+          />
+        </div>
+      )}
+
+      {/* STRIKE COMPARISON CARDS — single-leg only */}
+      {effectiveLegs.length === 1 && contracts.length > 0 && (
+        <div style={{ ...panel, marginBottom: 16 }}>
+          <StrikeComparison
+            leg={effectiveLegs[0]}
+            contracts={contracts}
+            liveUnderlying={liveUnderlying}
+            scenarioPrice={scenarioPrice}
+            scenarioIvShift={scenarioIvShift}
+            scenarioDaysFwd={scenarioDaysFwd}
+            scenarioActive={scenarioActive}
+            setScenarioPrice={setScenarioPrice}
+            setScenarioIvShift={setScenarioIvShift}
+            setScenarioDaysFwd={setScenarioDaysFwd}
+            resetScenario={resetScenario}
+            onPickStrike={(newStrike) => swapLegStrike(effectiveLegs[0].id, newStrike)}
           />
         </div>
       )}
@@ -2049,7 +2294,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                         <td style={{ padding: '6px 4px', color: leg.side === 'SELL' ? '#4ade80' : '#f87171', fontWeight: 700 }}>{leg.side}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.type}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.strike.toFixed(2)}</td>
-                        <td style={{ padding: '6px 4px' }}>{leg.expiration}</td>
+                        <td style={{ padding: '6px 4px' }}>{fmtExpiry(leg.expiration)}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.qty}</td>
                         <td style={{ padding: '6px 4px', color: 'var(--text-dim, #8a8f9e)' }}>${m.toFixed(2)}</td>
                         <td style={{ padding: '6px 4px' }}>
@@ -2208,6 +2453,365 @@ function CalPressStat({ label, value, sub }: { label: string; value: string; sub
         {value}
       </div>
       {sub && <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)' }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ─── RISK PROFILE BADGE ──────────────────────────────────────────────────────
+function RiskBadge({ profile }: { profile: RiskProfile }) {
+  const config = {
+    'cash-secured':  { bg: 'rgba(74,222,128,0.12)',  color: '#4ade80', label: 'CASH-SECURED' },
+    'share-covered': { bg: 'rgba(96,165,250,0.12)',  color: '#60a5fa', label: 'SHARE-COVERED' },
+    'defined':       { bg: 'rgba(99,102,241,0.12)',  color: '#a5b4fc', label: 'DEFINED RISK' },
+    'undefined':     { bg: 'rgba(248,113,113,0.12)', color: '#f87171', label: 'UNDEFINED RISK' },
+  }[profile];
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '4px 10px', borderRadius: 6,
+      background: config.bg,
+      border: `1px solid ${config.color}40`,
+      fontSize: 9, fontWeight: 700, color: config.color, letterSpacing: 1,
+    }}>
+      {config.label}
+    </span>
+  );
+}
+
+// ─── STRIKE COMPARISON CARDS ─────────────────────────────────────────────────
+// Single-leg only. Shows 5 strike cards (2 below, current, 2 above) with live
+// premiums and Greeks. Three sliders (price / IV shift / days forward) let the
+// user explore "what would these strikes look like under this scenario." When
+// any slider is off default, cards switch from live chain values to BS-projected.
+
+type StrikeComparisonProps = {
+  leg: Leg;
+  contracts: FlatContract[];
+  liveUnderlying: number;
+  scenarioPrice: number | null;
+  scenarioIvShift: number;          // percent, 0 = no shift
+  scenarioDaysFwd: number;
+  scenarioActive: boolean;
+  setScenarioPrice: (n: number | null) => void;
+  setScenarioIvShift: (n: number) => void;
+  setScenarioDaysFwd: (n: number) => void;
+  resetScenario: () => void;
+  onPickStrike: (newStrike: number) => void;
+};
+
+function StrikeComparison({
+  leg, contracts, liveUnderlying,
+  scenarioPrice, scenarioIvShift, scenarioDaysFwd, scenarioActive,
+  setScenarioPrice, setScenarioIvShift, setScenarioDaysFwd, resetScenario,
+  onPickStrike,
+}: StrikeComparisonProps) {
+  // ─── Build the 5-strike window centered on the current leg's strike ──
+  const windowContracts = useMemo(() => {
+    const allStrikes = strikesForExp(contracts, leg.expiration, leg.type);
+    if (!allStrikes.length) return [];
+    // Find the index of the current strike (or closest if it's not in the list)
+    let centerIdx = allStrikes.findIndex(s => Math.abs(s - leg.strike) < 0.005);
+    if (centerIdx < 0) {
+      centerIdx = allStrikes.reduce((bi, s, i) =>
+        Math.abs(s - leg.strike) < Math.abs(allStrikes[bi] - leg.strike) ? i : bi, 0
+      );
+    }
+    // Take 2 below + center + 2 above, with edge fallback
+    const start = Math.max(0, Math.min(allStrikes.length - 5, centerIdx - 2));
+    const end = Math.min(allStrikes.length, start + 5);
+    const slice = allStrikes.slice(start, end);
+    return slice.map(strike => {
+      const c = findContract(contracts, leg.expiration, strike, leg.type);
+      return { strike, contract: c };
+    });
+  }, [contracts, leg.expiration, leg.type, leg.strike]);
+
+  // ─── Effective scenario price for slider display ──
+  const effectivePrice = scenarioPrice != null ? scenarioPrice : liveUnderlying;
+
+  // ─── Slider bounds ──
+  // Price: ±25% from live price
+  const priceMin = useMemo(() => liveUnderlying * 0.75, [liveUnderlying]);
+  const priceMax = useMemo(() => liveUnderlying * 1.25, [liveUnderlying]);
+  const priceStep = useMemo(() => Math.max(0.01, liveUnderlying * 0.001), [liveUnderlying]);
+  // Days forward: 0 to leg's DTE
+  const daysMax = useMemo(() => Math.max(1, leg.dte), [leg.dte]);
+
+  // ─── Compute card values ──
+  // When scenario is OFF: use live chain values from each contract
+  // When scenario is ON: BS-compute price + Greeks at the scenario inputs
+  const cards = useMemo(() => {
+    return windowContracts.map(({ strike, contract }) => {
+      const isCurrent = Math.abs(strike - leg.strike) < 0.005;
+      if (!contract) {
+        return {
+          strike, isCurrent, available: false,
+          bid: 0, ask: 0, theo: 0, delta: 0, theta: 0, iv: 0, pop: 0,
+        };
+      }
+      if (!scenarioActive) {
+        // Live values straight from chain
+        const liveBid = contract.bid || 0;
+        const liveAsk = contract.ask || 0;
+        const liveMid = mid(liveBid, liveAsk);
+        const liveDelta = contract.delta || 0;
+        const liveIV = normIV(contract.volatility || 0);
+        return {
+          strike, isCurrent, available: true,
+          bid: liveBid, ask: liveAsk, theo: liveMid,
+          delta: liveDelta,
+          theta: contract.theta || 0,
+          iv: liveIV,
+          pop: Math.max(0, Math.min(1, 1 - Math.abs(liveDelta))),
+        };
+      }
+      // Scenario mode — BS-compute everything
+      const baseIV = normIV(contract.volatility || 0);
+      const shiftedIV = Math.max(0.0001, baseIV * (1 + scenarioIvShift / 100));
+      const remainingDTE = Math.max(0, contract.daysToExpiration - scenarioDaysFwd);
+      const T = remainingDTE / 365;
+      const theoPrice = bsPrice(effectivePrice, strike, T, shiftedIV, leg.type);
+      const greeks = bsGreeks(effectivePrice, strike, T, shiftedIV, leg.type);
+      return {
+        strike, isCurrent, available: true,
+        bid: 0, ask: 0, theo: theoPrice,
+        delta: greeks.delta,
+        theta: greeks.theta,
+        iv: shiftedIV,
+        pop: Math.max(0, Math.min(1, 1 - Math.abs(greeks.delta))),
+      };
+    });
+  }, [windowContracts, leg.strike, leg.type, scenarioActive, scenarioIvShift, scenarioDaysFwd, effectivePrice]);
+
+  // ─── Styles ──
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)',
+    textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6,
+  };
+  const sliderRow: React.CSSProperties = {
+    display: 'grid', gridTemplateColumns: '120px 1fr 110px', gap: 12, alignItems: 'center', marginBottom: 10,
+  };
+  const sliderLabel: React.CSSProperties = {
+    fontSize: 11, color: 'var(--text-dim, #8a8f9e)', fontWeight: 600,
+  };
+  const sliderValue: React.CSSProperties = {
+    fontSize: 12, color: scenarioActive ? '#c4b5fd' : 'var(--text, #e2e4ea)', fontWeight: 700,
+    fontFamily: "'JetBrains Mono', monospace", textAlign: 'right',
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={labelStyle}>
+          Strike Comparison · {leg.side === 'SELL' ? 'Short' : 'Long'} {leg.type} · {leg.expiration} ({leg.dte}d)
+        </div>
+        {scenarioActive && (
+          <span style={{
+            padding: '3px 9px', borderRadius: 5,
+            background: 'rgba(196,181,253,0.12)', border: '1px solid rgba(196,181,253,0.3)',
+            fontSize: 9, fontWeight: 700, color: '#c4b5fd', letterSpacing: 1,
+          }}>
+            THEO · BS-PROJECTED
+          </span>
+        )}
+      </div>
+
+      {/* Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: 10, marginBottom: 18,
+      }}>
+        {cards.map(card => {
+          if (!card.available) {
+            return (
+              <div key={card.strike} style={{
+                background: 'var(--input-bg, rgba(255,255,255,0.02))',
+                border: '1px dashed var(--border, rgba(255,255,255,0.08))',
+                borderRadius: 10, padding: '14px 12px',
+                opacity: 0.45, textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)', marginBottom: 8 }}>
+                  ${card.strike.toFixed(2)}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)' }}>No contract</div>
+              </div>
+            );
+          }
+          return (
+            <button
+              key={card.strike}
+              onClick={() => onPickStrike(card.strike)}
+              style={{
+                background: card.isCurrent ? 'rgba(99,102,241,0.10)' : 'var(--input-bg, rgba(255,255,255,0.02))',
+                border: card.isCurrent ? '1.5px solid rgba(99,102,241,0.6)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+                borderRadius: 10, padding: '14px 12px',
+                cursor: card.isCurrent ? 'default' : 'pointer',
+                textAlign: 'left',
+                fontFamily: 'inherit',
+                color: 'inherit',
+                position: 'relative',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (!card.isCurrent) {
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.4)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!card.isCurrent) {
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border, rgba(255,255,255,0.08))';
+                }
+              }}
+            >
+              {card.isCurrent && (
+                <div style={{
+                  position: 'absolute', top: 6, right: 6,
+                  fontSize: 8, fontWeight: 700, color: '#a5b4fc',
+                  background: 'rgba(99,102,241,0.15)',
+                  padding: '2px 6px', borderRadius: 4, letterSpacing: 0.8,
+                }}>
+                  SEL
+                </div>
+              )}
+              {/* Strike */}
+              <div style={{
+                fontSize: 17, fontWeight: 700,
+                color: card.isCurrent ? '#a5b4fc' : 'var(--text, #e2e4ea)',
+                marginBottom: 10,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                ${card.strike.toFixed(2)}
+              </div>
+              {/* Premium block */}
+              <div style={{ marginBottom: 10 }}>
+                {scenarioActive ? (
+                  <div>
+                    <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Theo</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', fontFamily: "'JetBrains Mono', monospace" }}>
+                      ${card.theo.toFixed(2)}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <CardLine label="Bid" value={`$${card.bid.toFixed(2)}`} />
+                    <CardLine label="Ask" value={`$${card.ask.toFixed(2)}`} />
+                    <CardLine label="Mid" value={`$${card.theo.toFixed(2)}`} accent />
+                  </>
+                )}
+              </div>
+              {/* Greeks block */}
+              <div style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))', paddingTop: 8 }}>
+                <CardLine label="Δ" value={card.delta.toFixed(3)} />
+                <CardLine label="Θ" value={card.theta.toFixed(3)} />
+                <CardLine label="IV" value={`${(card.iv * 100).toFixed(1)}%`} />
+                <CardLine label="POP" value={`${(card.pop * 100).toFixed(0)}%`} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Sliders */}
+      <div style={{
+        background: 'var(--input-bg, rgba(255,255,255,0.02))',
+        border: '1px solid var(--border, rgba(255,255,255,0.06))',
+        borderRadius: 10, padding: '14px 16px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={labelStyle}>
+            Scenario Sliders {scenarioActive && <span style={{ color: '#c4b5fd', fontWeight: 700 }}>· ACTIVE</span>}
+          </div>
+          {scenarioActive && (
+            <button
+              onClick={resetScenario}
+              style={{
+                padding: '5px 12px', borderRadius: 6,
+                border: '1px solid var(--border, rgba(255,255,255,0.12))',
+                background: 'transparent', color: 'var(--text-dim, #8a8f9e)',
+                cursor: 'pointer', fontSize: 10, fontWeight: 600,
+              }}
+            >
+              ↻ Reset all
+            </button>
+          )}
+        </div>
+
+        {/* Underlying price slider */}
+        <div style={sliderRow}>
+          <span style={sliderLabel}>Underlying</span>
+          <input
+            type="range"
+            min={priceMin}
+            max={priceMax}
+            step={priceStep}
+            value={effectivePrice}
+            onChange={e => {
+              const v = parseFloat(e.target.value);
+              if (Math.abs(v - liveUnderlying) < 0.005) {
+                setScenarioPrice(null);
+              } else {
+                setScenarioPrice(v);
+              }
+            }}
+            style={{ width: '100%', cursor: 'pointer', accentColor: '#8b5cf6' }}
+          />
+          <span style={sliderValue}>${effectivePrice.toFixed(2)}</span>
+        </div>
+
+        {/* IV shift slider */}
+        <div style={sliderRow}>
+          <span style={sliderLabel}>IV shift</span>
+          <input
+            type="range"
+            min={-50}
+            max={50}
+            step={1}
+            value={scenarioIvShift}
+            onChange={e => setScenarioIvShift(parseInt(e.target.value, 10))}
+            style={{ width: '100%', cursor: 'pointer', accentColor: '#8b5cf6' }}
+          />
+          <span style={sliderValue}>{scenarioIvShift > 0 ? '+' : ''}{scenarioIvShift}%</span>
+        </div>
+
+        {/* Days forward slider */}
+        <div style={{ ...sliderRow, marginBottom: 0 }}>
+          <span style={sliderLabel}>Days forward</span>
+          <input
+            type="range"
+            min={0}
+            max={daysMax}
+            step={1}
+            value={scenarioDaysFwd}
+            onChange={e => setScenarioDaysFwd(parseInt(e.target.value, 10))}
+            style={{ width: '100%', cursor: 'pointer', accentColor: '#8b5cf6' }}
+          />
+          <span style={sliderValue}>+{scenarioDaysFwd}d</span>
+        </div>
+
+        {/* Helper text */}
+        <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', lineHeight: 1.5 }}>
+          Defaults: live price · 0% IV shift · 0 days forward.
+          Cards switch to Black-Scholes projections when any slider is off default.
+          Sliders affect <em>cards only</em>; chart, heat map, and metrics stay anchored to the real position.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CardLine({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+      <span style={{ color: 'var(--text-dim, #8a8f9e)' }}>{label}</span>
+      <span style={{
+        color: accent ? '#a5b4fc' : 'var(--text, #e2e4ea)',
+        fontWeight: accent ? 700 : 600,
+        fontFamily: "'JetBrains Mono', monospace",
+      }}>
+        {value}
+      </span>
     </div>
   );
 }
