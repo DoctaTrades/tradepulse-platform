@@ -1827,6 +1827,57 @@ function ResultsTable({ results, onSelect, title }: { results: ScanResult[]; onS
   );
 }
 
+// ─── BUILD IN PLAY BUILDER ─────────────────────────────────────────────────
+// Dispatches the tp-open-playbuilder event with a screener-derived leg payload.
+// Page.tsx catches it, switches the tab to "playbuilder", and re-fires as
+// tp-open-playbuilder-ready for PlayBuilderModule's listener to consume.
+type ScreenerLeg = {
+  action: 'Buy' | 'Sell';
+  type: 'Call' | 'Put';
+  strike: number;
+  expiration: string;
+  contracts: string;
+  entryPremium: string;
+};
+
+function dispatchBuildInPlayBuilder(ticker: string, legs: ScreenerLeg[]) {
+  try {
+    window.dispatchEvent(new CustomEvent('tp-open-playbuilder', {
+      detail: {
+        ticker,
+        legs: legs.map((l, i) => ({
+          id: `screener-${ticker}-${i}-${Date.now()}`,
+          ...l,
+        })),
+      },
+    }));
+  } catch (err) {
+    console.error('dispatchBuildInPlayBuilder failed:', err);
+  }
+}
+
+function BuildInPlayBuilderButton({ ticker, legs }: { ticker: string; legs: ScreenerLeg[] }) {
+  return (
+    <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+      <button
+        onClick={() => dispatchBuildInPlayBuilder(ticker, legs)}
+        className="w-full px-4 py-2 rounded-md font-mono text-[11px] font-bold transition-all"
+        style={{
+          background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+          color: '#fff',
+          border: 'none',
+          letterSpacing: 0.5,
+          cursor: 'pointer',
+          boxShadow: '0 2px 10px rgba(99,102,241,0.25)',
+        }}
+        title="Open this play in Play Builder for full analysis"
+      >
+        🛠 Build in Play Builder
+      </button>
+    </div>
+  );
+}
+
 function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { result: ScanResult; onClose: () => void; schwabConnected: boolean; activeStrategy: string }) {
   const Leg = ({ label, strike, bid, ask, delta, type }: { label: string; strike: number; bid?: number; ask?: number; delta?: number; type: 'sell' | 'buy' }) => (
     <div className={`flex justify-between items-center px-4 py-2.5 border-b font-mono text-[11px] ${type === 'sell' ? 'bg-red-500/5' : 'bg-green-500/5'}`} style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
@@ -1873,6 +1924,13 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
                       ? `${Math.max(7, Math.round(r.bestPut.dte * 0.4))} DTE or 50% profit`
                       : `21 DTE or 50% profit`
                 } />
+                <BuildInPlayBuilderButton ticker={r.ticker} legs={[{
+                  action: 'Sell', type: 'Put',
+                  strike: r.bestPut.strike,
+                  expiration: r.bestPut.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.bestPut.bid + r.bestPut.ask) / 2).toFixed(2),
+                }]}/>
               </DetailSection>
               {r.cspByDTE && r.cspByDTE.length > 1 && (
                 <DetailSection title="📊 Delta Range Comparison — Best Candidates Across DTE & Delta">
@@ -1962,6 +2020,22 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
                   )}
                 </div>
               )}
+              <BuildInPlayBuilderButton ticker={r.ticker} legs={[
+                {
+                  action: 'Sell', type: 'Put',
+                  strike: r.creditSpread.shortLeg.strike,
+                  expiration: r.creditSpread.shortLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.creditSpread.shortLeg.bid + r.creditSpread.shortLeg.ask) / 2).toFixed(2),
+                },
+                {
+                  action: 'Buy', type: 'Put',
+                  strike: r.creditSpread.longLeg.strike,
+                  expiration: r.creditSpread.shortLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.creditSpread.longLeg.bid + r.creditSpread.longLeg.ask) / 2).toFixed(2),
+                },
+              ]}/>
             </DetailSection>
           )}
           {(activeStrategy === 'credit') && r.bearCallSpread && schwabConnected && (
@@ -2005,6 +2079,22 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
                   )}
                 </div>
               )}
+              <BuildInPlayBuilderButton ticker={r.ticker} legs={[
+                {
+                  action: 'Sell', type: 'Call',
+                  strike: r.bearCallSpread.shortLeg.strike,
+                  expiration: r.bearCallSpread.shortLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.bearCallSpread.shortLeg.bid + r.bearCallSpread.shortLeg.ask) / 2).toFixed(2),
+                },
+                {
+                  action: 'Buy', type: 'Call',
+                  strike: r.bearCallSpread.longLeg.strike,
+                  expiration: r.bearCallSpread.shortLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.bearCallSpread.longLeg.bid + r.bearCallSpread.longLeg.ask) / 2).toFixed(2),
+                },
+              ]}/>
             </DetailSection>
           )}
 
@@ -2024,6 +2114,36 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Return on Risk" value={`${r.ironCondor.rorIC}%`} color={r.ironCondor.rorIC >= 25 ? 'var(--green)' : 'var(--gold)'} />
               <DetailRow label="Profit Target" value="50% of total credit" />
               <DetailRow label="Manage At" value="21 DTE or if tested" />
+              <BuildInPlayBuilderButton ticker={r.ticker} legs={[
+                {
+                  action: 'Sell', type: 'Put',
+                  strike: r.ironCondor.putSpread.shortLeg.strike,
+                  expiration: r.ironCondor.expDate,
+                  contracts: '1',
+                  entryPremium: (r.ironCondor.putSpread.shortLeg.bid || 0).toFixed(2),
+                },
+                {
+                  action: 'Buy', type: 'Put',
+                  strike: r.ironCondor.putSpread.longLeg.strike,
+                  expiration: r.ironCondor.expDate,
+                  contracts: '1',
+                  entryPremium: (r.ironCondor.putSpread.longLeg.bid || 0).toFixed(2),
+                },
+                {
+                  action: 'Sell', type: 'Call',
+                  strike: r.ironCondor.callSpread.shortLeg.strike,
+                  expiration: r.ironCondor.expDate,
+                  contracts: '1',
+                  entryPremium: (r.ironCondor.callSpread.shortLeg.bid || 0).toFixed(2),
+                },
+                {
+                  action: 'Buy', type: 'Call',
+                  strike: r.ironCondor.callSpread.longLeg.strike,
+                  expiration: r.ironCondor.expDate,
+                  contracts: '1',
+                  entryPremium: (r.ironCondor.callSpread.longLeg.bid || 0).toFixed(2),
+                },
+              ]}/>
             </DetailSection>
           )}
 
@@ -2039,6 +2159,22 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Net Debit" value={`$${r.pmcc.netDebit.toFixed(2)}`} />
               <DetailRow label="Breakeven" value={`$${r.pmcc.breakEven.toFixed(2)}`} />
               <DetailRow label="Strategy" value="Roll short call monthly for income" />
+              <BuildInPlayBuilderButton ticker={r.ticker} legs={[
+                {
+                  action: 'Buy', type: 'Call',
+                  strike: r.pmcc.leapLeg.strike,
+                  expiration: r.pmcc.leapLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.pmcc.leapLeg.bid + r.pmcc.leapLeg.ask) / 2).toFixed(2),
+                },
+                {
+                  action: 'Sell', type: 'Call',
+                  strike: r.pmcc.shortLeg.strike,
+                  expiration: r.pmcc.shortLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.pmcc.shortLeg.bid + r.pmcc.shortLeg.ask) / 2).toFixed(2),
+                },
+              ]}/>
             </DetailSection>
           )}
 
@@ -2052,6 +2188,22 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Net Debit" value={`$${r.diagonal.netDebit.toFixed(2)} ($${r.diagonal.capitalRequired}/contract)`} color="var(--red)" />
               <DetailRow label="Max Profit" value={`$${r.diagonal.maxProfit.toFixed(2)}`} color="var(--green)" />
               <DetailRow label="Manage At" value="50% profit or 21 DTE on front leg" />
+              <BuildInPlayBuilderButton ticker={r.ticker} legs={[
+                {
+                  action: 'Buy', type: 'Call',
+                  strike: r.diagonal.backLeg.strike,
+                  expiration: r.diagonal.backLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.diagonal.backLeg.bid + r.diagonal.backLeg.ask) / 2).toFixed(2),
+                },
+                {
+                  action: 'Sell', type: 'Call',
+                  strike: r.diagonal.frontLeg.strike,
+                  expiration: r.diagonal.frontLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.diagonal.frontLeg.bid + r.diagonal.frontLeg.ask) / 2).toFixed(2),
+                },
+              ]}/>
             </DetailSection>
           )}
 
@@ -2071,6 +2223,22 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Weekly ROC" value={`${r.calendarPress.weeklyROC}% return on capital per week`} color={r.calendarPress.weeklyROC >= 5 ? 'var(--green)' : 'var(--gold)'} />
               <DetailRow label="Bearish Exit" value={`Stop selling weeklies, hold long $${r.calendarPress.longLeg.strike}P — gains value as stock falls`} />
               <DetailRow label="Management" value="Sell new weekly put each cycle near support. If support breaks, stop selling and hold long put." />
+              <BuildInPlayBuilderButton ticker={r.ticker} legs={[
+                {
+                  action: 'Buy', type: 'Put',
+                  strike: r.calendarPress.longLeg.strike,
+                  expiration: r.calendarPress.longLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.calendarPress.longLeg.bid + r.calendarPress.longLeg.ask) / 2).toFixed(2),
+                },
+                {
+                  action: 'Sell', type: 'Put',
+                  strike: r.calendarPress.shortLeg.strike,
+                  expiration: r.calendarPress.shortLeg.expDate,
+                  contracts: '1',
+                  entryPremium: ((r.calendarPress.shortLeg.bid + r.calendarPress.shortLeg.ask) / 2).toFixed(2),
+                },
+              ]}/>
             </DetailSection>
           )}
 
