@@ -68,6 +68,10 @@ type Leg = {
   theta: number;
   vega: number;
   iv: number;             // stored as fraction (0.32 = 32%)
+  // Manual fill-price override — when set, this is the per-share cost basis used
+  // by all P&L math instead of mid(bid, ask). Null/undefined = use mid.
+  // Cleared automatically when strike, expiration, or type change.
+  entryOverride?: number | null;
 };
 
 type StrategyId =
@@ -126,6 +130,13 @@ const mid = (bid: number, ask: number) => {
   if (!ask) return bid;
   return (bid + ask) / 2;
 };
+
+// Per-share entry price for a leg — respects manual override when set, otherwise mid.
+// This is the cost basis used by ALL P&L math (payoff, BS, metrics, breakevens).
+const legEntryPrice = (leg: Leg): number =>
+  (leg.entryOverride != null && isFinite(leg.entryOverride) && leg.entryOverride >= 0)
+    ? leg.entryOverride
+    : mid(leg.bid, leg.ask);
 
 // Normal CDF (Abramowitz & Stegun 7.1.26)
 const ncdf = (x: number) => {
@@ -483,7 +494,7 @@ function legPayoffAtExpiry(leg: Leg, S: number): number {
   const intrinsic = leg.type === 'CALL'
     ? Math.max(0, S - leg.strike)
     : Math.max(0, leg.strike - S);
-  const m = mid(leg.bid, leg.ask);
+  const m = legEntryPrice(leg);
   // SELL: collected premium m, owe intrinsic
   // BUY:  paid premium m, receive intrinsic
   const perShare = leg.side === 'SELL' ? (m - intrinsic) : (intrinsic - m);
@@ -512,10 +523,11 @@ function computeMetrics(legs: Leg[], underlying: number): Metrics {
   if (!legs.length) return empty;
 
   // Net credit (positive) / debit (negative). Per spread, ×100.
+  // Uses the leg's entryOverride if set (real fill), otherwise mid(bid, ask).
   let netCredit = 0;
   let nDelta = 0, nGamma = 0, nTheta = 0, nVega = 0;
   for (const l of legs) {
-    const m = mid(l.bid, l.ask);
+    const m = legEntryPrice(l);
     const sign = l.side === 'SELL' ? 1 : -1;
     netCredit += sign * m * 100 * l.qty;
     nDelta += sign * l.delta * l.qty;
@@ -632,7 +644,7 @@ function computeMetrics(legs: Leg[], underlying: number): Metrics {
           // Same-strike calendar: long-leg cost is the max possible loss
           const longLeg = legs.find(l => l.side === 'BUY');
           capitalRequired = longLeg
-            ? mid(longLeg.bid, longLeg.ask) * 100 * longLeg.qty
+            ? legEntryPrice(longLeg) * 100 * longLeg.qty
             : (isFinite(maxLoss) ? maxLoss : Math.abs(Math.min(netCredit, 0)));
         }
       } else {
@@ -811,7 +823,7 @@ function positionTheoreticalPnL(legs: Leg[], S: number, daysForward: number): nu
     const remainingDays = Math.max(0, leg.dte - daysForward);
     const T = remainingDays / 365;
     const theo = bsPrice(S, leg.strike, T, leg.iv, leg.type);
-    const entry = mid(leg.bid, leg.ask);
+    const entry = legEntryPrice(leg);
     if (leg.side === 'SELL') {
       // Sold at entry, must buy back at theo to close. P&L = (entry - theo) × 100 × qty
       total += (entry - theo) * 100 * leg.qty;
@@ -861,8 +873,8 @@ function computeCalendarPressMetrics(legs: Leg[], capitalRequired: number): Cale
   const shortLeg = sorted[1];
   if (longLeg.side !== 'BUY' || shortLeg.side !== 'SELL') return null;
 
-  const longCost     = mid(longLeg.bid,  longLeg.ask)  * 100 * longLeg.qty;
-  const weeklyCredit = mid(shortLeg.bid, shortLeg.ask) * 100 * shortLeg.qty;
+  const longCost     = legEntryPrice(longLeg)  * 100 * longLeg.qty;
+  const weeklyCredit = legEntryPrice(shortLeg) * 100 * shortLeg.qty;
   if (weeklyCredit <= 0) {
     return {
       longCost, weeklyCredit, costRatio: Infinity, costRatioGrade: 'too-high',
@@ -1435,67 +1447,13 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
       setLoading(false);
     }
   }, []);
-
-  // Live underlying price from chain (immutable, what Schwab returned)
-  const liveUnderlying = useMemo(() => {
+  // Underlying price — read-only, straight from the live chain
+  const underlying = useMemo(() => {
     if (!chain) return 0;
     return chain.underlyingPrice || chain.underlying?.last || 0;
   }, [chain]);
+  const liveUnderlying = underlying;  // alias kept for StrikeComparison props
 
-  // ── Manual underlying override ──
-  // null = use live; number = "what-if" override that drives all metrics, charts,
-  // and BS-recomputed Greeks. The leg table will show recomputed Greeks when active.
-  const [underlyingOverride, setUnderlyingOverride] = useState<number | null>(null);
-  const [overrideInput, setOverrideInput] = useState('');     // raw text in the input box
-
-  // Effective underlying — what every downstream calculation uses
-  const underlying = useMemo(
-    () => (underlyingOverride != null && underlyingOverride > 0 ? underlyingOverride : liveUnderlying),
-    [underlyingOverride, liveUnderlying]
-  );
-  const isOverridden = underlyingOverride != null && underlyingOverride > 0 && underlyingOverride !== liveUnderlying;
-
-  // Reset override when a new ticker is loaded
-  useEffect(() => {
-    setUnderlyingOverride(null);
-    setOverrideInput('');
-  }, [ticker]);
-
-  // Sync the input box display when liveUnderlying loads or override clears
-  useEffect(() => {
-    if (underlyingOverride == null) {
-      setOverrideInput(liveUnderlying ? liveUnderlying.toFixed(2) : '');
-    }
-  }, [liveUnderlying, underlyingOverride]);
-
-  const applyOverride = useCallback(() => {
-    const v = parseFloat(overrideInput);
-    if (!isFinite(v) || v <= 0) {
-      showToast('Enter a positive price');
-      return;
-    }
-    if (Math.abs(v - liveUnderlying) < 0.005) {
-      // Effectively the same as live → just clear
-      setUnderlyingOverride(null);
-      return;
-    }
-    setUnderlyingOverride(v);
-  }, [overrideInput, liveUnderlying, showToast]);
-
-  const resetOverride = useCallback(() => {
-    setUnderlyingOverride(null);
-    setOverrideInput(liveUnderlying ? liveUnderlying.toFixed(2) : '');
-  }, [liveUnderlying]);
-
-  // ── Effective legs (with BS-recomputed Greeks when overridden) ──
-  // This is what every downstream consumer (metrics, charts, leg table) reads.
-  // When override is OFF, legs pass through unchanged (live Greeks from chain).
-  // When override is ON, each leg's delta/gamma/theta/vega is recomputed via BS at
-  // the override price using the leg's existing IV and DTE.
-  const effectiveLegs = useMemo(() => {
-    if (!isOverridden) return legs;
-    return legs.map(l => recomputeLegGreeks(l, underlying));
-  }, [legs, isOverridden, underlying]);
 
   // ── Strike comparison sliders (cards-only, never affect main view) ──
   // All three default to "no shift" so the cards show live chain values until the
@@ -1550,6 +1508,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
       if (l.id !== id) return l;
       const next: Leg = { ...l, ...patch };
       // If strike or expiration or type changed, re-snapshot from contract data
+      // AND clear any manual entry-price override (old fill no longer applies to a new contract)
       if (patch.strike != null || patch.expiration != null || patch.type != null) {
         const c = findContract(contracts, next.expiration, next.strike, next.type);
         if (c) {
@@ -1562,6 +1521,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
           next.iv = normIV(c.volatility || 0);
           next.dte = c.daysToExpiration;
         }
+        next.entryOverride = null;
       }
       return next;
     }));
@@ -1583,32 +1543,32 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     setLegs(prev => [...prev, contractToLeg(atm, 'SELL')]);
   }, [contracts, showToast]);
 
-  // Live metrics — driven by effectiveLegs so override-recomputed Greeks flow through
-  const metrics = useMemo(() => computeMetrics(effectiveLegs, underlying), [effectiveLegs, underlying]);
+  // Live metrics
+  const metrics = useMemo(() => computeMetrics(legs, underlying), [legs, underlying]);
 
   // Expected move for chart bands
-  const expectedMove = useMemo(() => computeExpectedMove(effectiveLegs, underlying), [effectiveLegs, underlying]);
+  const expectedMove = useMemo(() => computeExpectedMove(legs, underlying), [legs, underlying]);
 
   // "Held to today" curve — Black-Scholes valuation across the same price range
   // as the at-expiration curve, with daysForward = 0
   const todaySamples = useMemo(() => {
-    if (!effectiveLegs.length || !metrics.samples.length) return undefined;
+    if (!legs.length || !metrics.samples.length) return undefined;
     return metrics.samples.map(s => ({
       S: s.S,
-      pnl: positionTheoreticalPnL(effectiveLegs, s.S, 0),
+      pnl: positionTheoreticalPnL(legs, s.S, 0),
     }));
-  }, [effectiveLegs, metrics.samples]);
+  }, [legs, metrics.samples]);
 
   // Calendar Press metrics (only meaningful when that strategy is active)
   const calPressMetrics = useMemo(() => {
     if (strategy !== 'calendar_press') return null;
-    return computeCalendarPressMetrics(effectiveLegs, metrics.capitalRequired);
-  }, [strategy, effectiveLegs, metrics.capitalRequired]);
+    return computeCalendarPressMetrics(legs, metrics.capitalRequired);
+  }, [strategy, legs, metrics.capitalRequired]);
 
   // Risk profile classification — drives the badge in the metrics panel
   const riskProfile = useMemo(
-    () => classifyRisk(effectiveLegs, metrics.maxLoss),
-    [effectiveLegs, metrics.maxLoss]
+    () => classifyRisk(legs, metrics.maxLoss),
+    [legs, metrics.maxLoss]
   );
 
   // Swap a leg's strike (used by strike comparison cards)
@@ -1628,6 +1588,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         vega: c.vega || 0,
         iv: normIV(c.volatility || 0),
         dte: c.daysToExpiration,
+        entryOverride: null,  // fresh contract → fresh fill price
       };
     }));
   }, [contracts]);
@@ -1741,13 +1702,17 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
       showToast('No legs to save');
       return;
     }
-    // Pre-populate fill overrides with mid prices
+    // Pre-populate fill inputs — use the leg's entryOverride if set (real fill),
+    // otherwise mid. Also default to "actual fills" mode if ANY leg has an override,
+    // so the user sees their entered values instead of the mid-price disabled state.
     const initial: Record<string, string> = {};
+    let anyOverride = false;
     for (const l of legs) {
-      initial[l.id] = mid(l.bid, l.ask).toFixed(2);
+      initial[l.id] = legEntryPrice(l).toFixed(2);
+      if (l.entryOverride != null) anyOverride = true;
     }
     setFillOverrides(initial);
-    setUseMidPrices(true);
+    setUseMidPrices(!anyOverride);
     setSaveStage('reviewing');
   }, [legs, showToast]);
 
@@ -1872,38 +1837,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{ticker}</div>
               </div>
               <div>
-                <div style={label}>Underlying {isOverridden && <span style={{ color: '#eab308', fontWeight: 700 }}>· OVERRIDDEN</span>}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 14, color: 'var(--text-dim, #8a8f9e)' }}>$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={overrideInput}
-                    onChange={e => setOverrideInput(e.target.value)}
-                    onBlur={applyOverride}
-                    onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
-                    style={{
-                      width: 90, fontSize: 18, fontWeight: 700,
-                      color: isOverridden ? '#eab308' : '#a5b4fc',
-                      background: isOverridden ? 'rgba(234,179,8,0.06)' : 'transparent',
-                      border: `1px solid ${isOverridden ? 'rgba(234,179,8,0.35)' : 'var(--border, rgba(255,255,255,0.08))'}`,
-                      borderRadius: 6, padding: '4px 8px', outline: 'none',
-                    }}
-                  />
-                  {isOverridden && (
-                    <button
-                      onClick={resetOverride}
-                      title={`Reset to live price $${liveUnderlying.toFixed(2)}`}
-                      style={{
-                        padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border, rgba(255,255,255,0.08))',
-                        background: 'transparent', color: 'var(--text-dim, #8a8f9e)', cursor: 'pointer',
-                        fontSize: 11, fontWeight: 600,
-                      }}
-                    >
-                      ↻
-                    </button>
-                  )}
-                </div>
+                <div style={label}>Underlying</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#a5b4fc' }}>{fmtMoney(underlying)}</div>
               </div>
               <div>
                 <div style={label}>Expirations</div>
@@ -2009,6 +1944,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                     <th style={thStyle}>Bid</th>
                     <th style={thStyle}>Ask</th>
                     <th style={thStyle}>Mid</th>
+                    <th style={thStyle} title="Your actual fill price — overrides mid for all P&L math">Entry $</th>
                     <th style={thStyle}>Δ</th>
                     <th style={thStyle}>Θ</th>
                     <th style={thStyle}>IV</th>
@@ -2018,8 +1954,11 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 <tbody>
                   {legs.map(leg => {
                     const strikeOptions = strikesForExp(contracts, leg.expiration, leg.type);
-                    // For display, show recomputed Greeks if underlying is overridden
-                    const effLeg = effectiveLegs.find(l => l.id === leg.id) || leg;
+                    const midPrice = mid(leg.bid, leg.ask);
+                    const hasOverride = leg.entryOverride != null;
+                    const entryDisplay = hasOverride
+                      ? (leg.entryOverride as number).toFixed(2)
+                      : midPrice.toFixed(2);
                     return (
                       <tr key={leg.id} style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
                         <td style={tdStyle}>
@@ -2075,10 +2014,55 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                         </td>
                         <td style={tdStyle}>{fmtNum(leg.bid)}</td>
                         <td style={tdStyle}>{fmtNum(leg.ask)}</td>
-                        <td style={{ ...tdStyle, fontWeight: 700, color: '#a5b4fc' }}>{fmtNum(mid(leg.bid, leg.ask))}</td>
-                        <td style={{ ...tdStyle, color: isOverridden ? '#c4b5fd' : undefined }}>{fmtNum(effLeg.delta, 3)}</td>
-                        <td style={{ ...tdStyle, color: isOverridden ? '#c4b5fd' : undefined }}>{fmtNum(effLeg.theta, 3)}</td>
-                        <td style={tdStyle}>{fmtPct(effLeg.iv, 1)}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700, color: '#a5b4fc' }}>{fmtNum(midPrice)}</td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={entryDisplay}
+                              onChange={e => {
+                                const v = parseFloat(e.target.value);
+                                if (isFinite(v) && v >= 0) {
+                                  updateLeg(leg.id, { entryOverride: v });
+                                }
+                              }}
+                              onBlur={e => {
+                                // If user cleared it or matches mid, clear the override
+                                const v = parseFloat(e.target.value);
+                                if (!isFinite(v) || Math.abs(v - midPrice) < 0.005) {
+                                  updateLeg(leg.id, { entryOverride: null });
+                                }
+                              }}
+                              style={{
+                                ...selectStyle,
+                                width: 62,
+                                textAlign: 'right',
+                                fontWeight: 700,
+                                color: hasOverride ? '#eab308' : '#a5b4fc',
+                                background: hasOverride ? 'rgba(234,179,8,0.06)' : 'var(--input-bg, #1e2028)',
+                                border: hasOverride ? '1px solid rgba(234,179,8,0.35)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+                              }}
+                              title={hasOverride ? 'Manual fill — click ↻ to reset to mid' : 'Defaults to mid · edit to set your actual fill'}
+                            />
+                            {hasOverride && (
+                              <button
+                                onClick={() => updateLeg(leg.id, { entryOverride: null })}
+                                title="Reset to mid"
+                                style={{
+                                  padding: '2px 5px', borderRadius: 4, border: 'none',
+                                  background: 'rgba(234,179,8,0.12)', color: '#eab308',
+                                  cursor: 'pointer', fontSize: 10, lineHeight: 1,
+                                }}
+                              >
+                                ↻
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>{fmtNum(leg.delta, 3)}</td>
+                        <td style={tdStyle}>{fmtNum(leg.theta, 3)}</td>
+                        <td style={tdStyle}>{fmtPct(leg.iv, 1)}</td>
                         <td style={tdStyle}>
                           <button
                             onClick={() => removeLeg(leg.id)}
@@ -2164,7 +2148,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             underlying={underlying}
             breakevens={metrics.breakevens}
             expectedMove={expectedMove}
-            legs={effectiveLegs}
+            legs={legs}
             height={340}
           />
         </div>
@@ -2182,7 +2166,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             </div>
           </div>
           <HeatMap
-            legs={effectiveLegs}
+            legs={legs}
             priceLo={metrics.priceLo}
             priceHi={metrics.priceHi}
             underlying={underlying}
@@ -2192,10 +2176,10 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
       )}
 
       {/* STRIKE COMPARISON CARDS — single-leg only */}
-      {effectiveLegs.length === 1 && contracts.length > 0 && (
+      {legs.length === 1 && contracts.length > 0 && (
         <div style={{ ...panel, marginBottom: 16 }}>
           <StrikeComparison
-            leg={effectiveLegs[0]}
+            leg={legs[0]}
             contracts={contracts}
             liveUnderlying={liveUnderlying}
             scenarioPrice={scenarioPrice}
@@ -2206,7 +2190,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             setScenarioIvShift={setScenarioIvShift}
             setScenarioDaysFwd={setScenarioDaysFwd}
             resetScenario={resetScenario}
-            onPickStrike={(newStrike) => swapLegStrike(effectiveLegs[0].id, newStrike)}
+            onPickStrike={(newStrike) => swapLegStrike(legs[0].id, newStrike)}
           />
         </div>
       )}
