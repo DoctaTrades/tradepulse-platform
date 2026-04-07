@@ -1955,10 +1955,6 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                   {legs.map(leg => {
                     const strikeOptions = strikesForExp(contracts, leg.expiration, leg.type);
                     const midPrice = mid(leg.bid, leg.ask);
-                    const hasOverride = leg.entryOverride != null;
-                    const entryDisplay = hasOverride
-                      ? (leg.entryOverride as number).toFixed(2)
-                      : midPrice.toFixed(2);
                     return (
                       <tr key={leg.id} style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
                         <td style={tdStyle}>
@@ -2016,49 +2012,12 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                         <td style={tdStyle}>{fmtNum(leg.ask)}</td>
                         <td style={{ ...tdStyle, fontWeight: 700, color: '#a5b4fc' }}>{fmtNum(midPrice)}</td>
                         <td style={tdStyle}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={entryDisplay}
-                              onChange={e => {
-                                const v = parseFloat(e.target.value);
-                                if (isFinite(v) && v >= 0) {
-                                  updateLeg(leg.id, { entryOverride: v });
-                                }
-                              }}
-                              onBlur={e => {
-                                // If user cleared it or matches mid, clear the override
-                                const v = parseFloat(e.target.value);
-                                if (!isFinite(v) || Math.abs(v - midPrice) < 0.005) {
-                                  updateLeg(leg.id, { entryOverride: null });
-                                }
-                              }}
-                              style={{
-                                ...selectStyle,
-                                width: 62,
-                                textAlign: 'right',
-                                fontWeight: 700,
-                                color: hasOverride ? '#eab308' : '#a5b4fc',
-                                background: hasOverride ? 'rgba(234,179,8,0.06)' : 'var(--input-bg, #1e2028)',
-                                border: hasOverride ? '1px solid rgba(234,179,8,0.35)' : '1px solid var(--border, rgba(255,255,255,0.08))',
-                              }}
-                              title={hasOverride ? 'Manual fill — click ↻ to reset to mid' : 'Defaults to mid · edit to set your actual fill'}
-                            />
-                            {hasOverride && (
-                              <button
-                                onClick={() => updateLeg(leg.id, { entryOverride: null })}
-                                title="Reset to mid"
-                                style={{
-                                  padding: '2px 5px', borderRadius: 4, border: 'none',
-                                  background: 'rgba(234,179,8,0.12)', color: '#eab308',
-                                  cursor: 'pointer', fontSize: 10, lineHeight: 1,
-                                }}
-                              >
-                                ↻
-                              </button>
-                            )}
-                          </div>
+                          <EntryPriceInput
+                            legId={leg.id}
+                            midPrice={midPrice}
+                            entryOverride={leg.entryOverride}
+                            onChange={(v) => updateLeg(leg.id, { entryOverride: v })}
+                          />
                         </td>
                         <td style={tdStyle}>{fmtNum(leg.delta, 3)}</td>
                         <td style={tdStyle}>{fmtNum(leg.theta, 3)}</td>
@@ -2796,6 +2755,111 @@ function CardLine({ label, value, accent }: { label: string; value: string; acce
       }}>
         {value}
       </span>
+    </div>
+  );
+}
+
+// ─── ENTRY PRICE INPUT ───────────────────────────────────────────────────────
+// Per-leg editable fill price. Keeps its own local string state so the user can
+// freely delete, retype, use decimals, etc. without the parent clobbering it on
+// every keystroke. Commits to parent `onChange` only when parse succeeds AND the
+// value is actually different from mid; blur clears the override if the field is
+// empty or matches mid.
+function EntryPriceInput({
+  legId, midPrice, entryOverride, onChange,
+}: {
+  legId: string;
+  midPrice: number;
+  entryOverride: number | null | undefined;
+  onChange: (v: number | null) => void;
+}) {
+  const hasOverride = entryOverride != null;
+  const canonical = hasOverride ? (entryOverride as number).toFixed(2) : midPrice.toFixed(2);
+
+  // Local text state — starts from canonical, syncs when canonical changes from
+  // outside (new leg, override cleared, strike swap, etc).
+  const [text, setText] = useState(canonical);
+
+  // Re-sync local text when canonical changes AND the user isn't actively editing
+  // (we detect that by comparing the parsed local value to canonical — if they
+  // match, there's no in-flight edit).
+  useEffect(() => {
+    const parsed = parseFloat(text);
+    // Only overwrite local text if canonical changed and local doesn't already
+    // represent the same number — this protects the user's typing.
+    if (!isFinite(parsed) || Math.abs(parsed - parseFloat(canonical)) > 0.005) {
+      // Canonical changed out from under us — if we're not mid-edit, take it
+      setText(canonical);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legId, canonical]);
+
+  const commit = (raw: string) => {
+    const v = parseFloat(raw);
+    if (!isFinite(v) || v < 0) {
+      // Empty / invalid → clear override, snap back to mid
+      onChange(null);
+      setText(midPrice.toFixed(2));
+      return;
+    }
+    if (Math.abs(v - midPrice) < 0.005) {
+      // Matches mid → clear override (no point storing it)
+      onChange(null);
+      return;
+    }
+    onChange(v);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={text}
+        onChange={e => {
+          const raw = e.target.value;
+          setText(raw);
+          // Commit live only if the string parses to a valid number. Empty,
+          // trailing dot ("3."), or mid-edit states just update local text.
+          if (raw === '' || raw === '.' || raw.endsWith('.')) return;
+          const v = parseFloat(raw);
+          if (isFinite(v) && v >= 0) {
+            if (Math.abs(v - midPrice) < 0.005) {
+              onChange(null);
+            } else {
+              onChange(v);
+            }
+          }
+        }}
+        onBlur={e => commit(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            (e.currentTarget as HTMLInputElement).blur();
+          }
+        }}
+        style={{
+          background: hasOverride ? 'rgba(234,179,8,0.06)' : 'var(--input-bg, #1e2028)',
+          border: hasOverride ? '1px solid rgba(234,179,8,0.35)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+          color: hasOverride ? '#eab308' : '#a5b4fc',
+          borderRadius: 6, padding: '4px 6px', fontSize: 11,
+          fontWeight: 700, outline: 'none', width: 62, textAlign: 'right',
+          fontFamily: 'inherit',
+        }}
+        title={hasOverride ? 'Manual fill — click ↻ to reset to mid' : 'Defaults to mid · edit to set your actual fill'}
+      />
+      {hasOverride && (
+        <button
+          onClick={() => { onChange(null); setText(midPrice.toFixed(2)); }}
+          title="Reset to mid"
+          style={{
+            padding: '2px 5px', borderRadius: 4, border: 'none',
+            background: 'rgba(234,179,8,0.12)', color: '#eab308',
+            cursor: 'pointer', fontSize: 10, lineHeight: 1,
+          }}
+        >
+          ↻
+        </button>
+      )}
     </div>
   );
 }
