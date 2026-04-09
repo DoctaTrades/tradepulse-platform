@@ -697,15 +697,6 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
 }
 
 // ─── ADMIN USERS (can use platform Schwab credentials) ────
-const ADMIN_IDS = ['a4f7c71e-95bc-43f9-bbfd-108f1feb6f48'];
-const ADMIN_EMAILS = ['risethediver@gmail.com'];
-
-function isAdmin(userId?: string, userEmail?: string): boolean {
-  if (userId && ADMIN_IDS.includes(userId)) return true;
-  if (userEmail && ADMIN_EMAILS.includes(userEmail.toLowerCase())) return true;
-  return false;
-}
-
 // ─── MAIN SCAN ENDPOINT ──────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -714,7 +705,6 @@ export async function POST(req: NextRequest) {
     customTickers,
     filters = {},
     userId,
-    userEmail,
   } = body;
 
   // Set active user for per-user credential routing
@@ -744,31 +734,21 @@ export async function POST(req: NextRequest) {
     cpShortDelta: filters.cpShortDelta ?? 0.30,
   };
 
-  const admin = isAdmin(userId, userEmail);
   const useSchwab = await isAuthenticated(_userId);
   
   if (useSchwab) {
     const result = await scanWithSchwab(tickers, f, _userId);
     return NextResponse.json(result);
-  } else if (!admin) {
-    // Non-admin user — tell them to use personal keys or Polygon fallback
-    return NextResponse.json({
-      results: [],
-      logs: ['📡 Using Polygon scan. Connect your own Schwab or Tradier in Screener Settings for real Greeks.'],
-      scanned: 0,
-      source: 'polygon_fallback',
-      tickers,
-      filters: f,
-    });
-  } else {
-    // Admin but Schwab not connected
-    return NextResponse.json({
-      results: [],
-      logs: ['⚠ Schwab not connected. Using Polygon client-side scan (slower, estimated data).'],
-      scanned: 0,
-      source: 'polygon_fallback',
-      tickers,
-      filters: f,
-    });
   }
+
+  // User doesn't have Schwab connected — return clear error instead of a
+  // degraded fallback. Schwab is the required data provider.
+  return NextResponse.json({
+    error: 'Schwab not connected',
+    message: 'This scan requires a Schwab API connection. Go to Settings → Schwab API to connect your Schwab developer account.',
+    results: [],
+    logs: ['✕ Schwab not connected. Connect your Schwab API in Settings to run scans.'],
+    scanned: 0,
+    source: 'none',
+  }, { status: 401 });
 }
