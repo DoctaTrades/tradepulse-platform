@@ -19,12 +19,10 @@ export async function GET(req: NextRequest) {
 // POST: save user's Schwab API credentials (appKey + appSecret)
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { userId: bodyUserId } = body;
-    const { userId: authUserId } = await verifyAuth(req);
-    const userId = authUserId || bodyUserId;
+    const { userId } = await verifyAuth(req);
     if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
+    const body = await req.json();
     const { appKey, appSecret } = body;
     if (!appKey || !appSecret) {
       return NextResponse.json({ error: 'appKey and appSecret are required' }, { status: 400 });
@@ -48,9 +46,7 @@ export async function POST(req: NextRequest) {
 // DELETE: remove user's credentials and tokens
 export async function DELETE(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { userId: authUserId } = await verifyAuth(req);
-    const userId = authUserId || body.userId;
+    const { userId } = await verifyAuth(req);
     if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     await deleteUserCredentials(userId);
