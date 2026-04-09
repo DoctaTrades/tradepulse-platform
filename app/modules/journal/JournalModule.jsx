@@ -4893,9 +4893,11 @@ function HoldingsTab({ trades, accountBalances, onEditTrade, theme, dividends, o
   // Fetch prices via server-side API (Schwab → Finnhub fallback)
   const fetchPrice = async (ticker) => {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      try { const { getAuthHeaders } = await import("@/app/lib/auth-fetch"); Object.assign(headers, await getAuthHeaders()); } catch {}
       const resp = await fetch('/api/quotes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ symbols: [ticker] }),
       });
       if (resp.ok) {
@@ -4927,9 +4929,11 @@ function HoldingsTab({ trades, accountBalances, onEditTrade, theme, dividends, o
     setLookupError("");
     try {
       // Batch fetch all tickers in one API call
+      const headers = { 'Content-Type': 'application/json' };
+      try { const { getAuthHeaders } = await import("@/app/lib/auth-fetch"); Object.assign(headers, await getAuthHeaders()); } catch {}
       const resp = await fetch('/api/quotes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ symbols: allTickers }),
       });
       if (resp.ok) {
@@ -8128,10 +8132,14 @@ function SchwabSetupWizard({ user }) {
   // Check existing credentials on mount
   useEffect(() => {
     if (!userId) return;
-    fetch(`/api/schwab/credentials?userId=${userId}`)
-      .then(r => r.json())
-      .then(d => setStatus(d))
-      .catch(() => {});
+    (async () => {
+      const headers = {};
+      try { const { getAuthHeaders } = await import("@/app/lib/auth-fetch"); Object.assign(headers, await getAuthHeaders()); } catch {}
+      fetch('/api/schwab/credentials', { headers })
+        .then(r => r.json())
+        .then(d => setStatus(d))
+        .catch(() => {});
+    })();
   }, [userId]);
 
   const handleSave = async () => {
@@ -8139,10 +8147,12 @@ function SchwabSetupWizard({ user }) {
     setSaving(true);
     setMessage("");
     try {
+      const headers = { "Content-Type": "application/json" };
+      try { const { getAuthHeaders } = await import("@/app/lib/auth-fetch"); Object.assign(headers, await getAuthHeaders()); } catch {}
       const res = await fetch("/api/schwab/credentials", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, appKey: appKey.trim(), appSecret: appSecret.trim() }),
+        headers,
+        body: JSON.stringify({ appKey: appKey.trim(), appSecret: appSecret.trim() }),
       });
       const data = await res.json();
       if (data.success) {
@@ -8161,10 +8171,12 @@ function SchwabSetupWizard({ user }) {
   const handleRemove = async () => {
     if (!confirm("Remove your Schwab credentials? You'll need to re-enter them to use the screener.")) return;
     try {
+      const headers = { "Content-Type": "application/json" };
+      try { const { getAuthHeaders } = await import("@/app/lib/auth-fetch"); Object.assign(headers, await getAuthHeaders()); } catch {}
       await fetch("/api/schwab/credentials", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
+        headers,
+        body: JSON.stringify({}),
       });
       setStatus({ hasCredentials: false, connected: false });
       setAppKey(""); setAppSecret("");

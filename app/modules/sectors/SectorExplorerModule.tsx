@@ -114,7 +114,9 @@ export default function SectorExplorerModule({ user }: { user?: any }) {
   const fetchDrillDown = useCallback(async (etf: string) => {
     setDrillLoading(true);
     try {
-      const res = await fetch(`/api/sectors?mode=drilldown&sector=${etf}`, { headers: userHeaders });
+      const headers = { ...userHeaders };
+      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
+      const res = await fetch(`/api/sectors?mode=drilldown&sector=${etf}`, { headers });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setHoldings(data.holdings || []);
