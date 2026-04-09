@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UNIVERSES } from '../../lib/ticker-universes';
+import { authFetch } from '@/app/lib/auth-fetch';
 
 // ─── TYPES ────────────────────────────────────────────────
 interface ScanResult {
@@ -151,15 +152,13 @@ export default function ScreenerModule({ user }: { user?: any }) {
 
     try {
       // Try server-side Schwab scan first
-      const res = await fetch('/api/scan', {
+      const res = await authFetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           universe,
           filters: { ...filters, cpShortDelta: filters.cspDeltaMin },
           customTickers: tickerList,
-          userId: user?.id,
-          userEmail: user?.email,
         }),
         signal: controller.signal,
       });

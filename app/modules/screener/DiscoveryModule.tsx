@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { UNIVERSE_SUMMARIES } from '../../lib/ticker-universes';
+import { authFetch } from '@/app/lib/auth-fetch';
 
 interface DiscoveryResult {
   ticker: string; price: number; change: number; vol: number;
@@ -124,7 +125,7 @@ export default function DiscoveryModule({ user }: { user?: any }) {
     const start = Date.now();
 
     try {
-      const res = await fetch('/api/scan', {
+      const res = await authFetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -143,8 +144,6 @@ export default function DiscoveryModule({ user }: { user?: any }) {
             minMktCap: 0,
             minOI: filters.minOI || 0,
           },
-          userId: user?.id,
-          userEmail: user?.email,
         }),
       });
       const data = await res.json();
