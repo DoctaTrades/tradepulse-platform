@@ -60,8 +60,10 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
       console.log('[SCHWAB-AUTH-DIAG] refresh-threw', JSON.stringify({
         endpoint, userId: userId || 'none',
         error: refreshErr?.message || String(refreshErr),
+        stack: refreshErr?.stack?.split('\n').slice(0, 5).join(' | ') || 'no-stack',
       }));
-      throw new Error('Schwab API 401: Token refresh failed. Please reconnect Schwab.');
+      // TEMP: surface the real error to the client for debugging
+      throw new Error(`DIAG refresh-threw: ${refreshErr?.message || String(refreshErr)}`);
     }
   }
 
