@@ -1,6 +1,5 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { polygonScan } from '../../lib/polygon-scan';
 import { UNIVERSES } from '../../lib/ticker-universes';
 
 // ─── TYPES ────────────────────────────────────────────────
@@ -221,48 +220,25 @@ export default function ScreenerModule({ user }: { user?: any }) {
       });
       const data = await res.json();
 
-      if (data.source === 'polygon_fallback') {
-        // Schwab not connected — run client-side Polygon scan
-        const tickers = data.tickers || [];
-        setLogs(['📡 Schwab not connected — running Polygon scan (slower, estimated data)...']);
-        
-        const scanResults: ScanResult[] = [];
-        
-        const { results: pgResults, scanned } = await polygonScan(tickers, data.filters, {
-          onLog: (msg) => setLogs(prev => [...prev, msg]),
-          onResult: (r) => {
-            scanResults.push(r);
-            if (scanResults.length % 3 === 0) {
-              setResults([...scanResults].sort((a, b) => (b.ror || 0) - (a.ror || 0)));
-            }
-          },
-          onProgress: (current, total) => {
-            setScanProgress({ current, total, ticker: tickers[current - 1] || '', found: scanResults.length });
-          },
-          shouldCancel: () => cancelRef.current,
-        });
-
-        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-        const sortedResults = scanResults.sort((a, b) => (b.ror || 0) - (a.ror || 0));
-        setResults(sortedResults);
-        setScanStats({ scanned, found: scanResults.length, source: 'polygon', elapsed: `${elapsed}s` });
-        setLogs(prev => [...prev, `✅ Scan complete · ${scanned} scanned · ${scanResults.length} results · ${elapsed}s`]);
-        if (scanResults.length > 0) setActiveTab('results');
-
-      } else {
-        // Schwab scan completed server-side
-        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-        setScanProgress({ current: tickerList.length, total: tickerList.length, ticker: 'Done', found: data.results?.length || 0 });
-        setResults(data.results || []);
-        setLogs(data.logs || []);
-        setScanStats({
-          scanned: data.scanned || 0,
-          found: data.results?.length || 0,
-          source: data.source || 'schwab',
-          elapsed: `${elapsed}s`,
-        });
-        if (data.results?.length > 0) setActiveTab('results');
+      // Handle Schwab-required error (401 from scan route)
+      if (!res.ok || data.source === 'none') {
+        setLogs(data.logs || [data.message || '✕ Schwab not connected. Connect your Schwab API in Settings to run scans.']);
+        setScanStats({ scanned: 0, found: 0, source: 'none', elapsed: '0s' });
+        return;
       }
+
+      // Schwab scan completed server-side
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      setScanProgress({ current: tickerList.length, total: tickerList.length, ticker: 'Done', found: data.results?.length || 0 });
+      setResults(data.results || []);
+      setLogs(data.logs || []);
+      setScanStats({
+        scanned: data.scanned || 0,
+        found: data.results?.length || 0,
+        source: data.source || 'schwab',
+        elapsed: `${elapsed}s`,
+      });
+      if (data.results?.length > 0) setActiveTab('results');
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') {
         setLogs(prev => [...prev, '⛔ Scan cancelled']);
