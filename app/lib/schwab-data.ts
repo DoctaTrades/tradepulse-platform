@@ -24,16 +24,14 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
 
   // On 401, force refresh and retry once
   if (res.status === 401) {
-    // ─── DIAGNOSTIC LOGGING ─── (temporary — remove after auth cleanup)
+    // Log the initial 401 for observability
     try {
       const body = await res.clone().text();
-      console.log('[SCHWAB-AUTH-DIAG] initial-401', JSON.stringify({
+      console.log('[SCHWAB-API] initial-401', JSON.stringify({
         endpoint, userId: userId || 'none',
         tokenPrefix: token ? token.slice(0, 12) + '…' : 'none',
         tokenLen: token?.length || 0,
-        responseStatus: res.status,
-        responseBody: body.slice(0, 500),
-        requestUrl: url.toString(),
+        responseBody: body.slice(0, 300),
       }));
     } catch {}
     try {
@@ -43,27 +41,23 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
         headers: { 'Authorization': `Bearer ${token}` },
         cache: 'no-store',
       });
-      // ─── DIAGNOSTIC LOGGING ─── (temporary)
+      // If the retry still fails, log it for diagnostic purposes
       if (!res.ok) {
         try {
           const body2 = await res.clone().text();
-          console.log('[SCHWAB-AUTH-DIAG] after-refresh-still-failing', JSON.stringify({
+          console.log('[SCHWAB-API] retry-after-refresh-failed', JSON.stringify({
             endpoint, userId: userId || 'none',
-            newTokenPrefix: token ? token.slice(0, 12) + '…' : 'none',
             status: res.status,
-            body: body2.slice(0, 500),
+            body: body2.slice(0, 300),
           }));
         } catch {}
       }
     } catch (refreshErr: any) {
-      // ─── DIAGNOSTIC LOGGING ─── (temporary)
-      console.log('[SCHWAB-AUTH-DIAG] refresh-threw', JSON.stringify({
+      console.log('[SCHWAB-API] refresh-threw', JSON.stringify({
         endpoint, userId: userId || 'none',
         error: refreshErr?.message || String(refreshErr),
-        stack: refreshErr?.stack?.split('\n').slice(0, 5).join(' | ') || 'no-stack',
       }));
-      // TEMP: surface the real error to the client for debugging
-      throw new Error(`DIAG refresh-threw: ${refreshErr?.message || String(refreshErr)}`);
+      throw new Error('Schwab API 401: Token refresh failed. Please reconnect Schwab.');
     }
   }
 

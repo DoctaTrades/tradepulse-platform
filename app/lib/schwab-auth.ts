@@ -20,11 +20,13 @@ interface UserCredentials {
 // In-memory cache keyed by userId (or '__legacy__' for env-var flow)
 const tokenCacheMap: Record<string, SchwabTokens | null> = {};
 const credentialsCacheMap: Record<string, UserCredentials | null> = {};
+const credentialsCacheTimestamps: Record<string, number> = {};
 const cacheLoadedMap: Record<string, boolean> = {};
 
 const SCHWAB_AUTH_URL = 'https://api.schwabapi.com/v1/oauth/authorize';
 const SCHWAB_TOKEN_URL = 'https://api.schwabapi.com/v1/oauth/token';
 const LEGACY_KEY = '__legacy__';
+const CREDENTIALS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — match token cache TTL
 
 // ─── Credential Resolution ───────────────────────────────
 
@@ -37,7 +39,15 @@ function getLegacyCredentials(): UserCredentials | null {
 }
 
 async function getUserCredentials(userId: string): Promise<UserCredentials | null> {
-  if (credentialsCacheMap[userId]) return credentialsCacheMap[userId];
+  // TTL check: if cache is fresh, return cached; otherwise reload from DB.
+  // Prevents stale credentials from persisting in memory after a user updates
+  // their app_key/app_secret via Settings.
+  const cached = credentialsCacheMap[userId];
+  const cachedAt = credentialsCacheTimestamps[userId] || 0;
+  const cacheAge = Date.now() - cachedAt;
+  if (cached && cacheAge < CREDENTIALS_CACHE_TTL_MS) {
+    return cached;
+  }
 
   try {
     const { data, error } = await supabase
@@ -46,7 +56,12 @@ async function getUserCredentials(userId: string): Promise<UserCredentials | nul
       .eq('user_id', userId)
       .single();
 
-    if (error || !data?.app_key) return null;
+    if (error || !data?.app_key) {
+      // Clear any stale cache entry if DB has nothing
+      delete credentialsCacheMap[userId];
+      delete credentialsCacheTimestamps[userId];
+      return null;
+    }
 
     const creds: UserCredentials = {
       appKey: data.app_key,
@@ -54,6 +69,7 @@ async function getUserCredentials(userId: string): Promise<UserCredentials | nul
       callbackUrl: data.callback_url || `${process.env.NEXT_PUBLIC_APP_URL}/api/schwab/callback`,
     };
     credentialsCacheMap[userId] = creds;
+    credentialsCacheTimestamps[userId] = Date.now();
     return creds;
   } catch {
     return null;
@@ -197,7 +213,12 @@ async function ensureCacheLoaded(userId?: string, forceReload = false): Promise<
 
 // ─── Public API ─────────────────────────────────────────
 
-export function getAuthorizationUrl(userId?: string): string {
+export async function getAuthorizationUrl(userId?: string): Promise<string> {
+  // Load per-user credentials from DB before reading from cache. Without this
+  // async load, a cold serverless start falls through to legacy env-var credentials,
+  // and the OAuth flow ends up using mismatched credentials between authorize and
+  // token-exchange steps — causing subtle token corruption.
+  if (userId) await getUserCredentials(userId);
   const creds = getCredentials(userId);
   return `${SCHWAB_AUTH_URL}?client_id=${creds.appKey}&redirect_uri=${encodeURIComponent(creds.callbackUrl)}`;
 }
@@ -279,10 +300,11 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
   });
 
   if (!res.ok) {
-    // ─── DIAGNOSTIC LOGGING ─── (temporary — remove after auth cleanup)
+    // Observability: log metadata when Schwab rejects a refresh. Prefixes and
+    // lengths help diagnose credential/token mismatches without leaking secrets.
     try {
       const errBody = await res.clone().text();
-      console.log('[SCHWAB-AUTH-DIAG] refresh-call-failed', JSON.stringify({
+      console.log('[SCHWAB-AUTH] refresh-rejected', JSON.stringify({
         userId: userId || 'none',
         status: res.status,
         body: errBody.slice(0, 500),
@@ -327,12 +349,43 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
         return retryTokens;
       }
     }
-    // Truly expired — clear and throw
-    await clearTokensInternal(userId);
-    // TEMP: include Schwab's response body in the error so we can diagnose
+    // Read Schwab's response body so we can decide if this is a permanent or transient failure
     let schwabErrBody = '';
     try { schwabErrBody = await res.clone().text(); } catch {}
-    throw new Error(`Token refresh failed: ${res.status} — Schwab said: ${schwabErrBody.slice(0, 300)}`);
+
+    // Log the failure for observability (server-side only)
+    console.log('[SCHWAB-AUTH-DIAG] refresh-call-failed', JSON.stringify({
+      userId: userId || 'none',
+      status: res.status,
+      body: schwabErrBody.slice(0, 300),
+    }));
+
+    // ─── PERMANENT-DEATH DETECTION (Fix 1) ──────────────────────────────────
+    // These Schwab error codes mean the refresh token or credentials are dead.
+    // Retrying them will never succeed, so we wipe the DB tokens to break out
+    // of refresh loops and allow the UI to surface a "please reconnect" state.
+    const bodyLower = schwabErrBody.toLowerCase();
+    const isPermanentlyDead =
+      res.status === 400 && (
+        bodyLower.includes('invalid_grant') ||
+        bodyLower.includes('invalid_client') ||
+        bodyLower.includes('unsupported_token_type') ||
+        bodyLower.includes('failed refresh token authentication')
+      );
+
+    if (isPermanentlyDead) {
+      // Wipe DB + cache. Next isAuthenticated() call returns false, UI can react.
+      console.log('[SCHWAB-AUTH] token permanently dead per Schwab — wiping DB tokens', JSON.stringify({
+        userId: userId || 'none', status: res.status,
+      }));
+      await clearTokensInternal(userId, true /* clearDB */);
+      throw new Error('Token refresh failed: credentials rejected by Schwab. Please reconnect.');
+    }
+
+    // Transient failure — clear in-memory cache only, leave DB alone so a retry
+    // on a future request can try again.
+    await clearTokensInternal(userId, false);
+    throw new Error(`Token refresh failed: ${res.status}`);
   }
 
   const data = await res.json();
@@ -413,12 +466,55 @@ export async function saveUserCredentials(userId: string, appKey: string, appSec
 
   if (error) throw new Error(`Failed to save credentials: ${error.message}`);
   credentialsCacheMap[userId] = { appKey, appSecret, callbackUrl };
+  credentialsCacheTimestamps[userId] = Date.now();
 }
 
 export async function deleteUserCredentials(userId: string): Promise<void> {
   await clearTokensInternal(userId);
   delete credentialsCacheMap[userId];
+  delete credentialsCacheTimestamps[userId];
   await supabase.from('user_schwab_credentials').delete().eq('user_id', userId);
+}
+
+/**
+ * Clear token fields (access_token, refresh_token, expiries) for a user BEFORE
+ * starting a fresh OAuth flow. Leaves app_key, app_secret, and callback_url intact.
+ *
+ * This makes the Reconnect flow idempotent and recovery-safe: every reconnect
+ * starts from a known clean state, so stale tokens from a previous failed OAuth
+ * attempt can't conflict with the tokens about to be written.
+ *
+ * Also clears the in-memory cache so the next request on this serverless instance
+ * will re-read from DB (which will be empty until OAuth completes).
+ */
+export async function clearTokensBeforeReconnect(userId: string): Promise<void> {
+  // Wipe DB tokens for this user
+  try {
+    await supabase
+      .from('user_schwab_credentials')
+      .update({
+        access_token: null,
+        refresh_token: null,
+        access_expires_at: null,
+        refresh_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId);
+  } catch (e) {
+    console.error('[SCHWAB-AUTH] clearTokensBeforeReconnect DB update failed:', e);
+    throw e;
+  }
+  // Clear in-memory caches for both per-user and legacy token slots.
+  // Legacy also gets cleared because exchangeCodeForTokens mirrors into pr_tokens
+  // and we don't want stale legacy data to mask a failed per-user write.
+  const key = getCacheKey(userId);
+  tokenCacheMap[key] = null;
+  cacheLoadedMap[key] = false;
+  delete cacheTimestamps[key];
+  const legacyKey = getCacheKey(undefined);
+  tokenCacheMap[legacyKey] = null;
+  cacheLoadedMap[legacyKey] = false;
+  delete cacheTimestamps[legacyKey];
 }
 
 export async function hasUserCredentials(userId: string): Promise<boolean> {
