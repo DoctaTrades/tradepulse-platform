@@ -90,61 +90,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
   const [dashData, setDashData] = useState<any>(null);
   const [dashLoading, setDashLoading] = useState(false);
 
-  // Per-user API key management
-  const [userProvider, setUserProvider] = useState<'schwab' | 'tradier' | 'polygon'>('polygon');
-  const [userKeys, setUserKeys] = useState<any>({});
-  const [userKeyStatus, setUserKeyStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    (async () => {
-      const headers: Record<string, string> = { 'x-user-id': user.id };
-      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
-      fetch('/api/user-keys', { headers })
-        .then(r => r.json())
-        .then(data => { if (data.apiKeys) setUserKeys(data.apiKeys); })
-        .catch(() => {});
-    })();
-  }, [user?.id]);
-
-  const saveUserKeys = async () => {
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' };
-      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
-      const res = await fetch('/api/user-keys', {
-        method: 'POST', headers,
-        body: JSON.stringify({ action: 'save', apiKeys: userKeys }),
-      });
-      const data = await res.json();
-      setUserKeyStatus(data.success ? { ok: true, msg: '✓ Keys saved' } : { ok: false, msg: data.error || 'Save failed' });
-      setTimeout(() => setUserKeyStatus(null), 3000);
-    } catch (e: any) {
-      setUserKeyStatus({ ok: false, msg: e.message });
-    }
-  };
-
-  const testUserKeys = async (provider: string) => {
-    setUserKeyStatus({ ok: false, msg: '⏳ Testing...' });
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-user-id': user?.id || '' };
-      try { const { getAuthHeaders } = await import('@/app/lib/auth-fetch'); Object.assign(headers, await getAuthHeaders()); } catch {}
-      const res = await fetch('/api/user-keys', {
-        method: 'POST', headers,
-        body: JSON.stringify({ action: 'test', provider, apiKeys: userKeys }),
-      });
-      const data = await res.json();
-      setUserKeyStatus(data.connected ? { ok: true, msg: `✓ ${provider} connected!` } : { ok: false, msg: data.error || 'Connection failed' });
-      setTimeout(() => setUserKeyStatus(null), 5000);
-    } catch (e: any) {
-      setUserKeyStatus({ ok: false, msg: e.message });
-    }
-  };
-
-  // Admin check
-  const ADMIN_IDS = ['a4f7c71e-95bc-43f9-bbfd-108f1feb6f48'];
-  const ADMIN_EMAILS = ['risethediver@gmail.com'];
-  const isAdmin = (user?.id && ADMIN_IDS.includes(user.id)) || (user?.email && ADMIN_EMAILS.includes(user.email?.toLowerCase()));
-
   // UNIVERSES now imported from shared lib/ticker-universes.ts — single source of truth
 
   // Filters
@@ -460,8 +405,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
           <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{results.length || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Results</div></div>
           <div className="text-right"><div className="font-display text-lg font-bold" style={{ color: 'var(--blue3)' }}>{scanStats.scanned || '—'}</div><div className="font-mono text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-dim)' }}>Scanned</div></div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border" style={{ borderColor: 'var(--border)', background: 'var(--navy3)' }}>
-            <div className={`w-2 h-2 rounded-full ${schwabStatus.connected ? 'bg-green-500 shadow-[0_0_8px_#10b981]' : userKeys.tradier?.accessToken ? 'bg-blue-500' : userKeys.polygon?.apiKey ? 'bg-yellow-500' : 'bg-gray-500'}`} />
-            <span className="font-mono text-[10px]" style={{ color: 'var(--text-mid)' }}>{schwabStatus.connected ? 'SCHWAB' : userKeys.schwab?.clientId ? 'SCHWAB (Personal)' : userKeys.tradier?.accessToken ? 'TRADIER' : userKeys.polygon?.apiKey ? 'POLYGON' : scanning ? 'SCANNING' : 'READY'}</span>
+            <div className={`w-2 h-2 rounded-full ${schwabStatus.connected ? 'bg-green-500 shadow-[0_0_8px_#10b981]' : 'bg-gray-500'}`} />
+            <span className="font-mono text-[10px]" style={{ color: 'var(--text-mid)' }}>{schwabStatus.connected ? 'SCHWAB' : scanning ? 'SCANNING' : 'NOT CONNECTED'}</span>
           </div>
         </div>
         {scanning && <div className="font-mono text-xs" style={{ color: 'var(--gold)' }}>⚡ {scanProgress.ticker} ({scanProgress.current}/{scanProgress.total})</div>}
@@ -637,9 +582,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>● LIVE</span>
                       <button onClick={() => {
-                        // Admin uses legacy auth (no userId) so tokens go to pr_tokens for all routes
-                        const authUrl = isAdmin ? '/api/schwab/auth' : `/api/schwab/auth?userId=${user?.id}`;
-                        window.location.href = authUrl;
+                        window.location.href = `/api/schwab/auth?userId=${user?.id}`;
                       }} className="font-mono text-[9px] px-2 py-1 rounded cursor-pointer" style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '1px solid rgba(234,179,8,0.2)' }}>
                         ↻ Reconnect
                       </button>
