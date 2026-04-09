@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { getQuotes, getOptionChain, getPriceHistory } from '@/app/lib/schwab-data';
 import { UNIVERSE_TICKERS as UNIVERSES } from '@/app/lib/ticker-universes';
+import { verifyAuth } from '@/app/lib/auth-helpers';
 
 // UNIVERSES imported from shared lib/ticker-universes.ts — single source of truth
 
@@ -696,19 +697,19 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
   return { results, logs, scanned, source: 'schwab' };
 }
 
-// ─── ADMIN USERS (can use platform Schwab credentials) ────
 // ─── MAIN SCAN ENDPOINT ──────────────────────────────────
 export async function POST(req: NextRequest) {
+  // Verify auth and derive userId from the JWT, not the request body.
+  // Rejects unauthenticated requests immediately.
+  const { userId } = await verifyAuth(req);
+  if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const body = await req.json();
   const {
     universe = 'core',
     customTickers,
     filters = {},
-    userId,
   } = body;
-
-  // Set active user for per-user credential routing
-  const _userId = userId || undefined;
 
   // Build ticker list
   let tickers = customTickers || UNIVERSES[universe] || UNIVERSES.core;
@@ -734,10 +735,10 @@ export async function POST(req: NextRequest) {
     cpShortDelta: filters.cpShortDelta ?? 0.30,
   };
 
-  const useSchwab = await isAuthenticated(_userId);
+  const useSchwab = await isAuthenticated(userId);
   
   if (useSchwab) {
-    const result = await scanWithSchwab(tickers, f, _userId);
+    const result = await scanWithSchwab(tickers, f, userId);
     return NextResponse.json(result);
   }
 
