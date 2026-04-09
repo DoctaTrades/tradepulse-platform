@@ -203,10 +203,10 @@ export default function ScreenerModule({ user }: { user?: any }) {
     setSpxData(null);
     try {
       const dteRange = spxDTE.split('-').map(Number);
-      const res = await fetch('/api/scan/spx', {
+      const res = await authFetch('/api/scan/spx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dteRange, wingWidth: Number(spxWingWidth), userId: user?.id }),
+        body: JSON.stringify({ dteRange, wingWidth: Number(spxWingWidth) }),
       });
       const data = await res.json();
       if (data.error) {
@@ -229,7 +229,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       const tickerList = universe === 'custom'
         ? customTickers.split(/[\s,]+/).map(t => t.trim().toUpperCase()).filter(Boolean)
         : UNIVERSES[universe]?.tickers || UNIVERSES.core.tickers;
-      const res = await fetch('/api/scan/equity', {
+      const res = await authFetch('/api/scan/equity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -239,7 +239,6 @@ export default function ScreenerModule({ user }: { user?: any }) {
           min5CR: equityFilter.min5CR,
           mode: equityFilter.showType === 'topdown' ? 'topdown' : 'universe',
           sectorFilter: equityFilter.sectorFilter !== 'all' ? equityFilter.sectorFilter : undefined,
-          userId: user?.id,
         }),
       });
       const data = await res.json();
