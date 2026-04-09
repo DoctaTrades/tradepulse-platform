@@ -279,6 +279,20 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
   });
 
   if (!res.ok) {
+    // ─── DIAGNOSTIC LOGGING ─── (temporary — remove after auth cleanup)
+    try {
+      const errBody = await res.clone().text();
+      console.log('[SCHWAB-AUTH-DIAG] refresh-call-failed', JSON.stringify({
+        userId: userId || 'none',
+        status: res.status,
+        body: errBody.slice(0, 500),
+        appKeyPrefix: creds.appKey.slice(0, 8) + '…',
+        appKeyLen: creds.appKey.length,
+        refreshTokenPrefix: cached.refresh_token.slice(0, 12) + '…',
+        refreshTokenLen: cached.refresh_token.length,
+        callbackUrl: creds.callbackUrl,
+      }));
+    } catch {}
     // Before clearing, try reloading from DB — a fresh token may have been saved by another instance
     cacheLoadedMap[key] = false;
     const freshTokens = await loadTokens(userId);

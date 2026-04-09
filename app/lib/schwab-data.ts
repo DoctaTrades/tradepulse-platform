@@ -24,6 +24,18 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
 
   // On 401, force refresh and retry once
   if (res.status === 401) {
+    // ─── DIAGNOSTIC LOGGING ─── (temporary — remove after auth cleanup)
+    try {
+      const body = await res.clone().text();
+      console.log('[SCHWAB-AUTH-DIAG] initial-401', JSON.stringify({
+        endpoint, userId: userId || 'none',
+        tokenPrefix: token ? token.slice(0, 12) + '…' : 'none',
+        tokenLen: token?.length || 0,
+        responseStatus: res.status,
+        responseBody: body.slice(0, 500),
+        requestUrl: url.toString(),
+      }));
+    } catch {}
     try {
       await refreshAccessToken(userId);
       token = await getValidAccessToken(userId);
@@ -31,7 +43,24 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
         headers: { 'Authorization': `Bearer ${token}` },
         cache: 'no-store',
       });
-    } catch {
+      // ─── DIAGNOSTIC LOGGING ─── (temporary)
+      if (!res.ok) {
+        try {
+          const body2 = await res.clone().text();
+          console.log('[SCHWAB-AUTH-DIAG] after-refresh-still-failing', JSON.stringify({
+            endpoint, userId: userId || 'none',
+            newTokenPrefix: token ? token.slice(0, 12) + '…' : 'none',
+            status: res.status,
+            body: body2.slice(0, 500),
+          }));
+        } catch {}
+      }
+    } catch (refreshErr: any) {
+      // ─── DIAGNOSTIC LOGGING ─── (temporary)
+      console.log('[SCHWAB-AUTH-DIAG] refresh-threw', JSON.stringify({
+        endpoint, userId: userId || 'none',
+        error: refreshErr?.message || String(refreshErr),
+      }));
       throw new Error('Schwab API 401: Token refresh failed. Please reconnect Schwab.');
     }
   }
