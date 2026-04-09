@@ -6,13 +6,29 @@ export const dynamic = 'force-dynamic';
 
 // This endpoint is called by Vercel Cron to keep ALL Schwab tokens alive.
 // It refreshes both the legacy/admin tokens and every individual user's tokens.
-// Runs every 6 hours so refresh tokens (~7 day lifetime) stay exercised.
+// Runs daily per vercel.json schedule. Schwab refresh tokens have ~7-day
+// lifetime, so daily exercise keeps them well within the safety margin.
+//
+// AUTH: Requires CRON_SECRET env var to be set in Vercel. Vercel's cron
+// runner automatically sends `Authorization: Bearer <CRON_SECRET>` when it
+// calls this endpoint, provided CRON_SECRET is defined in the project's
+// environment variables. If CRON_SECRET is not set, ALL requests are
+// rejected (fail-closed). Previous implementation was fail-open when
+// CRON_SECRET was absent, which left this endpoint publicly callable.
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+
+  if (!cronSecret) {
+    // Fail-closed: if CRON_SECRET is not configured, refuse all requests.
+    return NextResponse.json(
+      { error: 'Cron auth not configured. Set CRON_SECRET in Vercel env vars.' },
+      { status: 503 }
+    );
+  }
+
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
