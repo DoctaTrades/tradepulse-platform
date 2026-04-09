@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
+import { verifyAuth } from '@/app/lib/auth-helpers';
 
 let _equityUserId: string | undefined;
 
@@ -293,6 +294,10 @@ function scanTicker(ticker: string, dailyCandles: any[], min5CR: number): any {
 
 // ─── MAIN ENDPOINT ──────────────────────────────────────
 export async function POST(req: NextRequest) {
+  // Verify auth: derive userId from JWT, not from request body
+  const { userId } = await verifyAuth(req);
+  if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const body = await req.json();
   const {
     tickers = [],
@@ -301,11 +306,11 @@ export async function POST(req: NextRequest) {
     min5CR = 5,
     mode = 'universe',
     sectorFilter,
-    userId,
   } = body;
 
-  // Check auth: try user-specific first, then platform fallback
-  const userAuth = userId ? await isAuthenticated(userId) : false;
+  // Check Schwab connection: try user-specific first, then platform fallback
+  // (platform fallback scheduled for removal in a future session)
+  const userAuth = await isAuthenticated(userId);
   const platformAuth = await isAuthenticated();
 
   if (!userAuth && !platformAuth) {
