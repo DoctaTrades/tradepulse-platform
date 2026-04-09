@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSectorByTicker, SECTORS } from '@/app/lib/sector-holdings';
+import { verifyAuth } from '@/app/lib/auth-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,9 @@ function pickNum(...vals: any[]) { for (const v of vals) { if (v !== null && v !
 function round(n: number | null, decimals: number = 1) { if (n === null || n === undefined || isNaN(n)) return null; return Math.round(n * Math.pow(10, decimals)) / Math.pow(10, decimals); }
 
 export async function GET(req: NextRequest) {
+  const { userId } = await verifyAuth(req);
+  if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const ticker = req.nextUrl.searchParams.get('ticker')?.toUpperCase();
   if (!ticker) return NextResponse.json({ error: 'Missing ticker parameter' });
   if (!FMP_KEY && !FINNHUB_KEY) return NextResponse.json({ error: 'No data provider API keys configured' });
