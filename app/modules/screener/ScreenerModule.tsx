@@ -602,7 +602,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 </div>
               </div>
               <div className="mt-3 pt-3 font-mono text-[9px] leading-relaxed" style={{ color: 'var(--text-dim)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                The screener requires a Schwab API connection for real-time quotes, option chains, and Greeks. Each user connects their own Schwab developer API key — giving you a dedicated 120 API calls/minute with no shared rate limits. Set up your connection in <strong style={{ color: 'var(--text-mid)' }}>Settings → Schwab API</strong> tab with step-by-step instructions. You can also configure Tradier and Polygon API keys in Settings for additional data sources.
+                The screener requires a Schwab API connection for real-time quotes, option chains, and Greeks. Each user connects their own Schwab developer API key — giving you a dedicated 120 API calls/minute with no shared rate limits. Set up your connection in <strong style={{ color: 'var(--text-mid)' }}>Settings → Schwab API</strong> tab with step-by-step instructions.
               </div>
             </div>
 
@@ -1569,9 +1569,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
           <div className="font-mono text-sm tracking-wider" style={{ color: 'var(--gold)' }}>
             {scanProgress.ticker
               ? `Processing ${scanProgress.ticker} · ${scanProgress.current}/${scanProgress.total}`
-              : schwabStatus.connected
-                ? 'Schwab API · Fetching data...'
-                : 'Polygon API · Processing tickers...'}
+              : 'Schwab API · Fetching data...'}
           </div>
 
           {/* Progress bar */}
