@@ -329,7 +329,10 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
     }
     // Truly expired — clear and throw
     await clearTokensInternal(userId);
-    throw new Error(`Token refresh failed: ${res.status}`);
+    // TEMP: include Schwab's response body in the error so we can diagnose
+    let schwabErrBody = '';
+    try { schwabErrBody = await res.clone().text(); } catch {}
+    throw new Error(`Token refresh failed: ${res.status} — Schwab said: ${schwabErrBody.slice(0, 300)}`);
   }
 
   const data = await res.json();
