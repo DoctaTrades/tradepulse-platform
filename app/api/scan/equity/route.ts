@@ -4,8 +4,6 @@ import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
 import { verifyAuth } from '@/app/lib/auth-helpers';
 
-let _equityUserId: string | undefined;
-
 // Append today's candle from quote data if price history doesn't include it yet
 function appendTodayCandle(candles: any[], quote: any): any[] {
   if (!quote || !candles.length) return candles;
@@ -27,10 +25,6 @@ function appendTodayCandle(candles: any[], quote: any): any[] {
     }];
   }
   return candles;
-}
-
-async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  return _schwabFetchBase(endpoint, params, _equityUserId);
 }
 
 // ─── SECTOR → TICKER MAPPINGS (from shared sector-holdings) ────
@@ -317,8 +311,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
 
-  // Use user's credentials if they have them, otherwise platform
-  _equityUserId = userAuth ? userId : undefined;
+  // Request-scoped schwabFetch — captures effectiveUserId in closure
+  const effectiveUserId = userAuth ? userId : undefined;
+  const schwabFetch = (endpoint: string, params?: Record<string, string>) =>
+    _schwabFetchBase(endpoint, params, effectiveUserId);
 
   const logs: string[] = ['⚡ Starting multi-timeframe equity scan...'];
   let scanned = 0;
