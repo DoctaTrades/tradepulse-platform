@@ -5,11 +5,6 @@ import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 
 export const dynamic = 'force-dynamic';
 
-let _matrixUserId: string | undefined;
-async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  return _schwabFetchBase(endpoint, params, _matrixUserId);
-}
-
 // Aggregate daily candles into N-day candles
 function aggregateCandles(dailyCandles: any[], period: number): any[] {
   const result: any[] = [];
@@ -82,11 +77,14 @@ export async function GET(req: NextRequest) {
   const ticker = req.nextUrl.searchParams.get('ticker')?.toUpperCase();
   if (!ticker) return NextResponse.json({ error: 'Missing ticker parameter' });
   const { userId } = await verifyAuth(req);
-  _matrixUserId = userId;
 
   if (!await isAuthenticated(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
+
+  // Request-scoped schwabFetch — captures userId in closure
+  const schwabFetch = (endpoint: string, params?: Record<string, string>) =>
+    _schwabFetchBase(endpoint, params, userId || undefined);
 
   try {
     // Fetch 1 year of daily candles

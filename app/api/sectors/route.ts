@@ -8,11 +8,6 @@ export const dynamic = 'force-dynamic';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || '';
 
-let _sectUserId: string | undefined;
-async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  return _schwabFetchBase(endpoint, params, _sectUserId);
-}
-
 // ─── STRAT HELPERS ───
 function classifyStrat(candle: any, prev: any): string {
   const higherHigh = candle.high > prev.high;
@@ -110,11 +105,14 @@ export async function GET(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get('mode') || 'overview';
   const useFinnhub = req.nextUrl.searchParams.get('finnhub') === 'true';
   const { userId } = await verifyAuth(req);
-  _sectUserId = userId;
 
   if (!await isAuthenticated(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
+
+  // Request-scoped schwabFetch — captures userId in closure
+  const schwabFetch = (endpoint: string, params?: Record<string, string>) =>
+    _schwabFetchBase(endpoint, params, userId || undefined);
 
   try {
     // ═══ OVERVIEW MODE: all sector ETFs with performance ═══
