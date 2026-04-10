@@ -1,6 +1,7 @@
 // Schwab OAuth token management — Per-User + Legacy support
 // Per-user: credentials stored in Supabase `user_schwab_credentials`
-// Legacy fallback: env vars SCHWAB_APP_KEY / SCHWAB_APP_SECRET (for admin/owner)
+// Per-user Schwab credentials only. Legacy env-var fallback removed in
+// Session 5 along with the pr_tokens platform tokens table reads/writes.
 
 import { supabase } from './supabase';
 
@@ -29,14 +30,6 @@ const LEGACY_KEY = '__legacy__';
 const CREDENTIALS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — match token cache TTL
 
 // ─── Credential Resolution ───────────────────────────────
-
-function getLegacyCredentials(): UserCredentials | null {
-  const appKey = process.env.SCHWAB_APP_KEY;
-  const appSecret = process.env.SCHWAB_APP_SECRET;
-  if (!appKey || !appSecret) return null;
-  const callbackUrl = process.env.SCHWAB_CALLBACK_URL || `${process.env.NEXT_PUBLIC_APP_URL}/api/schwab/callback`;
-  return { appKey, appSecret, callbackUrl };
-}
 
 async function getUserCredentials(userId: string): Promise<UserCredentials | null> {
   // TTL check: if cache is fresh, return cached; otherwise reload from DB.
@@ -77,9 +70,11 @@ async function getUserCredentials(userId: string): Promise<UserCredentials | nul
 }
 
 function getCredentials(userId?: string): UserCredentials {
-  if (userId && credentialsCacheMap[userId]) return credentialsCacheMap[userId]!;
-  const legacy = getLegacyCredentials();
-  if (legacy) return legacy;
+  if (!userId) {
+    throw new Error('No Schwab credentials available. Please add your Schwab API keys in Settings.');
+  }
+  const cached = credentialsCacheMap[userId];
+  if (cached) return cached;
   throw new Error('No Schwab credentials available. Please add your Schwab API keys in Settings.');
 }
 
@@ -93,81 +88,46 @@ function getCacheKey(userId?: string): string {
 
 // ─── Supabase Token Persistence ──────────────────────────
 
-async function saveTokens(userId: string | undefined, tokens: SchwabTokens): Promise<void> {
+async function saveTokens(userId: string, tokens: SchwabTokens): Promise<void> {
   const key = getCacheKey(userId);
   tokenCacheMap[key] = tokens;
 
-  if (userId) {
-    try {
-      await supabase
-        .from('user_schwab_credentials')
-        .update({
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          access_expires_at: tokens.expires_at,
-          refresh_expires_at: Date.now() + (7 * 24 * 60 * 60 * 1000),
-          connected_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId);
-    } catch (e) {
-      console.error('Failed to save user tokens:', e);
-    }
-  } else {
-    try {
-      await supabase
-        .from('pr_tokens')
-        .upsert({
-          id: 'schwab_tokens',
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          access_expires_at: tokens.expires_at,
-          refresh_expires_at: Date.now() + (7 * 24 * 60 * 60 * 1000),
-          updated_at: new Date().toISOString(),
-        });
-    } catch (e) {
-      console.error('Failed to save legacy tokens:', e);
-    }
+  try {
+    await supabase
+      .from('user_schwab_credentials')
+      .update({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        access_expires_at: tokens.expires_at,
+        refresh_expires_at: Date.now() + (7 * 24 * 60 * 60 * 1000),
+        connected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId);
+  } catch (e) {
+    console.error('Failed to save user tokens:', e);
   }
 }
 
-async function loadTokens(userId?: string): Promise<SchwabTokens | null> {
-  if (userId) {
-    try {
-      const { data, error } = await supabase
-        .from('user_schwab_credentials')
-        .select('access_token, refresh_token, access_expires_at')
-        .eq('user_id', userId)
-        .single();
+async function loadTokens(userId: string): Promise<SchwabTokens | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_schwab_credentials')
+      .select('access_token, refresh_token, access_expires_at')
+      .eq('user_id', userId)
+      .single();
 
-      if (error || !data?.access_token) return null;
-      return {
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        expires_at: data.access_expires_at,
-        token_type: 'Bearer',
-      };
-    } catch { return null; }
-  } else {
-    try {
-      const { data, error } = await supabase
-        .from('pr_tokens')
-        .select('*')
-        .eq('id', 'schwab_tokens')
-        .single();
-
-      if (error || !data?.access_token) return null;
-      return {
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        expires_at: data.access_expires_at,
-        token_type: 'Bearer',
-      };
-    } catch { return null; }
-  }
+    if (error || !data?.access_token) return null;
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.access_expires_at,
+      token_type: 'Bearer',
+    };
+  } catch { return null; }
 }
 
-async function clearTokensInternal(userId?: string, clearDB = false): Promise<void> {
+async function clearTokensInternal(userId: string, clearDB = false): Promise<void> {
   const key = getCacheKey(userId);
   tokenCacheMap[key] = null;
   cacheLoadedMap[key] = false;
@@ -175,20 +135,12 @@ async function clearTokensInternal(userId?: string, clearDB = false): Promise<vo
   // Only wipe DB tokens when explicitly requested (e.g. user disconnects)
   // Don't wipe on refresh failures — the refresh token may still be valid for a retry
   if (clearDB) {
-    if (userId) {
-      try {
-        await supabase
-          .from('user_schwab_credentials')
-          .update({ access_token: null, refresh_token: null, access_expires_at: null, refresh_expires_at: null, updated_at: new Date().toISOString() })
-          .eq('user_id', userId);
-      } catch {}
-    } else {
-      try {
-        await supabase
-          .from('pr_tokens')
-          .upsert({ id: 'schwab_tokens', access_token: null, refresh_token: null, access_expires_at: null, refresh_expires_at: null, updated_at: new Date().toISOString() });
-      } catch {}
-    }
+    try {
+      await supabase
+        .from('user_schwab_credentials')
+        .update({ access_token: null, refresh_token: null, access_expires_at: null, refresh_expires_at: null, updated_at: new Date().toISOString() })
+        .eq('user_id', userId);
+    } catch {}
   }
 }
 
@@ -197,7 +149,7 @@ async function clearTokensInternal(userId?: string, clearDB = false): Promise<vo
 const cacheTimestamps: Record<string, number> = {};
 const CACHE_TTL_MS = 5 * 60 * 1000; // Reload from DB every 5 minutes
 
-async function ensureCacheLoaded(userId?: string, forceReload = false): Promise<void> {
+async function ensureCacheLoaded(userId: string, forceReload = false): Promise<void> {
   const key = getCacheKey(userId);
   const now = Date.now();
   const cacheAge = now - (cacheTimestamps[key] || 0);
@@ -205,7 +157,7 @@ async function ensureCacheLoaded(userId?: string, forceReload = false): Promise<
   // Skip reload if cache is fresh and not forced
   if (!forceReload && cacheLoadedMap[key] && cacheAge < CACHE_TTL_MS) return;
   
-  if (userId) await getUserCredentials(userId);
+  await getUserCredentials(userId);
   tokenCacheMap[key] = await loadTokens(userId);
   cacheLoadedMap[key] = true;
   cacheTimestamps[key] = now;
@@ -257,13 +209,6 @@ export async function exchangeCodeForTokens(code: string, userId?: string): Prom
   };
 
   await saveTokens(userId, tokens);
-  // Also save to legacy pr_tokens so dashboard/sectors routes (which don't have userId) can access tokens
-  if (userId) {
-    await saveTokens(undefined, tokens);
-    const legacyKey = getCacheKey(undefined);
-    tokenCacheMap[legacyKey] = tokens;
-    cacheLoadedMap[legacyKey] = true;
-  }
   const key = getCacheKey(userId);
   tokenCacheMap[key] = tokens;
   cacheLoadedMap[key] = true;
@@ -271,7 +216,7 @@ export async function exchangeCodeForTokens(code: string, userId?: string): Prom
   return tokens;
 }
 
-export async function refreshAccessToken(userId?: string): Promise<SchwabTokens> {
+export async function refreshAccessToken(userId: string): Promise<SchwabTokens> {
   await ensureCacheLoaded(userId);
   const key = getCacheKey(userId);
   let cached = tokenCacheMap[key];
@@ -284,7 +229,7 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
   }
   if (!cached?.refresh_token) throw new Error('No refresh token available');
 
-  if (userId) await getUserCredentials(userId);
+  await getUserCredentials(userId);
   const creds = getCredentials(userId);
 
   const res = await fetch(SCHWAB_TOKEN_URL, {
@@ -341,10 +286,6 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
           token_type: retryData.token_type,
         };
         await saveTokens(userId, retryTokens);
-        if (userId) {
-          await saveTokens(undefined, retryTokens);
-          tokenCacheMap[getCacheKey(undefined)] = retryTokens;
-        }
         tokenCacheMap[key] = retryTokens;
         return retryTokens;
       }
@@ -397,17 +338,12 @@ export async function refreshAccessToken(userId?: string): Promise<SchwabTokens>
   };
 
   await saveTokens(userId, tokens);
-  // Keep legacy pr_tokens in sync for dashboard/sectors routes
-  if (userId) {
-    await saveTokens(undefined, tokens);
-    const legacyKey = getCacheKey(undefined);
-    tokenCacheMap[legacyKey] = tokens;
-  }
   tokenCacheMap[key] = tokens;
   return tokens;
 }
 
 export async function getValidAccessToken(userId?: string): Promise<string> {
+  if (!userId) throw new Error('NOT_AUTHENTICATED');
   await ensureCacheLoaded(userId);
   const key = getCacheKey(userId);
   let cached = tokenCacheMap[key];
@@ -429,6 +365,7 @@ export async function getValidAccessToken(userId?: string): Promise<string> {
 }
 
 export async function isAuthenticated(userId?: string): Promise<boolean> {
+  if (!userId) return false;
   try {
     await getValidAccessToken(userId);
     return true;
@@ -438,10 +375,13 @@ export async function isAuthenticated(userId?: string): Promise<boolean> {
 }
 
 export async function getTokenStatus(userId?: string): Promise<{ connected: boolean; expiresAt: number | null; refreshExpiresEstimate: string; hasCredentials: boolean }> {
+  if (!userId) {
+    return { connected: false, expiresAt: null, refreshExpiresEstimate: 'N/A', hasCredentials: false };
+  }
   await ensureCacheLoaded(userId, true); // Always reload from DB for status checks
   const key = getCacheKey(userId);
   const cached = tokenCacheMap[key];
-  const hasUserCreds = userId ? !!(await getUserCredentials(userId)) : !!getLegacyCredentials();
+  const hasUserCreds = !!(await getUserCredentials(userId));
 
   if (!cached || !cached.access_token) {
     return { connected: false, expiresAt: null, refreshExpiresEstimate: 'N/A', hasCredentials: hasUserCreds };
@@ -504,23 +444,17 @@ export async function clearTokensBeforeReconnect(userId: string): Promise<void> 
     console.error('[SCHWAB-AUTH] clearTokensBeforeReconnect DB update failed:', e);
     throw e;
   }
-  // Clear in-memory caches for both per-user and legacy token slots.
-  // Legacy also gets cleared because exchangeCodeForTokens mirrors into pr_tokens
-  // and we don't want stale legacy data to mask a failed per-user write.
+  // Clear in-memory cache for this user
   const key = getCacheKey(userId);
   tokenCacheMap[key] = null;
   cacheLoadedMap[key] = false;
   delete cacheTimestamps[key];
-  const legacyKey = getCacheKey(undefined);
-  tokenCacheMap[legacyKey] = null;
-  cacheLoadedMap[legacyKey] = false;
-  delete cacheTimestamps[legacyKey];
 }
 
 export async function hasUserCredentials(userId: string): Promise<boolean> {
   return !!(await getUserCredentials(userId));
 }
 
-export async function clearTokens(userId?: string) {
+export async function clearTokens(userId: string) {
   await clearTokensInternal(userId);
 }

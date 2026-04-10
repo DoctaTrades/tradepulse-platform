@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { refreshAccessToken, getTokenStatus } from '@/app/lib/schwab-auth';
+import { refreshAccessToken } from '@/app/lib/schwab-auth';
 import { supabase } from '@/app/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// This endpoint is called by Vercel Cron to keep ALL Schwab tokens alive.
-// It refreshes both the legacy/admin tokens and every individual user's tokens.
+// This endpoint is called by Vercel Cron to keep per-user Schwab tokens alive.
+// It refreshes every individual user's tokens.
 // Runs daily per vercel.json schedule. Schwab refresh tokens have ~7-day
 // lifetime, so daily exercise keeps them well within the safety margin.
 //
@@ -13,8 +13,7 @@ export const dynamic = 'force-dynamic';
 // runner automatically sends `Authorization: Bearer <CRON_SECRET>` when it
 // calls this endpoint, provided CRON_SECRET is defined in the project's
 // environment variables. If CRON_SECRET is not set, ALL requests are
-// rejected (fail-closed). Previous implementation was fail-open when
-// CRON_SECRET was absent, which left this endpoint publicly callable.
+// rejected (fail-closed).
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -34,20 +33,7 @@ export async function GET(req: NextRequest) {
 
   const results: { id: string; status: string; error?: string }[] = [];
 
-  // 1. Refresh legacy/admin tokens (pr_tokens)
-  try {
-    const legacyStatus = await getTokenStatus();
-    if (legacyStatus.connected) {
-      await refreshAccessToken();
-      results.push({ id: 'legacy', status: 'refreshed' });
-    } else {
-      results.push({ id: 'legacy', status: 'skipped — no tokens' });
-    }
-  } catch (e: any) {
-    results.push({ id: 'legacy', status: 'failed', error: e.message });
-  }
-
-  // 2. Refresh all per-user tokens
+  // Refresh all per-user tokens
   try {
     const { data: users, error } = await supabase
       .from('user_schwab_credentials')

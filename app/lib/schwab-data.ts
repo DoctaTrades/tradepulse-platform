@@ -1,7 +1,6 @@
-// Market data layer — Per-user Schwab
+// Market data layer — Per-user Schwab only
 // ALL functions return data in SCHWAB'S EXACT format
-// Priority: User's Schwab → Platform Schwab (env var fallback)
-// Every function takes optional userId — no module-level mutable state
+// Each call requires a userId — no platform/legacy fallback
 
 import { getValidAccessToken, isAuthenticated, hasUserCredentials, refreshAccessToken } from './schwab-auth';
 
@@ -69,21 +68,12 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
 // ─── PROVIDER DETECTION ──────────────────────────────────
 
 async function detectProvider(userId?: string): Promise<{ type: 'schwab' | null; schwabUserId?: string }> {
-  if (userId) {
-    const userHasSchwab = await hasUserCredentials(userId);
-    if (userHasSchwab) {
-      try {
-        const userAuth = await isAuthenticated(userId);
-        if (userAuth) return { type: 'schwab', schwabUserId: userId };
-      } catch {}
-    }
-  }
-  // Legacy platform fallback (pr_tokens) — scheduled for removal in a future
-  // cleanup session, kept for now to avoid coupling Tradier removal with
-  // legacy-token removal.
+  if (!userId) return { type: null };
+  const userHasSchwab = await hasUserCredentials(userId);
+  if (!userHasSchwab) return { type: null };
   try {
-    const platformAuth = await isAuthenticated();
-    if (platformAuth) return { type: 'schwab', schwabUserId: undefined };
+    const userAuth = await isAuthenticated(userId);
+    if (userAuth) return { type: 'schwab', schwabUserId: userId };
   } catch {}
   return { type: null };
 }
