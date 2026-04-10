@@ -5,10 +5,6 @@ import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 
 export const dynamic = 'force-dynamic';
 
-let _dashUserId: string | undefined;
-async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  return _schwabFetchBase(endpoint, params, _dashUserId);
-} 
 function classifyStrat(candle: any, prev: any): string {
   const higherHigh = candle.high > prev.high;
   const lowerLow = candle.low < prev.low;
@@ -82,11 +78,16 @@ const SECTORS = [
 
 export async function GET(req: NextRequest) {
   const { userId } = await verifyAuth(req);
-  _dashUserId = userId;
 
   if (!await isAuthenticated(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
+
+  // Request-scoped schwabFetch — captures userId in closure, eliminating
+  // the module-level mutable state bug where concurrent requests could
+  // leak credentials between users.
+  const schwabFetch = (endpoint: string, params?: Record<string, string>) =>
+    _schwabFetchBase(endpoint, params, userId || undefined);
 
   try {
     const allSymbols = [...INDICES, ...SECTORS].map(s => s.symbol);
