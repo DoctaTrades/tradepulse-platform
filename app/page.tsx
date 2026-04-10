@@ -343,7 +343,17 @@ export default function TradePulsePlatform() {
                   <div style={{ fontSize:11, color:"#a3870d", marginTop:2 }}>Market data, screener, and live quotes require an active Schwab connection.</div>
                 </div>
               </div>
-              <button onClick={() => { window.location.href = `/api/schwab/auth${user?.id ? `?userId=${user.id}` : ''}`; }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
+              <button onClick={async () => {
+                try {
+                  const { authFetch } = await import('./lib/auth-fetch');
+                  const res = await authFetch('/api/schwab/auth', { method: 'POST' });
+                  const data = await res.json();
+                  if (data.authUrl) window.location.href = data.authUrl;
+                  else alert(data.error || 'Failed to start Schwab auth');
+                } catch (e: any) {
+                  alert(`Failed to start Schwab auth: ${e?.message || e}`);
+                }
+              }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
                 🔐 Reconnect Schwab
               </button>
             </div>
