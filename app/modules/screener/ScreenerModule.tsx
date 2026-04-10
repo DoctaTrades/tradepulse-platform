@@ -579,19 +579,35 @@ export default function ScreenerModule({ user }: { user?: any }) {
                   {schwabStatus.connected ? (
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>● LIVE</span>
-                      <button onClick={() => {
-                        window.location.href = `/api/schwab/auth?userId=${user?.id}`;
+                      <button onClick={async () => {
+                        try {
+                          const res = await authFetch('/api/schwab/auth', { method: 'POST' });
+                          const data = await res.json();
+                          if (data.authUrl) window.location.href = data.authUrl;
+                          else alert(data.error || 'Failed to start Schwab auth');
+                        } catch (e: any) {
+                          alert(`Failed to start Schwab auth: ${e?.message || e}`);
+                        }
                       }} className="font-mono text-[9px] px-2 py-1 rounded cursor-pointer" style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '1px solid rgba(234,179,8,0.2)' }}>
                         ↻ Reconnect
                       </button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3">
-                      <a href={`/api/schwab/auth${user?.id ? `?userId=${user.id}` : ''}`}
-                        className="font-mono text-[10px] px-3 py-1.5 rounded-md no-underline"
+                      <button onClick={async () => {
+                        try {
+                          const res = await authFetch('/api/schwab/auth', { method: 'POST' });
+                          const data = await res.json();
+                          if (data.authUrl) window.location.href = data.authUrl;
+                          else alert(data.error || 'Failed to start Schwab auth');
+                        } catch (e: any) {
+                          alert(`Failed to start Schwab auth: ${e?.message || e}`);
+                        }
+                      }}
+                        className="font-mono text-[10px] px-3 py-1.5 rounded-md cursor-pointer border-0"
                         style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 600 }}>
                         🔐 Connect Schwab
-                      </a>
+                      </button>
                       <span className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
                         or set up in <strong style={{ color: 'var(--blue3)' }}>Settings → Schwab API</strong>
                       </span>
