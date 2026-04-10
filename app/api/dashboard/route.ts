@@ -98,48 +98,54 @@ export async function GET(req: NextRequest) {
       fields: 'quote',
     });
 
-    // Fetch price history for each (for Strat classification)
-    const historyMap: Record<string, any[]> = {};
-    for (const sym of allSymbols) {
-      try {
-        const hist = await schwabFetch('/pricehistory', {
-          symbol: sym,
-          periodType: 'year',
-          period: '1',
-          frequencyType: 'daily',
-          frequency: '1',
-        });
-        let candles = hist.candles || [];
+    // Fetch price history for all symbols in parallel (was sequential — ~15 Schwab calls × 300ms)
+    const historyResults = await Promise.all(
+      allSymbols.map(async (sym) => {
+        try {
+          const hist = await schwabFetch('/pricehistory', {
+            symbol: sym,
+            periodType: 'year',
+            period: '1',
+            frequencyType: 'daily',
+            frequency: '1',
+          });
+          let candles = hist.candles || [];
 
-        // Append today's candle from quote data if not already in history
-        // Schwab daily history often doesn't include the current/most recent session until overnight
-        const q = quoteData[sym]?.quote;
-        if (q && (q.openPrice || q.highPrice)) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const todayMs = today.getTime();
-          const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
-          const lastCandleDate = lastCandle ? new Date(lastCandle.datetime) : null;
-          if (lastCandleDate) lastCandleDate.setHours(0, 0, 0, 0);
-          const lastCandleMs = lastCandleDate ? lastCandleDate.getTime() : 0;
+          // Append today's candle from quote data if not already in history
+          // Schwab daily history often doesn't include the current/most recent session until overnight
+          const q = quoteData[sym]?.quote;
+          if (q && (q.openPrice || q.highPrice)) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayMs = today.getTime();
+            const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+            const lastCandleDate = lastCandle ? new Date(lastCandle.datetime) : null;
+            if (lastCandleDate) lastCandleDate.setHours(0, 0, 0, 0);
+            const lastCandleMs = lastCandleDate ? lastCandleDate.getTime() : 0;
 
-          // If the last candle is older than today, append today's data from the quote
-          if (lastCandleMs < todayMs && q.openPrice && q.highPrice && q.lowPrice && (q.lastPrice || q.closePrice)) {
-            candles.push({
-              datetime: todayMs,
-              open: q.openPrice,
-              high: q.highPrice,
-              low: q.lowPrice,
-              close: q.lastPrice || q.closePrice,
-              volume: q.totalVolume || 0,
-            });
+            // If the last candle is older than today, append today's data from the quote
+            if (lastCandleMs < todayMs && q.openPrice && q.highPrice && q.lowPrice && (q.lastPrice || q.closePrice)) {
+              candles.push({
+                datetime: todayMs,
+                open: q.openPrice,
+                high: q.highPrice,
+                low: q.lowPrice,
+                close: q.lastPrice || q.closePrice,
+                volume: q.totalVolume || 0,
+              });
+            }
           }
-        }
 
-        historyMap[sym] = candles;
-      } catch {
-        historyMap[sym] = [];
-      }
+          return { sym, candles };
+        } catch {
+          return { sym, candles: [] as any[] };
+        }
+      })
+    );
+
+    const historyMap: Record<string, any[]> = {};
+    for (const { sym, candles } of historyResults) {
+      historyMap[sym] = candles;
     }
 
     // Build index data

@@ -120,84 +120,87 @@ export async function GET(req: NextRequest) {
     else if (vixPrice < 30) { vixRegime = 'fear'; vixContext = 'Fear in the market — fat premium, but widen strikes and shorten DTE'; }
     else { vixRegime = 'panic'; vixContext = 'Panic selling — extreme premium but high risk, go small and wide'; }
 
-    // 3. Market indices — fetch price history for change fallback
-    const indices = [];
-    for (const sym of ['SPY', 'QQQ', 'IWM', 'DIA']) {
-      const q = quotes[sym]?.quote;
-      const price = q?.lastPrice || q?.closePrice || 0;
-      let change = q?.netPercentChangeInDouble || 0;
+    // 3. Market indices — fetch price history for change fallback (parallel)
+    const indices = await Promise.all(
+      ['SPY', 'QQQ', 'IWM', 'DIA'].map(async (sym) => {
+        const q = quotes[sym]?.quote;
+        const price = q?.lastPrice || q?.closePrice || 0;
+        let change = q?.netPercentChangeInDouble || 0;
 
-      // Fallback: calculate from price history if quote change is 0
-      if (!change && price > 0) {
+        // Fallback: calculate from price history if quote change is 0
+        if (!change && price > 0) {
+          try {
+            const hist = await getPriceHistory(sym, {
+              periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1,
+            }, userId);
+            const candles = hist.candles || [];
+            if (candles.length >= 2) {
+              // Use second-to-last candle as previous close (last may be today's partial)
+              const prevClose = candles[candles.length - 1]?.close || 0;
+              if (prevClose > 0) {
+                change = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+              }
+            }
+          } catch {}
+        }
+
+        return {
+          symbol: sym,
+          price,
+          change,
+          volume: q?.totalVolume || 0,
+          high52: q?.['52WkHigh'] || 0,
+          low52: q?.['52WkLow'] || 0,
+        };
+      })
+    );
+
+    // 4. Sector performance with momentum (parallel)
+    const sectorDataRaw = await Promise.all(
+      SECTOR_ETFS.map(async (sector) => {
+        const q = quotes[sector.symbol]?.quote;
+        if (!q) return null;
+
+        const price = q.lastPrice || q.closePrice || 0;
+        let change1d = q.netPercentChangeInDouble || 0;
+
+        // Get price history for momentum calculations
+        let change1w = 0, change1m = 0, change3m = 0, rsi = 50;
         try {
-          const hist = await getPriceHistory(sym, {
-            periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1,
+          const hist = await getPriceHistory(sector.symbol, {
+            periodType: 'month', period: 3, frequencyType: 'daily', frequency: 1,
           }, userId);
           const candles = hist.candles || [];
-          if (candles.length >= 2) {
-            // Use second-to-last candle as previous close (last may be today's partial)
-            const prevClose = candles[candles.length - 1]?.close || 0;
-            if (prevClose > 0) {
-              change = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+          if (candles.length > 5) {
+            const closes = candles.map((c: any) => c.close);
+
+            // Fallback: calculate 1d change from candle data if quote doesn't have it
+            if (!change1d && price > 0 && closes.length >= 1) {
+              const prevClose = closes[closes.length - 1] || 0;
+              if (prevClose > 0) change1d = pctChange(price, prevClose);
             }
+
+            change1w = pctChange(price, closes[closes.length - 6] || price);
+            if (closes.length > 22) change1m = pctChange(price, closes[closes.length - 23] || price);
+            if (closes.length > 63) change3m = pctChange(price, closes[closes.length - 64] || price);
+            rsi = calcRSI(closes) || 50;
           }
         } catch {}
-      }
 
-      indices.push({
-        symbol: sym,
-        price,
-        change,
-        volume: q?.totalVolume || 0,
-        high52: q?.['52WkHigh'] || 0,
-        low52: q?.['52WkLow'] || 0,
-      });
-    }
+        return {
+          symbol: sector.symbol,
+          name: sector.name,
+          price,
+          change1d,
+          change1w,
+          change1m,
+          change3m,
+          rsi,
+        };
+      })
+    );
+    const sectorData = sectorDataRaw.filter((s): s is NonNullable<typeof s> => s !== null);
 
-    // 4. Sector performance with momentum
-    const sectorData = [];
-    for (const sector of SECTOR_ETFS) {
-      const q = quotes[sector.symbol]?.quote;
-      if (!q) continue;
-      
-      const price = q.lastPrice || q.closePrice || 0;
-      let change1d = q.netPercentChangeInDouble || 0;
-      
-      // Get price history for momentum calculations
-      let change1w = 0, change1m = 0, change3m = 0, rsi = 50;
-      try {
-        const hist = await getPriceHistory(sector.symbol, {
-          periodType: 'month', period: 3, frequencyType: 'daily', frequency: 1,
-        }, userId);
-        const candles = hist.candles || [];
-        if (candles.length > 5) {
-          const closes = candles.map((c: any) => c.close);
-
-          // Fallback: calculate 1d change from candle data if quote doesn't have it
-          if (!change1d && price > 0 && closes.length >= 1) {
-            const prevClose = closes[closes.length - 1] || 0;
-            if (prevClose > 0) change1d = pctChange(price, prevClose);
-          }
-
-          change1w = pctChange(price, closes[closes.length - 6] || price);
-          if (closes.length > 22) change1m = pctChange(price, closes[closes.length - 23] || price);
-          if (closes.length > 63) change3m = pctChange(price, closes[closes.length - 64] || price);
-          rsi = calcRSI(closes) || 50;
-        }
-      } catch {}
-
-      sectorData.push({
-        symbol: sector.symbol,
-        name: sector.name,
-        price,
-        change1d,
-        change1w,
-        change1m,
-        change3m,
-        rsi,
-      });
-    }
-    
     // Sort by 1-week momentum
     sectorData.sort((a, b) => b.change1w - a.change1w);
 
@@ -207,28 +210,30 @@ export async function GET(req: NextRequest) {
     let rspChange = rspQuote?.netPercentChangeInDouble || 0;
     let spyChange = spyQuote?.netPercentChangeInDouble || 0;
 
-    // Fallback: calculate from price history if quote returns 0
-    if (!rspChange && rspQuote) {
-      try {
-        const hist = await getPriceHistory('RSP', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 }, userId);
-        const candles = hist.candles || [];
-        const price = rspQuote.lastPrice || rspQuote.closePrice || 0;
-        if (candles.length >= 1 && price > 0) {
-          const prevClose = candles[candles.length - 1]?.close || 0;
-          if (prevClose > 0) rspChange = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
-        }
-      } catch {}
+    // Fallback: calculate from price history if quote returns 0 (parallel)
+    const [rspHistFallback, spyHistFallback] = await Promise.all([
+      (!rspChange && rspQuote)
+        ? getPriceHistory('RSP', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 }, userId).catch(() => null)
+        : Promise.resolve(null),
+      (!spyChange && spyQuote)
+        ? getPriceHistory('SPY', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 }, userId).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    if (rspHistFallback && rspQuote) {
+      const candles = rspHistFallback.candles || [];
+      const price = rspQuote.lastPrice || rspQuote.closePrice || 0;
+      if (candles.length >= 1 && price > 0) {
+        const prevClose = candles[candles.length - 1]?.close || 0;
+        if (prevClose > 0) rspChange = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+      }
     }
-    if (!spyChange && spyQuote) {
-      try {
-        const hist = await getPriceHistory('SPY', { periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 }, userId);
-        const candles = hist.candles || [];
-        const price = spyQuote.lastPrice || spyQuote.closePrice || 0;
-        if (candles.length >= 1 && price > 0) {
-          const prevClose = candles[candles.length - 1]?.close || 0;
-          if (prevClose > 0) spyChange = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
-        }
-      } catch {}
+    if (spyHistFallback && spyQuote) {
+      const candles = spyHistFallback.candles || [];
+      const price = spyQuote.lastPrice || spyQuote.closePrice || 0;
+      if (candles.length >= 1 && price > 0) {
+        const prevClose = candles[candles.length - 1]?.close || 0;
+        if (prevClose > 0) spyChange = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+      }
     }
 
     const breadthDivergence = Math.round((rspChange - spyChange) * 100) / 100;
