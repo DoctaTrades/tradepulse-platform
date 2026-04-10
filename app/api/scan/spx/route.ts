@@ -3,12 +3,6 @@ import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { verifyAuth } from '@/app/lib/auth-helpers';
 
-let _spxUserId: string | undefined;
-
-async function schwabFetch(endpoint: string, params?: Record<string, string>) {
-  return _schwabFetchBase(endpoint, params, _spxUserId);
-}
-
 // ─── TYPES ────────────────────────────────────────────────
 
 interface StrikeData {
@@ -73,8 +67,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Schwab not connected. SPX Radar requires real-time data.' }, { status: 401 });
   }
 
-  // Use user's credentials if they have them, otherwise platform
-  _spxUserId = userAuth ? userId : undefined;
+  // Request-scoped schwabFetch — captures effectiveUserId in closure
+  const effectiveUserId = userAuth ? userId : undefined;
+  const schwabFetch = (endpoint: string, params?: Record<string, string>) =>
+    _schwabFetchBase(endpoint, params, effectiveUserId);
 
   try {
     // ─── Get SPX price ───
