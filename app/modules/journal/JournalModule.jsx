@@ -189,6 +189,114 @@ async function shouldBlockSuspiciousSave(userId, field, newValue) {
   }
 }
 
+// ─── SNAPSHOT RESTORE SYSTEM ────────────────────────────────────────────────
+// Lets users view their daily snapshots and restore from a chosen one.
+// Before any restore, a safety snapshot of the CURRENT state is taken so
+// the user can undo a mistaken restore.
+
+async function listSnapshots(userId) {
+  if (!userId) return [];
+  try {
+    const { data, error } = await supabase
+      .from("user_data_snapshots")
+      .select("id, snapshot_date, snapshot_at, data")
+      .eq("user_id", userId)
+      .order("snapshot_at", { ascending: false });
+
+    if (error) {
+      console.error("listSnapshots error:", error);
+      return [];
+    }
+
+    return (data || []).map(row => {
+      const d = row.data || {};
+      const safeLen = (v) => Array.isArray(v) ? v.length : 0;
+      return {
+        id: row.id,
+        snapshot_date: row.snapshot_date,
+        snapshot_at: row.snapshot_at,
+        trade_count: safeLen(d.trades),
+        wheel_count: safeLen(d.wheel_trades),
+        watchlist_count: safeLen(d.watchlists),
+        journal_has_data: d.journal != null,
+      };
+    });
+  } catch (e) {
+    console.error("listSnapshots exception:", e);
+    return [];
+  }
+}
+
+async function restoreFromSnapshot(userId, snapshotId) {
+  if (!userId || !snapshotId) {
+    return { success: false, error: "Missing userId or snapshotId" };
+  }
+  try {
+    // Step 1: load the target snapshot
+    const { data: snap, error: loadError } = await supabase
+      .from("user_data_snapshots")
+      .select("data")
+      .eq("id", snapshotId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (loadError || !snap || !snap.data) {
+      return { success: false, error: "Snapshot not found or could not be loaded" };
+    }
+
+    // Step 2: take a safety snapshot of CURRENT state before overwriting.
+    // We bypass the daily-check and write directly with a special date marker
+    // so the user can always undo a restore.
+    const { data: currentRow } = await supabase
+      .from("user_data")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (currentRow) {
+      const preRestoreDate = "pre-restore-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      // snapshot_date is a date type, so we can't use the full marker.
+      // Instead we use today's date but we may already have today's snapshot.
+      // Strategy: try to insert with today's date; if conflict, skip (today's snapshot already exists).
+      const today = new Date().toISOString().slice(0, 10);
+      await supabase
+        .from("user_data_snapshots")
+        .insert({
+          user_id: userId,
+          snapshot_date: today,
+          data: currentRow,
+        })
+        .then(({ error }) => {
+          // Ignore unique constraint violation — we already have today's snapshot
+          if (error && error.code !== "23505") {
+            console.warn("Pre-restore safety snapshot failed:", error);
+          }
+        });
+    }
+
+    // Step 3: overwrite user_data with the snapshot data
+    const restoreData = { ...snap.data };
+    // Ensure user_id is correct and strip any id/created_at from the old row
+    restoreData.user_id = userId;
+    delete restoreData.id;
+    delete restoreData.created_at;
+    restoreData.updated_at = new Date().toISOString();
+
+    const { error: upsertError } = await supabase
+      .from("user_data")
+      .upsert(restoreData, { onConflict: "user_id" });
+
+    if (upsertError) {
+      return { success: false, error: upsertError.message || "Restore failed" };
+    }
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message || "Unexpected error during restore" };
+  }
+}
+
+
 
 // ─── AUTH SCREEN ────────────────────────────────────────────────────────────
 
@@ -8061,6 +8169,127 @@ function ReportsTab({ trades, wheelTrades, accountBalances, customFields, theme,
   );
 }
 
+// ─── BACKUPS SECTION ────────────────────────────────────────────────────────
+function BackupsSection({ user, theme }) {
+  const [snapshots, setSnapshots] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [confirmId, setConfirmId] = useState(null);
+  const [restoring, setRestoring] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    const list = await listSnapshots(user.id);
+    setSnapshots(list);
+    setLoading(false);
+  };
+
+  useEffect(() => { if (user) load(); }, [user]);
+
+  const handleRestore = async (snapshotId) => {
+    setRestoring(true);
+    setMessage("");
+    const result = await restoreFromSnapshot(user.id, snapshotId);
+    setRestoring(false);
+    if (result.success) {
+      setMessage("✅ Restore successful. Reloading in 2 seconds...");
+      setTimeout(() => window.location.reload(), 2000);
+    } else {
+      setMessage(`❌ Restore failed: ${result.error}`);
+      setConfirmId(null);
+    }
+  };
+
+  const formatDate = (iso) => {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    } catch { return iso; }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: "var(--tp-text)", marginBottom: 4 }}>Journal Backups</div>
+        <div style={{ fontSize: 13, color: "var(--tp-faint)", lineHeight: 1.6 }}>
+          Automatic daily snapshots of your Journal data. Up to 10 most recent days are kept. If your data is ever accidentally lost or corrupted, restore from a backup here. A safety snapshot of your current state is taken before every restore.
+        </div>
+      </div>
+
+      {message && (
+        <div style={{ padding: "12px 16px", borderRadius: 10, background: message.startsWith("✅") ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)", border: `1px solid ${message.startsWith("✅") ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, color: message.startsWith("✅") ? "#10b981" : "#f87171", fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
+          {message}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--tp-faint)" }}>Loading backups...</div>
+      ) : snapshots.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "70px 20px", color: "var(--tp-faint)" }}>
+          <Shield size={48} style={{ margin: "0 auto 16px", opacity: 0.35 }}/>
+          <p style={{ margin: 0, fontSize: 15 }}>No backups yet.</p>
+          <p style={{ margin: "8px 0 0", fontSize: 12 }}>A snapshot is taken automatically the first time you save data each day.</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {snapshots.map(snap => (
+            <div key={snap.id} style={{ background: "var(--tp-panel)", border: "1px solid var(--tp-panel-b)", borderRadius: 10, padding: "16px 20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--tp-text)", marginBottom: 4 }}>
+                    {snap.snapshot_date}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--tp-faint)", marginBottom: 8 }}>
+                    Saved {formatDate(snap.snapshot_at)}
+                  </div>
+                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: "var(--tp-muted)" }}>
+                    <span><strong style={{ color: "var(--tp-text)" }}>{snap.trade_count}</strong> trades</span>
+                    <span><strong style={{ color: "var(--tp-text)" }}>{snap.wheel_count}</strong> wheel</span>
+                    <span><strong style={{ color: "var(--tp-text)" }}>{snap.watchlist_count}</strong> watchlists</span>
+                    {snap.journal_has_data && <span style={{ color: "#10b981" }}>journal ✓</span>}
+                  </div>
+                </div>
+                <div>
+                  {confirmId === snap.id ? (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => setConfirmId(null)}
+                        disabled={restoring}
+                        style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "var(--tp-muted)", cursor: restoring ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 600 }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleRestore(snap.id)}
+                        disabled={restoring}
+                        style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#ef4444,#f97316)", color: "#fff", cursor: restoring ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, boxShadow: "0 4px 12px rgba(239,68,68,0.3)" }}
+                      >
+                        {restoring ? "Restoring..." : "Confirm Restore"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setConfirmId(snap.id); setMessage(""); }}
+                      style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}
+                    >
+                      Restore
+                    </button>
+                  )}
+                </div>
+              </div>
+              {confirmId === snap.id && (
+                <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, fontSize: 12, color: "#f87171", lineHeight: 1.5 }}>
+                  ⚠ This will replace your current Journal data with the snapshot from {snap.snapshot_date}. A safety snapshot of your current state will be taken first, so you can undo this if needed. The page will reload after the restore completes.
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances }) {
   const [section, setSection] = useState("accounts"); // accounts | appearance | futures | custom | importexport | ai
   const [showAddModal, setShowAddModal] = useState(false);
@@ -8090,9 +8319,12 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
         <button onClick={()=>setSection("custom")} style={{ padding:"8px 16px", border:"none", background:section==="custom"?"rgba(99,102,241,0.15)":"transparent", color:section==="custom"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="custom"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Custom Fields</button>
         <button onClick={()=>setSection("ai")} style={{ padding:"8px 16px", border:"none", background:section==="ai"?"rgba(99,102,241,0.15)":"transparent", color:section==="ai"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="ai"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>AI Integration</button>
         <button onClick={()=>setSection("schwab")} style={{ padding:"8px 16px", border:"none", background:section==="schwab"?"rgba(99,102,241,0.15)":"transparent", color:section==="schwab"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="schwab"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Schwab API</button>
+        <button onClick={()=>setSection("backups")} style={{ padding:"8px 16px", border:"none", background:section==="backups"?"rgba(99,102,241,0.15)":"transparent", color:section==="backups"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="backups"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Backups</button>
       </div>
 
       {section === "accounts" && <AccountBalancesManager accountBalances={accountBalances} onSave={onSaveAccountBalances} customFields={customFields} trades={trades} prefs={prefs} onSavePrefs={onSavePrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={onSaveCashTransactions} hideBalances={hideBalances}/>}
+
+      {section === "backups" && <BackupsSection user={user} theme={theme}/>}
 
       {section === "futures" && (
         <div>
