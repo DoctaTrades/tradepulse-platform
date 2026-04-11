@@ -63,6 +63,133 @@ async function cloudSaveAll(userId, allData) {
   if (error) console.error("Cloud save all error:", error);
 }
 
+// ─── SNAPSHOT BACKUP SYSTEM ─────────────────────────────────────────────────
+// Takes a daily snapshot of user_data before the first save of each UTC day.
+// Protects against in-memory corruption overwriting cloud data.
+// Silent failure: snapshot errors NEVER block a save.
+
+const SNAPSHOT_RETENTION_DAYS = 10;
+const snapshotCheckedThisSession = {};
+
+function currentUtcDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function snapshotIfNeeded(userId) {
+  if (!userId) return;
+  try {
+    const today = currentUtcDateString();
+    if (snapshotCheckedThisSession[userId] === today) return;
+
+    const { data: existing, error: checkError } = await supabase
+      .from("user_data_snapshots")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("snapshot_date", today)
+      .maybeSingle();
+
+    if (checkError) {
+      console.warn("Snapshot check error (non-fatal):", checkError);
+      return;
+    }
+
+    if (existing) {
+      snapshotCheckedThisSession[userId] = today;
+      return;
+    }
+
+    const { data: currentRow, error: loadError } = await supabase
+      .from("user_data")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (loadError) {
+      console.warn("Snapshot load error (non-fatal):", loadError);
+      return;
+    }
+
+    if (!currentRow) {
+      snapshotCheckedThisSession[userId] = today;
+      return;
+    }
+
+    const meaningfulFields = Object.keys(currentRow).filter(k => {
+      if (k === "user_id" || k === "created_at" || k === "updated_at") return false;
+      const v = currentRow[k];
+      if (v === null || v === undefined) return false;
+      if (Array.isArray(v) && v.length === 0) return false;
+      if (typeof v === "object" && Object.keys(v).length === 0) return false;
+      return true;
+    });
+
+    if (meaningfulFields.length < 2) {
+      console.warn("Snapshot skipped: current state looks empty");
+      snapshotCheckedThisSession[userId] = today;
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from("user_data_snapshots")
+      .insert({
+        user_id: userId,
+        snapshot_date: today,
+        data: currentRow,
+      });
+
+    if (insertError) {
+      console.warn("Snapshot insert error (non-fatal):", insertError);
+      return;
+    }
+
+    snapshotCheckedThisSession[userId] = today;
+    console.log(`Snapshot saved for ${today}`);
+
+    const cutoffDate = new Date();
+    cutoffDate.setUTCDate(cutoffDate.getUTCDate() - SNAPSHOT_RETENTION_DAYS);
+    const cutoffString = cutoffDate.toISOString().slice(0, 10);
+
+    await supabase
+      .from("user_data_snapshots")
+      .delete()
+      .eq("user_id", userId)
+      .lt("snapshot_date", cutoffString);
+
+  } catch (e) {
+    console.warn("Snapshot system error (non-fatal):", e);
+  }
+}
+
+async function shouldBlockSuspiciousSave(userId, field, newValue) {
+  if (field !== "trades") return false;
+  if (!Array.isArray(newValue)) return false;
+  try {
+    const { data: row, error } = await supabase
+      .from("user_data")
+      .select("trades")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error || !row || !Array.isArray(row.trades)) return false;
+
+    const cloudCount = row.trades.length;
+    const newCount = newValue.length;
+
+    if (cloudCount >= 10 && newCount < cloudCount * 0.1) {
+      console.error(
+        `BLOCKED suspicious save: cloud has ${cloudCount} trades, new value has ${newCount}. ` +
+        `Refusing to save. If this is intentional, clear trades in smaller steps.`
+      );
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.warn("Suspicious save check error (non-fatal):", e);
+    return false;
+  }
+}
+
+
 // ─── AUTH SCREEN ────────────────────────────────────────────────────────────
 
 // ─── MIGRATION PROMPT ───────────────────────────────────────────────────────
@@ -10392,6 +10519,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
   // ─── MIGRATION HANDLER ────────────────────────────────────────────────────
   const handleMigrate = async () => {
     const local = getLocalData();
+    await snapshotIfNeeded(user.id);
     await cloudSaveAll(user.id, local);
     setShowMigration(false);
   };
@@ -10407,6 +10535,15 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
     clearTimeout(saveTimeout[field]);
     setSyncStatus("saving");
     saveTimeout[field] = setTimeout(async () => {
+      // Snapshot guard: take daily backup before first save of the day
+      await snapshotIfNeeded(user.id);
+      // Suspicious save guard: refuse to save if trades array looks wiped
+      const blocked = await shouldBlockSuspiciousSave(user.id, field, value);
+      if (blocked) {
+        setSyncStatus("blocked");
+        setTimeout(() => setSyncStatus(""), 4000);
+        return;
+      }
       await cloudSave(user.id, field, value);
       setSyncStatus("saved");
       setTimeout(() => setSyncStatus(""), 2000);
