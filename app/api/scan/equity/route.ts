@@ -3,6 +3,7 @@ import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
 import { verifyAuth } from '@/app/lib/auth-helpers';
+import { runInParallel } from '@/app/lib/parallel-fetch';
 
 // Append today's candle from quote data if price history doesn't include it yet
 function appendTodayCandle(candles: any[], quote: any): any[] {
@@ -344,7 +345,7 @@ export async function POST(req: NextRequest) {
   const sectorHistory: Record<string, any[]> = {};
   const sectorReturns: Record<string, number> = {};
   const sectorETFSymbols = Object.keys(SECTOR_ETFS);
-  for (const etf of sectorETFSymbols) {
+  await runInParallel(sectorETFSymbols, async (etf) => {
     try {
       const hist = await schwabFetch('/pricehistory', {
         symbol: etf,
@@ -359,18 +360,18 @@ export async function POST(req: NextRequest) {
       sectorHistory[etf] = [];
       sectorReturns[etf] = 0;
     }
-  }
+  }, { concurrency: 8 });
 
   // ─── Helper: scan a list of tickers ───
   async function scanList(tickerList: string[], label: string): Promise<any[]> {
     const results: any[] = [];
 
-    for (const ticker of tickerList) {
+    await runInParallel(tickerList, async (ticker) => {
       scanned++;
       const quote = allQuotes[ticker]?.quote;
       const price = quote?.lastPrice || quote?.closePrice || 0;
-      if (!price) continue;
-      if (price < minPrice || price > maxPrice) continue;
+      if (!price) return;
+      if (price < minPrice || price > maxPrice) return;
 
       let candles: any[] = [];
       try {
@@ -382,9 +383,9 @@ export async function POST(req: NextRequest) {
           frequency: '1',
         });
         candles = appendTodayCandle(hist.candles || [], quote);
-      } catch { continue; }
+      } catch { return; }
 
-      if (candles.length < 30) continue;
+      if (candles.length < 30) return;
 
       // Calculate average volume (20-day)
       const recentVols = candles.slice(-20).map((c: any) => c.volume || 0);
@@ -470,7 +471,7 @@ export async function POST(req: NextRequest) {
       } else {
         logs.push(`⊘ ${ticker} · No active patterns`);
       }
-    }
+    }, { concurrency: 8 });
 
     return results;
   }

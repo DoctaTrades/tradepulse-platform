@@ -2,6 +2,7 @@ import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { getQuotes, getPriceHistory } from '@/app/lib/schwab-data';
+import { runInParallel } from '@/app/lib/parallel-fetch';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,8 +122,8 @@ export async function GET(req: NextRequest) {
     else { vixRegime = 'panic'; vixContext = 'Panic selling — extreme premium but high risk, go small and wide'; }
 
     // 3. Market indices — fetch price history for change fallback
-    const indices = [];
-    for (const sym of ['SPY', 'QQQ', 'IWM', 'DIA']) {
+    const indexSymbols = ['SPY', 'QQQ', 'IWM', 'DIA'];
+    const indexResults = await runInParallel(indexSymbols, async (sym) => {
       const q = quotes[sym]?.quote;
       const price = q?.lastPrice || q?.closePrice || 0;
       let change = q?.netPercentChangeInDouble || 0;
@@ -144,25 +145,25 @@ export async function GET(req: NextRequest) {
         } catch {}
       }
 
-      indices.push({
+      return {
         symbol: sym,
         price,
         change,
         volume: q?.totalVolume || 0,
         high52: q?.['52WkHigh'] || 0,
         low52: q?.['52WkLow'] || 0,
-      });
-    }
+      };
+    }, { concurrency: 8 });
+    const indices = indexResults.filter((r): r is NonNullable<typeof r> => r !== undefined);
 
     // 4. Sector performance with momentum
-    const sectorData = [];
-    for (const sector of SECTOR_ETFS) {
+    const sectorRawResults = await runInParallel(SECTOR_ETFS, async (sector) => {
       const q = quotes[sector.symbol]?.quote;
-      if (!q) continue;
-      
+      if (!q) return null;
+
       const price = q.lastPrice || q.closePrice || 0;
       let change1d = q.netPercentChangeInDouble || 0;
-      
+
       // Get price history for momentum calculations
       let change1w = 0, change1m = 0, change3m = 0, rsi = 50;
       try {
@@ -186,7 +187,7 @@ export async function GET(req: NextRequest) {
         }
       } catch {}
 
-      sectorData.push({
+      return {
         symbol: sector.symbol,
         name: sector.name,
         price,
@@ -195,8 +196,9 @@ export async function GET(req: NextRequest) {
         change1m,
         change3m,
         rsi,
-      });
-    }
+      };
+    }, { concurrency: 8 });
+    const sectorData = sectorRawResults.filter((r): r is NonNullable<typeof r> => r != null);
     
     // Sort by 1-week momentum
     sectorData.sort((a, b) => b.change1w - a.change1w);

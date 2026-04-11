@@ -3,6 +3,7 @@ import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { getQuotes, getOptionChain, getPriceHistory } from '@/app/lib/schwab-data';
 import { UNIVERSE_TICKERS as UNIVERSES } from '@/app/lib/ticker-universes';
 import { verifyAuth } from '@/app/lib/auth-helpers';
+import { runInParallel } from '@/app/lib/parallel-fetch';
 
 // UNIVERSES imported from shared lib/ticker-universes.ts — single source of truth
 
@@ -124,28 +125,28 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
   }
 
   let scanned = 0;
-  for (const ticker of tickers) {
+  await runInParallel(tickers, async (ticker) => {
     const quote = allQuotes[ticker]?.quote;
-    if (!quote) { logs.push(`⊘ ${ticker} · No quote data`); continue; }
+    if (!quote) { logs.push(`⊘ ${ticker} · No quote data`); return; }
     scanned++;
 
     const price = quote.lastPrice || quote.closePrice || 0;
     if (!price || price < filters.minPrice || price > filters.maxPrice) {
       logs.push(`⊘ ${ticker} · Price $${price?.toFixed(2)} out of range`);
-      continue;
+      return;
     }
 
     const vol = quote.totalVolume || 0;
     if (vol < filters.minVol) {
       logs.push(`⊘ ${ticker} · Vol ${(vol/1000).toFixed(0)}K below minimum`);
-      continue;
+      return;
     }
 
     // Market cap from fundamental data
     const mktCap = allQuotes[ticker]?.fundamental?.marketCap || 0;
     if (filters.minMktCap > 0 && mktCap > 0 && mktCap < filters.minMktCap) {
       logs.push(`⊘ ${ticker} · Mkt cap $${(mktCap/1e6).toFixed(0)}M below minimum`);
-      continue;
+      return;
     }
 
     // Price history for technicals
@@ -176,31 +177,31 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
 
     // Bollinger Band filter (optional — only applied if set)
     if (filters.bbPosition && filters.bbPosition !== 'any' && bb) {
-      if (filters.bbPosition === 'below_lower' && bb.position > 0) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need below lower)`); continue; }
-      if (filters.bbPosition === 'near_lower' && bb.position > 20) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need ≤20%)`); continue; }
-      if (filters.bbPosition === 'near_upper' && bb.position < 80) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need ≥80%)`); continue; }
-      if (filters.bbPosition === 'above_upper' && bb.position < 100) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need above upper)`); continue; }
-      if (filters.bbPosition === 'middle' && (bb.position < 30 || bb.position > 70)) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need 30-70%)`); continue; }
+      if (filters.bbPosition === 'below_lower' && bb.position > 0) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need below lower)`); return; }
+      if (filters.bbPosition === 'near_lower' && bb.position > 20) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need ≤20%)`); return; }
+      if (filters.bbPosition === 'near_upper' && bb.position < 80) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need ≥80%)`); return; }
+      if (filters.bbPosition === 'above_upper' && bb.position < 100) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need above upper)`); return; }
+      if (filters.bbPosition === 'middle' && (bb.position < 30 || bb.position > 70)) { logs.push(`⊘ ${ticker} · BB position ${bb.position}% (need 30-70%)`); return; }
     }
 
     // EMA Cross filter (optional — only applied if set)
     if (filters.emaCross && filters.emaCross !== 'any') {
-      if (filters.emaCross !== emaCross) { logs.push(`⊘ ${ticker} · No ${filters.emaCross} cross`); continue; }
+      if (filters.emaCross !== emaCross) { logs.push(`⊘ ${ticker} · No ${filters.emaCross} cross`); return; }
     }
 
     // RSI filter — hard filter (Calendar Press wants neutral RSI near support too)
     if (rsi < filters.minRSI || rsi > filters.maxRSI) {
       logs.push(`⊘ ${ticker} · RSI ${rsi} out of range`);
-      continue;
+      return;
     }
 
     // EMA filter — hard filter (Calendar Press wants stocks with support structure)
-    if (filters.emaTrend === 'above20' && ema20 && price <= ema20) { logs.push(`⊘ ${ticker} · Below 20 EMA`); continue; }
-    if (filters.emaTrend === 'above50' && ema50 && price <= ema50) { logs.push(`⊘ ${ticker} · Below 50 EMA`); continue; }
-    if (filters.emaTrend === 'above200' && ema200 && price <= ema200) { logs.push(`⊘ ${ticker} · Below 200 EMA`); continue; }
-    if (filters.emaTrend === 'above_all' && ((ema20 && price <= ema20) || (ema50 && price <= ema50) || (ema200 && price <= ema200))) { logs.push(`⊘ ${ticker} · Below EMA(s)`); continue; }
-    if (filters.emaTrend === 'above_both' && ((ema50 && price <= ema50) || (ema200 && price <= ema200))) { logs.push(`⊘ ${ticker} · Below EMA(s)`); continue; }
-    if (filters.emaTrend === 'below20' && ema20 && price >= ema20) { logs.push(`⊘ ${ticker} · Above 20 EMA`); continue; }
+    if (filters.emaTrend === 'above20' && ema20 && price <= ema20) { logs.push(`⊘ ${ticker} · Below 20 EMA`); return; }
+    if (filters.emaTrend === 'above50' && ema50 && price <= ema50) { logs.push(`⊘ ${ticker} · Below 50 EMA`); return; }
+    if (filters.emaTrend === 'above200' && ema200 && price <= ema200) { logs.push(`⊘ ${ticker} · Below 200 EMA`); return; }
+    if (filters.emaTrend === 'above_all' && ((ema20 && price <= ema20) || (ema50 && price <= ema50) || (ema200 && price <= ema200))) { logs.push(`⊘ ${ticker} · Below EMA(s)`); return; }
+    if (filters.emaTrend === 'above_both' && ((ema50 && price <= ema50) || (ema200 && price <= ema200))) { logs.push(`⊘ ${ticker} · Below EMA(s)`); return; }
+    if (filters.emaTrend === 'below20' && ema20 && price >= ema20) { logs.push(`⊘ ${ticker} · Above 20 EMA`); return; }
 
     // Option chain — THE BIG UPGRADE: real Greeks, real bid/ask, real DTE
     let iv = 0, ivr = 50, maxOI = 0, optVol = 0, optBid = 0, ror = 0;
@@ -338,10 +339,10 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
       logs.push(`  ⚠ ${ticker} · Options chain unavailable, estimating IV`);
     }
 
-    if (iv < filters.minIV) { logs.push(`⊘ ${ticker} · IV ${iv}% below ${filters.minIV}% min`); continue; }
+    if (iv < filters.minIV) { logs.push(`⊘ ${ticker} · IV ${iv}% below ${filters.minIV}% min`); return; }
 
     ivr = estimateIVR(iv, hv);
-    if (ivr < filters.minIVR) { logs.push(`⊘ ${ticker} · IVR ${ivr}% below ${filters.minIVR}% min`); continue; }
+    if (ivr < filters.minIVR) { logs.push(`⊘ ${ticker} · IVR ${ivr}% below ${filters.minIVR}% min`); return; }
 
     // Bid and RoR — soft flags (these are CSP-specific, Calendar Press doesn't use them)
     let passesBidRoR = true;
@@ -356,7 +357,7 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
       if (!hasCalPressChain) {
         if (optBid < filters.minBid) logs.push(`⊘ ${ticker} · Bid $${optBid.toFixed(2)} below min`);
         else logs.push(`⊘ ${ticker} · RoR ${ror}% below min`);
-        continue;
+        return;
       }
     }
 
@@ -692,7 +693,7 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
 
     logs.push(`✓ ${ticker} · IVR:${ivr}% · IV:${iv}% · RoR:${ror}% · Bid:$${optBid.toFixed(2)}${bestPut ? ` · Δ${bestPut.delta?.toFixed(2)} · ${bestPut.daysToExpiration}DTE` : ''}`);
     results.push(result);
-  }
+  }, { concurrency: 8, onError: (t, e) => logs.push(`✕ ${t} · ${e instanceof Error ? e.message : 'error'}`) });
 
   return { results, logs, scanned, source: 'schwab' };
 }

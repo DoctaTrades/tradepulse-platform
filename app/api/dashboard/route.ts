@@ -2,6 +2,7 @@ import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
+import { runInParallel } from '@/app/lib/parallel-fetch';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,7 +101,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch price history for each (for Strat classification)
     const historyMap: Record<string, any[]> = {};
-    for (const sym of allSymbols) {
+    await runInParallel(allSymbols, async (sym) => {
       try {
         const hist = await schwabFetch('/pricehistory', {
           symbol: sym,
@@ -140,7 +141,7 @@ export async function GET(req: NextRequest) {
       } catch {
         historyMap[sym] = [];
       }
-    }
+    }, { concurrency: 8 });
 
     // Build index data
     const indices = INDICES.map(idx => {
