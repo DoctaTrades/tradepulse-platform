@@ -15,7 +15,7 @@ const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 async function fmpFetch(endpoint: string, params: Record<string, string> = {}) {
   const searchParams = new URLSearchParams({ ...params, apikey: FMP_KEY });
   const url = `${FMP_BASE}${endpoint}?${searchParams.toString()}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`FMP API ${res.status}`);
   return res.json();
 }
@@ -27,7 +27,7 @@ async function safeFmpFetch(endpoint: string, params: Record<string, string> = {
 async function finnhubFetch(endpoint: string, params: Record<string, string> = {}) {
   const searchParams = new URLSearchParams({ ...params, token: FINNHUB_KEY });
   const url = `${FINNHUB_BASE}${endpoint}?${searchParams.toString()}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Finnhub API ${res.status}`);
   return res.json();
 }
