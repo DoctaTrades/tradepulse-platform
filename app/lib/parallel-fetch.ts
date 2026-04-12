@@ -17,7 +17,7 @@
 // ─── TUNABLES ────────────────────────────────────────────────────────────
 // Conservative defaults. Schwab's documented cap is 120/min — we stay well under.
 const CONCURRENCY = 8;               // how many tasks run at once
-const RATE_LIMIT_PER_MINUTE = 100;   // leaves a 20-req safety buffer under Schwab's 120
+const RATE_LIMIT_PER_MINUTE = 115;   // leaves a 20-req safety buffer under Schwab's 120
 const RETRY_COUNT = 3;               // retries on transient errors
 const RETRY_BASE_DELAY_MS = 500;     // exponential: 500ms, 1000ms, 2000ms
 
