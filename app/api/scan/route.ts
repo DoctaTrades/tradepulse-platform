@@ -254,6 +254,14 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
 
       putCallRatio = totalCallOI > 0 ? Math.round((totalPutOI / totalCallOI) * 100) / 100 : 0;
 
+      // [IV-DEBUG] temporary diagnostic — remove after IV fix
+      if (results.length < 3) {
+        console.log('[IV-DEBUG-KEYS]', ticker, 'allPuts.length=' + allPuts.length, allPuts.length > 0 ? JSON.stringify(Object.keys(allPuts[0])) : 'EMPTY');
+        if (allPuts.length > 0) {
+          console.log('[IV-DEBUG-SAMPLE]', ticker, JSON.stringify(allPuts[0]).slice(0, 800));
+        }
+      }
+
       // Find best put for CSP analysis
       // Search across multiple DTE buckets AND a delta range for optimal plays
       const dteBuckets: [string, number, number][] = [
