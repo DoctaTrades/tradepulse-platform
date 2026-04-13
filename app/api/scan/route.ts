@@ -223,8 +223,7 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
         range: 'ALL',
       }, userId);
 
-      // Extract IV from the chain
-      iv = Math.round((chain.volatility || hv * 1.25) * (chain.volatility > 1 ? 1 : 100));
+      // IV is now computed from ATM contracts after allPuts/allCalls are populated (see below)
       
       // Process put map for CSP/Wheel analysis
       const putMap = chain.putExpDateMap || {};
@@ -254,12 +253,24 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
 
       putCallRatio = totalCallOI > 0 ? Math.round((totalPutOI / totalCallOI) * 100) / 100 : 0;
 
-      // [IV-DEBUG] temporary diagnostic — remove after IV fix
-      if (results.length < 3) {
-        console.log('[IV-DEBUG-KEYS]', ticker, 'allPuts.length=' + allPuts.length, allPuts.length > 0 ? JSON.stringify(Object.keys(allPuts[0])) : 'EMPTY');
-        if (allPuts.length > 0) {
-          console.log('[IV-DEBUG-SAMPLE]', ticker, JSON.stringify(allPuts[0]).slice(0, 800));
-        }
+      // Compute real per-ticker IV from near-the-money contracts (puts AND calls)
+      // Industry convention: ATM ~30-day IV. This is what Tastytrade/ToS call "stock IV".
+      // Filters: strike within 7% of current price, 20-60 DTE, non-zero realistic volatility
+      const atmIVs: number[] = [];
+      const ivFilter = (c: any) => {
+        const vol = c.volatility;
+        const dte = c.daysToExpiration || 0;
+        const strikePct = c.strike > 0 ? Math.abs(c.strike - price) / price : 1;
+        return typeof vol === 'number' && vol > 0 && vol < 500 && dte >= 20 && dte <= 60 && strikePct <= 0.07;
+      };
+      for (const pc of allPuts) { if (ivFilter(pc)) atmIVs.push(pc.volatility); }
+      for (const cc of allCalls) { if (ivFilter(cc)) atmIVs.push(cc.volatility); }
+      if (atmIVs.length > 0) {
+        const avgIV = atmIVs.reduce((s, v) => s + v, 0) / atmIVs.length;
+        iv = Math.round(avgIV);
+      } else {
+        // Fallback: no near-ATM contracts found, estimate from historical volatility
+        iv = Math.round(hv * 1.25);
       }
 
       // Find best put for CSP analysis
