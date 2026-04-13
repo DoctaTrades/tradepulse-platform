@@ -4,7 +4,7 @@ import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
 import { verifyAuth } from '@/app/lib/auth-helpers';
 import { runInParallel } from '@/app/lib/parallel-fetch';
-import { aggregateCandlesByYear } from '@/app/lib/candle-aggregation';
+import { aggregateCandlesByYear, aggregateCandlesByWeek, aggregateCandlesByMonth } from '@/app/lib/candle-aggregation';
 
 // Append today's candle from quote data if price history doesn't include it yet
 function appendTodayCandle(candles: any[], quote: any): any[] {
@@ -228,20 +228,29 @@ function detectStratSetups(candles: any[]): any[] {
 // ─── SCAN A SINGLE TICKER ACROSS TIMEFRAMES ─────────────
 function scanTicker(ticker: string, dailyCandles: any[], min5CR: number): any {
   // Define timeframes: [label, aggregation period in days]
-  const timeframes: [string, number][] = [
-    ['1D', 1], ['2D', 2], ['3D', 3], ['4D', 4], ['5D', 5],
-    ['6D', 6], ['7D', 7], ['8D', 8], ['9D', 9], ['10D', 10],
-    ['11D', 11], ['12D', 12],
-    ['1W', 5], ['2W', 10], ['3W', 15], ['4W', 20],
-    ['1M', 21], ['2M', 42], ['3M', 63],
+  const timeframes: [string, number, string][] = [
+    ['1D', 1, 'daily'], ['2D', 2, 'daily'], ['3D', 3, 'daily'], ['4D', 4, 'daily'], ['5D', 5, 'daily'],
+    ['6D', 6, 'daily'], ['7D', 7, 'daily'], ['8D', 8, 'daily'], ['9D', 9, 'daily'], ['10D', 10, 'daily'],
+    ['11D', 11, 'daily'], ['12D', 12, 'daily'],
+    ['1W', 1, 'weekly'], ['2W', 2, 'weekly'], ['3W', 3, 'weekly'], ['4W', 4, 'weekly'],
+    ['1M', 1, 'monthly'], ['2M', 2, 'monthly'], ['3M', 3, 'monthly'],
   ];
 
   const tfResults: any[] = [];
   let totalPatterns = 0;
   let tfWithPatterns = 0;
 
-  for (const [label, period] of timeframes) {
-    const candles = period === 1 ? dailyCandles : aggregateCandlesByYear(dailyCandles, period);
+  for (const [label, period, group] of timeframes) {
+    let candles: any[];
+    if (period === 1 && group === 'daily') {
+      candles = dailyCandles;
+    } else if (group === 'daily') {
+      candles = aggregateCandlesByYear(dailyCandles, period);
+    } else if (group === 'weekly') {
+      candles = aggregateCandlesByWeek(dailyCandles, period);
+    } else {
+      candles = aggregateCandlesByMonth(dailyCandles, period);
+    }
     if (candles.length < 7) continue;
 
     const fiveCR = detect5CR(candles, min5CR);
