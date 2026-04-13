@@ -1,4 +1,5 @@
 import { verifyAuth } from '@/app/lib/auth-helpers';
+import { aggregateCandlesByWeek } from '@/app/lib/candle-aggregation';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
@@ -43,19 +44,7 @@ function appendTodayCandle(candles: any[], quote: any): any[] {
   return candles;
 }
 
-function aggregateCandles(dailyCandles: any[], period: number): any[] {
-  const result: any[] = [];
-  for (let i = 0; i <= dailyCandles.length - period; i += period) {
-    const chunk = dailyCandles.slice(i, i + period);
-    result.push({
-      open: chunk[0].open,
-      high: Math.max(...chunk.map((c: any) => c.high)),
-      low: Math.min(...chunk.map((c: any) => c.low)),
-      close: chunk[chunk.length - 1].close,
-    });
-  }
-  return result;
-}
+// Candle aggregation imported from app/lib/candle-aggregation.ts (calendar-anchored)
 
 function getLastStrat(candles: any[]): string {
   if (candles.length < 2) return '?';
@@ -162,7 +151,7 @@ export async function GET(req: NextRequest) {
             }
 
             // Weekly strat from aggregated candles
-            const weekly = aggregateCandles(candles, 5);
+            const weekly = aggregateCandlesByWeek(candles, 1);
             weeklyStrat = getLastStrat(weekly);
             // Week change (5 days ago)
             if (candles.length >= 6) {
@@ -264,7 +253,7 @@ export async function GET(req: NextRequest) {
           if (candles.length >= 2) {
             dailyStrat = getLastStrat(candles);
             rsi = calcRSI(candles);
-            const weekly = aggregateCandles(candles, 5);
+            const weekly = aggregateCandlesByWeek(candles, 1);
             weeklyStrat = getLastStrat(weekly);
             // Avg volume (20-day)
             const recentVols = candles.slice(-20).map((c: any) => c.volume || 0);

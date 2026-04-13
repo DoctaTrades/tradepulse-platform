@@ -1,4 +1,5 @@
 import { verifyAuth } from '@/app/lib/auth-helpers';
+import { aggregateCandlesByWeek, aggregateCandlesByMonth } from '@/app/lib/candle-aggregation';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
@@ -16,19 +17,7 @@ function classifyStrat(candle: any, prev: any): string {
   return '1';
 }
 
-function aggregateCandles(dailyCandles: any[], period: number): any[] {
-  const result: any[] = [];
-  for (let i = 0; i <= dailyCandles.length - period; i += period) {
-    const chunk = dailyCandles.slice(i, i + period);
-    result.push({
-      open: chunk[0].open,
-      high: Math.max(...chunk.map((c: any) => c.high)),
-      low: Math.min(...chunk.map((c: any) => c.low)),
-      close: chunk[chunk.length - 1].close,
-    });
-  }
-  return result;
-}
+// Candle aggregation imported from app/lib/candle-aggregation.ts (calendar-anchored)
 
 function getStratSequence(candles: any[], count: number): string {
   if (candles.length < count + 1) return '';
@@ -147,8 +136,8 @@ export async function GET(req: NextRequest) {
     const indices = INDICES.map(idx => {
       const q = quoteData[idx.symbol]?.quote;
       const candles = historyMap[idx.symbol] || [];
-      const weeklyCandles = aggregateCandles(candles, 5);
-      const monthlyCandles = aggregateCandles(candles, 21);
+      const weeklyCandles = aggregateCandlesByWeek(candles, 1);
+      const monthlyCandles = aggregateCandlesByMonth(candles, 1);
 
       const price = q?.lastPrice || q?.closePrice || 0;
       let change = q?.netPercentChangeInDouble || 0;
@@ -184,7 +173,7 @@ export async function GET(req: NextRequest) {
     const sectors = SECTORS.map(sec => {
       const q = quoteData[sec.symbol]?.quote;
       const candles = historyMap[sec.symbol] || [];
-      const weeklyCandles = aggregateCandles(candles, 5);
+      const weeklyCandles = aggregateCandlesByWeek(candles, 1);
 
       const secPrice = q?.lastPrice || q?.closePrice || 0;
       let secChange = q?.netPercentChangeInDouble || 0;
