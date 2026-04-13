@@ -2,30 +2,11 @@ import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
-import { aggregateCandlesByYear } from '@/app/lib/candle-aggregation';
+import { aggregateCandlesByYear, aggregateCandlesByWeek, aggregateCandlesByMonth } from '@/app/lib/candle-aggregation';
 
 export const dynamic = 'force-dynamic';
 
-// LEGACY: kept only for weekly/monthly timeframes (1W, 2W, 3W, 4W, 5W, 6W, 8W, 12W, 1M, 2M, 3M).
-// Known broken — chunks forward from Schwab's returned data rather than calendar-anchoring
-// to the first Monday / first of month. Scheduled for replacement in next session with proper
-// calendar-anchored week and month aggregation. Do NOT use for new code.
-// Daily-group timeframes (2D-12D) now use aggregateCandlesByYear from app/lib/candle-aggregation.
-function aggregateCandlesLegacy(dailyCandles: any[], period: number): any[] {
-  const result: any[] = [];
-  for (let i = 0; i <= dailyCandles.length - period; i += period) {
-    const chunk = dailyCandles.slice(i, i + period);
-    result.push({
-      datetime: chunk[0].datetime,
-      open: chunk[0].open,
-      high: Math.max(...chunk.map(c => c.high)),
-      low: Math.min(...chunk.map(c => c.low)),
-      close: chunk[chunk.length - 1].close,
-      volume: chunk.reduce((s, c) => s + (c.volume || 0), 0),
-    });
-  }
-  return result;
-}
+// Candle aggregation functions imported from app/lib/candle-aggregation.ts
 
 // Classify strat: 1 (inside), 2U (up), 2D (down), 3 (outside)
 function classifyStrat(candle: any, prev: any): string {
@@ -102,13 +83,6 @@ export async function GET(req: NextRequest) {
     });
 
     const dailyCandles = hist.candles || [];
-    // [DT-DEBUG] temporary diagnostic — remove after week/month fix
-    if (dailyCandles.length > 0) {
-      const first = dailyCandles[0];
-      const last = dailyCandles[dailyCandles.length - 1];
-      console.log('[DT-DEBUG-FIRST]', ticker, 'raw=' + first.datetime, 'str=' + new Date(first.datetime).toString(), 'getDay=' + new Date(first.datetime).getDay(), 'getFullYear=' + new Date(first.datetime).getFullYear());
-      console.log('[DT-DEBUG-LAST]', ticker, 'raw=' + last.datetime, 'str=' + new Date(last.datetime).toString(), 'getDay=' + new Date(last.datetime).getDay(), 'getFullYear=' + new Date(last.datetime).getFullYear());
-    }
     if (dailyCandles.length < 30) {
       return NextResponse.json({ error: `Not enough price data for ${ticker} (${dailyCandles.length} candles)` });
     }
@@ -153,11 +127,20 @@ export async function GET(req: NextRequest) {
     const matrix: any[] = [];
 
     for (const [label, period, group] of timeframes) {
-      const candles = period === 1
-        ? dailyCandles
-        : (group === 'daily'
-          ? aggregateCandlesByYear(dailyCandles, period)
-          : aggregateCandlesLegacy(dailyCandles, period));
+      let candles: any[];
+      if (period === 1) {
+        candles = dailyCandles;
+      } else if (group === 'daily') {
+        candles = aggregateCandlesByYear(dailyCandles, period);
+      } else if (group === 'weekly') {
+        // Translate day-count period to week-count: 5→1, 10→2, 15→3, 20→4, 25→5, 30→6, 40→8, 60→12
+        const weekCount = Math.round(period / 5);
+        candles = aggregateCandlesByWeek(dailyCandles, weekCount);
+      } else {
+        // monthly: translate day-count period to month-count: 21→1, 42→2, 63→3
+        const monthCount = Math.round(period / 21);
+        candles = aggregateCandlesByMonth(dailyCandles, monthCount);
+      }
       if (candles.length < 3) continue;
 
       const sequence = getStratSequence(candles, 5);
