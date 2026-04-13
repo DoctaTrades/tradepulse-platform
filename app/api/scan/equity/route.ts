@@ -4,6 +4,7 @@ import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
 import { verifyAuth } from '@/app/lib/auth-helpers';
 import { runInParallel } from '@/app/lib/parallel-fetch';
+import { aggregateCandlesByYear } from '@/app/lib/candle-aggregation';
 
 // Append today's candle from quote data if price history doesn't include it yet
 function appendTodayCandle(candles: any[], quote: any): any[] {
@@ -120,22 +121,7 @@ function calcReturn(candles: any[], days: number): number {
   return Math.round(((endPrice - startPrice) / startPrice) * 100 * 100) / 100;
 }
 
-// Build multi-timeframe candles from daily data
-function aggregateCandles(dailyCandles: any[], period: number): any[] {
-  const result: any[] = [];
-  for (let i = 0; i <= dailyCandles.length - period; i += period) {
-    const chunk = dailyCandles.slice(i, i + period);
-    result.push({
-      open: chunk[0].open,
-      high: Math.max(...chunk.map((c: any) => c.high)),
-      low: Math.min(...chunk.map((c: any) => c.low)),
-      close: chunk[chunk.length - 1].close,
-      volume: chunk.reduce((s: number, c: any) => s + (c.volume || 0), 0),
-      datetime: chunk[chunk.length - 1].datetime,
-    });
-  }
-  return result;
-}
+// Candle aggregation now imported from app/lib/candle-aggregation.ts (calendar-anchored)
 
 // ─── STRAT CLASSIFICATION ────────────────────────────────
 function classifyStrat(candle: any, prev: any): string {
@@ -255,7 +241,7 @@ function scanTicker(ticker: string, dailyCandles: any[], min5CR: number): any {
   let tfWithPatterns = 0;
 
   for (const [label, period] of timeframes) {
-    const candles = period === 1 ? dailyCandles : aggregateCandles(dailyCandles, period);
+    const candles = period === 1 ? dailyCandles : aggregateCandlesByYear(dailyCandles, period);
     if (candles.length < 7) continue;
 
     const fiveCR = detect5CR(candles, min5CR);

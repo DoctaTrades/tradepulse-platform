@@ -2,11 +2,16 @@ import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
+import { aggregateCandlesByYear } from '@/app/lib/candle-aggregation';
 
 export const dynamic = 'force-dynamic';
 
-// Aggregate daily candles into N-day candles
-function aggregateCandles(dailyCandles: any[], period: number): any[] {
+// LEGACY: kept only for weekly/monthly timeframes (1W, 2W, 3W, 4W, 5W, 6W, 8W, 12W, 1M, 2M, 3M).
+// Known broken — chunks forward from Schwab's returned data rather than calendar-anchoring
+// to the first Monday / first of month. Scheduled for replacement in next session with proper
+// calendar-anchored week and month aggregation. Do NOT use for new code.
+// Daily-group timeframes (2D-12D) now use aggregateCandlesByYear from app/lib/candle-aggregation.
+function aggregateCandlesLegacy(dailyCandles: any[], period: number): any[] {
   const result: any[] = [];
   for (let i = 0; i <= dailyCandles.length - period; i += period) {
     const chunk = dailyCandles.slice(i, i + period);
@@ -141,7 +146,11 @@ export async function GET(req: NextRequest) {
     const matrix: any[] = [];
 
     for (const [label, period, group] of timeframes) {
-      const candles = period === 1 ? dailyCandles : aggregateCandles(dailyCandles, period);
+      const candles = period === 1
+        ? dailyCandles
+        : (group === 'daily'
+          ? aggregateCandlesByYear(dailyCandles, period)
+          : aggregateCandlesLegacy(dailyCandles, period));
       if (candles.length < 3) continue;
 
       const sequence = getStratSequence(candles, 5);
