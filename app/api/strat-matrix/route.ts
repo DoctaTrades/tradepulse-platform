@@ -102,6 +102,13 @@ export async function GET(req: NextRequest) {
     });
 
     const dailyCandles = hist.candles || [];
+    // [DT-DEBUG] temporary diagnostic — remove after week/month fix
+    if (dailyCandles.length > 0) {
+      const first = dailyCandles[0];
+      const last = dailyCandles[dailyCandles.length - 1];
+      console.log('[DT-DEBUG-FIRST]', ticker, 'raw=' + first.datetime, 'str=' + new Date(first.datetime).toString(), 'getDay=' + new Date(first.datetime).getDay(), 'getFullYear=' + new Date(first.datetime).getFullYear());
+      console.log('[DT-DEBUG-LAST]', ticker, 'raw=' + last.datetime, 'str=' + new Date(last.datetime).toString(), 'getDay=' + new Date(last.datetime).getDay(), 'getFullYear=' + new Date(last.datetime).getFullYear());
+    }
     if (dailyCandles.length < 30) {
       return NextResponse.json({ error: `Not enough price data for ${ticker} (${dailyCandles.length} candles)` });
     }
