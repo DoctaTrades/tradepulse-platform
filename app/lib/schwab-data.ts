@@ -69,21 +69,12 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
 // ─── PROVIDER DETECTION ──────────────────────────────────
 
 async function detectProvider(userId?: string): Promise<{ type: 'schwab' | null; schwabUserId?: string }> {
-  if (userId) {
-    const userHasSchwab = await hasUserCredentials(userId);
-    if (userHasSchwab) {
-      try {
-        const userAuth = await isAuthenticated(userId);
-        if (userAuth) return { type: 'schwab', schwabUserId: userId };
-      } catch {}
-    }
-  }
-  // Legacy platform fallback (pr_tokens) — scheduled for removal in a future
-  // cleanup session, kept for now to avoid coupling Tradier removal with
-  // legacy-token removal.
+  if (!userId) return { type: null };
   try {
-    const platformAuth = await isAuthenticated();
-    if (platformAuth) return { type: 'schwab', schwabUserId: undefined };
+    const userHasSchwab = await hasUserCredentials(userId);
+    if (!userHasSchwab) return { type: null };
+    const userAuth = await isAuthenticated(userId);
+    if (userAuth) return { type: 'schwab', schwabUserId: userId };
   } catch {}
   return { type: null };
 }
