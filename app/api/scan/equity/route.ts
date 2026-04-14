@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { hasSchwabConnection } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS as SECTOR_LIST } from '@/app/lib/sector-holdings';
 import { verifyAuth } from '@/app/lib/auth-helpers';
@@ -300,8 +300,8 @@ export async function POST(req: NextRequest) {
 
   // Check Schwab connection: try user-specific first, then platform fallback
   // (platform fallback scheduled for removal in a future session)
-  const userAuth = await isAuthenticated(userId);
-  const platformAuth = await isAuthenticated();
+  const userAuth = await hasSchwabConnection(userId);
+  const platformAuth = false; // legacy path removed; kept as variable to minimize downstream edits
 
   if (!userAuth && !platformAuth) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });

@@ -207,6 +207,22 @@ export async function isAuthenticated(userId?: string): Promise<boolean> {
   }
 }
 
+// hasSchwabConnection — used by route auth gates. Returns true if the user
+// has the tools needed to talk to Schwab (credentials saved + refresh token
+// stored), regardless of whether the current access token is expired. The
+// actual refresh happens inside schwabFetch when a real API call hits 401.
+// This keeps isAuthenticated read-only while still allowing auth gates to
+// let through requests that just need a token refresh.
+export async function hasSchwabConnection(userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const entry = await ensureLoaded(userId);
+    return !!(entry.credentials && entry.tokens?.refresh_token);
+  } catch {
+    return false;
+  }
+}
+
 export async function getValidAccessToken(userId?: string): Promise<string> {
   if (!userId) throw new Error('NO_USER_ID');
 

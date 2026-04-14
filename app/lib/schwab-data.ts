@@ -1,9 +1,9 @@
 // Market data layer — Per-user Schwab
 // ALL functions return data in SCHWAB'S EXACT format
-// Priority: User's Schwab → Platform Schwab (env var fallback)
+// Per-user credentials only (env var fallback removed 2026-04-13)
 // Every function takes optional userId — no module-level mutable state
 
-import { getValidAccessToken, isAuthenticated, hasUserCredentials, refreshAccessToken } from './schwab-auth';
+import { getValidAccessToken, hasSchwabConnection, refreshAccessToken } from './schwab-auth';
 
 const SCHWAB_BASE = 'https://api.schwabapi.com/marketdata/v1';
 
@@ -71,10 +71,11 @@ export async function schwabFetch(endpoint: string, params?: Record<string, stri
 async function detectProvider(userId?: string): Promise<{ type: 'schwab' | null; schwabUserId?: string }> {
   if (!userId) return { type: null };
   try {
-    const userHasSchwab = await hasUserCredentials(userId);
-    if (!userHasSchwab) return { type: null };
-    const userAuth = await isAuthenticated(userId);
-    if (userAuth) return { type: 'schwab', schwabUserId: userId };
+    // hasSchwabConnection returns true if the user has credentials + refresh_token,
+    // even if the access_token is currently expired. schwabFetch will refresh on
+    // demand when it hits a 401 from the actual API call.
+    const connected = await hasSchwabConnection(userId);
+    if (connected) return { type: 'schwab', schwabUserId: userId };
   } catch {}
   return { type: null };
 }

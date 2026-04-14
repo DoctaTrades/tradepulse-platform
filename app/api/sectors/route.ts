@@ -1,7 +1,7 @@
 import { verifyAuth } from '@/app/lib/auth-helpers';
 import { aggregateCandlesByWeek } from '@/app/lib/candle-aggregation';
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { hasSchwabConnection } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { SECTORS, getSectorByETF } from '@/app/lib/sector-holdings';
 
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
   const useFinnhub = req.nextUrl.searchParams.get('finnhub') === 'true';
   const { userId } = await verifyAuth(req);
 
-  if (!await isAuthenticated(userId)) {
+  if (!await hasSchwabConnection(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
 

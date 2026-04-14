@@ -1,6 +1,6 @@
 import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { hasSchwabConnection } from '@/app/lib/schwab-auth';
 import { getQuotes, getPriceHistory } from '@/app/lib/schwab-data';
 import { runInParallel } from '@/app/lib/parallel-fetch';
 
@@ -59,7 +59,7 @@ const BREADTH_SYMBOLS = ['RSP', 'SPY']; // RSP = equal-weight S&P, SPY = cap-wei
 
 export async function GET(req: NextRequest) {
   const { userId } = await verifyAuth(req);
-  const useSchwab = await isAuthenticated(userId);
+  const useSchwab = await hasSchwabConnection(userId);
   
   if (!useSchwab) {
     return NextResponse.json({ error: 'Schwab not connected. Market Pulse requires Schwab API.' });

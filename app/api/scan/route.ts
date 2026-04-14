@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { hasSchwabConnection } from '@/app/lib/schwab-auth';
 import { getQuotes, getOptionChain, getPriceHistory } from '@/app/lib/schwab-data';
 import { UNIVERSE_TICKERS as UNIVERSES } from '@/app/lib/ticker-universes';
 import { verifyAuth } from '@/app/lib/auth-helpers';
@@ -755,7 +755,7 @@ export async function POST(req: NextRequest) {
     cpShortDelta: filters.cpShortDelta ?? 0.30,
   };
 
-  const useSchwab = await isAuthenticated(userId);
+  const useSchwab = await hasSchwabConnection(userId);
   
   if (useSchwab) {
     const result = await scanWithSchwab(tickers, f, userId);

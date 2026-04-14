@@ -1,6 +1,6 @@
 import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { hasSchwabConnection } from '@/app/lib/schwab-auth';
 import { schwabFetch as _schwabFetchBase } from '@/app/lib/schwab-data';
 import { aggregateCandlesByYear, aggregateCandlesByWeek, aggregateCandlesByMonth } from '@/app/lib/candle-aggregation';
 
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
   if (!ticker) return NextResponse.json({ error: 'Missing ticker parameter' });
   const { userId } = await verifyAuth(req);
 
-  if (!await isAuthenticated(userId)) {
+  if (!await hasSchwabConnection(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
 

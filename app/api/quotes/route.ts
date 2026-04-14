@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { hasSchwabConnection } from '@/app/lib/schwab-auth';
 import { schwabFetch } from '@/app/lib/schwab-data';
 import { verifyAuth } from '@/app/lib/auth-helpers';
 
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     const prices: Record<string, number> = {};
     const sources: Record<string, string> = {};
 
-    if (await isAuthenticated(userId)) {
+    if (await hasSchwabConnection(userId)) {
       const schwabPrices = await schwabQuotes(tickers, userId);
       for (const [sym, price] of Object.entries(schwabPrices)) {
         prices[sym] = price;

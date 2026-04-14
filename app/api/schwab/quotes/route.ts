@@ -1,11 +1,11 @@
 import { verifyAuth } from '@/app/lib/auth-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getQuotes } from '@/app/lib/schwab-data';
-import { isAuthenticated } from '@/app/lib/schwab-auth';
+import { hasSchwabConnection } from '@/app/lib/schwab-auth';
 
 export async function GET(req: NextRequest) {
   const { userId } = await verifyAuth(req);
-  if (!await isAuthenticated(userId)) {
+  if (!await hasSchwabConnection(userId)) {
     return NextResponse.json({ error: 'Not authenticated with Schwab' }, { status: 401 });
   }
 
