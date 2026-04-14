@@ -95,14 +95,56 @@ async function dbLoadRow(userId: string): Promise<{
   tokens: TokenPair | null;
   credentials: UserCredentials | null;
 } | null> {
-  try {
-    const { data, error } = await supabase
-      .from('user_schwab_credentials')
-      .select('app_key, app_secret, callback_url, access_token, refresh_token, access_expires_at')
-      .eq('user_id', userId)
-      .single();
+  // Bypass the Supabase JS client and use raw fetch with explicit no-cache
+  // directives. Next.js 14 caches fetch() responses by default, and the
+  // Supabase JS client goes through the global fetch, which means its reads
+  // get cached at the Next.js Data Cache layer. This was causing stale token
+  // reads that survived across requests even with a fresh client.
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY || '';
+  if (!supabaseUrl || !serviceKey) {
+    console.log('[SCHWAB] db-load-config-error', JSON.stringify({ userId, hasUrl: !!supabaseUrl, hasKey: !!serviceKey }));
+    return null;
+  }
 
-    if (error || !data) return null;
+  const url = `${supabaseUrl}/rest/v1/user_schwab_credentials?user_id=eq.${encodeURIComponent(userId)}&select=app_key,app_secret,callback_url,access_token,refresh_token,access_expires_at`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Accept': 'application/json',
+      },
+      cache: 'no-store',
+      next: { revalidate: 0 },
+    });
+
+    const ageHeader = res.headers.get('age');
+    const cacheControl = res.headers.get('cache-control');
+
+    if (!res.ok) {
+      console.log('[SCHWAB] db-load-http-error', JSON.stringify({
+        userId,
+        status: res.status,
+        age: ageHeader,
+        cacheControl,
+      }));
+      return null;
+    }
+
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const data = rows[0];
+
+    console.log('[SCHWAB] db-load-raw-fetch', JSON.stringify({
+      userId,
+      refreshTokenPrefix: data.refresh_token ? data.refresh_token.slice(0, 12) + '…' : 'null',
+      accessExpiresAt: data.access_expires_at,
+      responseAge: ageHeader || 'none',
+      cacheControl: cacheControl || 'none',
+    }));
 
     const credentials: UserCredentials | null = data.app_key
       ? {
