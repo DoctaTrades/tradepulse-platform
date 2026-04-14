@@ -118,7 +118,6 @@ async function dbLoadRow(userId: string): Promise<{
         'Accept': 'application/json',
       },
       cache: 'no-store',
-      next: { revalidate: 0 },
     });
 
     const ageHeader = res.headers.get('age');
