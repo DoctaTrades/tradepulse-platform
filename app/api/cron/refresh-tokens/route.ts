@@ -34,7 +34,16 @@ export async function GET(req: NextRequest) {
 
   const results: { id: string; status: string; error?: string }[] = [];
 
-  // Refresh all per-user tokens (legacy pr_tokens path removed in rewrite)
+  // Refresh all per-user tokens (legacy pr_tokens path removed in rewrite).
+  //
+  // NOTE on cache safety: This query uses the cached singleton Supabase client,
+  // which means its results may be Data-Cached by Next.js. That's OK here
+  // because we only use it to get the LIST of user_ids to process. The actual
+  // refresh_token value used in the Schwab API call comes from inside
+  // refreshAccessToken → dbLoadRow, which uses raw fetch with cache: 'no-store'
+  // to guarantee freshness. Do NOT "optimize" this by using the access_token
+  // or refresh_token values from this query directly — that would reintroduce
+  // the stale-read bug.
   try {
     const { data: users, error } = await supabase
       .from('user_schwab_credentials')
