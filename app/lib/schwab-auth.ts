@@ -24,7 +24,7 @@
 //   OAUTH_EXCHANGE_FAILED — OAuth code exchange failed
 //   DB_ERROR           — Supabase read/write failed
 
-import { supabase } from './supabase';
+import { supabase, supabaseFreshRead } from './supabase';
 
 // ─── TYPES ───────────────────────────────────────────────
 
@@ -95,47 +95,15 @@ async function dbLoadRow(userId: string): Promise<{
   tokens: TokenPair | null;
   credentials: UserCredentials | null;
 } | null> {
-  // Bypass the Supabase JS client and use raw fetch with explicit no-cache
-  // directives. Next.js 14 caches fetch() responses by default, and the
-  // Supabase JS client goes through the global fetch, which means its reads
-  // get cached at the Next.js Data Cache layer. This was causing stale token
-  // reads that survived across requests even with a fresh client.
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const serviceKey = process.env.SUPABASE_SERVICE_KEY || '';
-  if (!supabaseUrl || !serviceKey) {
-    console.log('[SCHWAB] db-load-config-error', JSON.stringify({ userId, hasUrl: !!supabaseUrl, hasKey: !!serviceKey }));
-    return null;
-  }
-
-  const url = `${supabaseUrl}/rest/v1/user_schwab_credentials?user_id=eq.${encodeURIComponent(userId)}&select=app_key,app_secret,callback_url,access_token,refresh_token,access_expires_at`;
-
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'apikey': serviceKey,
-        'Authorization': `Bearer ${serviceKey}`,
-        'Accept': 'application/json',
-      },
-      cache: 'no-store',
-    });
+    const data = await supabaseFreshRead(
+      'user_schwab_credentials',
+      'app_key,app_secret,callback_url,access_token,refresh_token,access_expires_at',
+      { user_id: `eq.${userId}` },
+      { single: true },
+    ) as Record<string, any> | null;
 
-    const ageHeader = res.headers.get('age');
-    const cacheControl = res.headers.get('cache-control');
-
-    if (!res.ok) {
-      console.log('[SCHWAB] db-load-http-error', JSON.stringify({
-        userId,
-        status: res.status,
-        age: ageHeader,
-        cacheControl,
-      }));
-      return null;
-    }
-
-    const rows = await res.json();
-    if (!Array.isArray(rows) || rows.length === 0) return null;
-    const data = rows[0];
+    if (!data) return null;
 
     const credentials: UserCredentials | null = data.app_key
       ? {
