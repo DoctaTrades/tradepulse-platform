@@ -1,7 +1,6 @@
 // Market data layer — Per-user Schwab
 // ALL functions return data in SCHWAB'S EXACT format
-// Per-user credentials only (env var fallback removed 2026-04-13)
-// Every function takes optional userId — no module-level mutable state
+// Per-user credentials only — every function takes optional userId
 
 import { getValidAccessToken, hasSchwabConnection, refreshAccessToken } from './schwab-auth';
 

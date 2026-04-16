@@ -137,14 +137,6 @@ async function dbLoadRow(userId: string): Promise<{
     if (!Array.isArray(rows) || rows.length === 0) return null;
     const data = rows[0];
 
-    console.log('[SCHWAB] db-load-raw-fetch', JSON.stringify({
-      userId,
-      refreshTokenPrefix: data.refresh_token ? data.refresh_token.slice(0, 12) + '…' : 'null',
-      accessExpiresAt: data.access_expires_at,
-      responseAge: ageHeader || 'none',
-      cacheControl: cacheControl || 'none',
-    }));
-
     const credentials: UserCredentials | null = data.app_key
       ? {
           appKey: data.app_key,

@@ -58,19 +58,12 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { dteRange = [0, 7], wingWidth = 10 } = body;
 
-  // Check Schwab connection: try user-specific first, then platform fallback
-  // (platform fallback scheduled for removal in a future session)
-  const userAuth = await hasSchwabConnection(userId);
-  const platformAuth = false; // legacy path removed; kept as variable to minimize downstream edits
-
-  if (!userAuth && !platformAuth) {
+  if (!await hasSchwabConnection(userId)) {
     return NextResponse.json({ error: 'Schwab not connected. SPX Radar requires real-time data.' }, { status: 401 });
   }
 
-  // Request-scoped schwabFetch — captures effectiveUserId in closure
-  const effectiveUserId = userAuth ? userId : undefined;
   const schwabFetch = (endpoint: string, params?: Record<string, string>) =>
-    _schwabFetchBase(endpoint, params, effectiveUserId);
+    _schwabFetchBase(endpoint, params, userId || undefined);
 
   try {
     // ─── Get SPX price ───

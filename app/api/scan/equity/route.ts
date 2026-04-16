@@ -298,19 +298,12 @@ export async function POST(req: NextRequest) {
     sectorFilter,
   } = body;
 
-  // Check Schwab connection: try user-specific first, then platform fallback
-  // (platform fallback scheduled for removal in a future session)
-  const userAuth = await hasSchwabConnection(userId);
-  const platformAuth = false; // legacy path removed; kept as variable to minimize downstream edits
-
-  if (!userAuth && !platformAuth) {
+  if (!await hasSchwabConnection(userId)) {
     return NextResponse.json({ error: 'Schwab not connected' }, { status: 401 });
   }
 
-  // Request-scoped schwabFetch — captures effectiveUserId in closure
-  const effectiveUserId = userAuth ? userId : undefined;
   const schwabFetch = (endpoint: string, params?: Record<string, string>) =>
-    _schwabFetchBase(endpoint, params, effectiveUserId);
+    _schwabFetchBase(endpoint, params, userId || undefined);
 
   const logs: string[] = ['⚡ Starting multi-timeframe equity scan...'];
   let scanned = 0;
