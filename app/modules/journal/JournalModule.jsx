@@ -4052,7 +4052,7 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
   // Today's calculations
   const todayTarget = currentBalance * (profitPct / 100);
   const todayStop = currentBalance * (stopPct / 100);
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = currentLocalDateString();
   const todayEntry = dailyLog[todayStr];
 
   // Weekly/Monthly goal calculations
@@ -4068,7 +4068,7 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
     const dayOfWeek = today.getDay();
     const monday = new Date(today);
     monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-    const monStr = monday.toISOString().split("T")[0];
+    const monStr = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,"0")}-${String(monday.getDate()).padStart(2,"0")}`;
     return sortedDays.filter(d => d >= monStr && d <= todayStr).reduce((s, d) => s + (dailyLog[d]?.pnl || 0), 0);
   }, [sortedDays, dailyLog, todayStr]);
 
