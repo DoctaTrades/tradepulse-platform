@@ -3275,7 +3275,15 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
 
       const strat = t.optionsStrategyType || "Unknown";
       const label = strat === "Vertical Spread" ? (t.legs[0]?.action === "Sell" ? "Credit Spread" : strat)
-        : strat === "Diagonal" || strat === "PMCC / Diagonal" ? "PMCC" : strat === "Calendar" || strat === "Calendar Press" ? "Cal Press" : strat === "Single Leg" ? (t.legs[0]?.action === "Sell" ? (t.legs[0]?.type === "Put" ? "CSP" : "CC") : strat) : strat;
+        : strat === "Diagonal" || strat === "PMCC / Diagonal" ? "PMCC"
+        : strat === "Calendar" || strat === "Calendar Press" ? "Cal Press"
+        : strat === "Single Leg" ? (t.legs[0]?.action === "Sell" ? (t.legs[0]?.type === "Put" ? "CSP" : "CC") : strat)
+        : strat === "Iron Condor" ? "Iron Condor"
+        : strat === "Condor" ? "Condor"
+        : strat === "Butterfly" ? "Butterfly"
+        : strat === "Iron Butterfly" ? "Iron Butterfly"
+        : strat === "Straddle / Strangle" ? (t.legs?.[0]?.action === "Sell" ? "Short Straddle/Strangle" : "Long Straddle/Strangle")
+        : strat;
 
       if (!strategyMap[label]) strategyMap[label] = { trades:0, collected:0, kept:0, wins:0 };
       strategyMap[label].trades++; strategyMap[label].collected += collected; strategyMap[label].kept += kept;
@@ -3320,7 +3328,20 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
     return { totalCollected, totalKept, totalTrades, closedCount, winCount, winRate, avgPerTrade, slippage, strategies, tickers, weeks };
   }, [trades, wheelTrades, accountFilter, prefs]);
 
-  const subTabs = [{ id:"overview", label:"Overview", icon:BarChart3 },{ id:"wheel", label:"Wheel", icon:RefreshCw },{ id:"pmcc", label:"PMCC", icon:Layers },{ id:"calpress", label:"Cal Press", icon:Calendar },{ id:"spreads", label:"Spreads", icon:Activity }];
+  // ─── PREMIUM SUB-TABS CONFIG ─────────────────────────────────────────────
+  // Add new strategy tabs here. Each entry defines a sub-tab in the Premium
+  // section. The render block below loops over this config — no other code
+  // needs to change when adding a new strategy tab.
+  const PREMIUM_SUB_TABS = [
+    { id:"overview",   label:"Overview",           icon:BarChart3 },
+    { id:"wheel",      label:"Wheel",              icon:RefreshCw },
+    { id:"pmcc",       label:"PMCC",               icon:Layers,    render:"diagonal", strategyType:"PMCC",    fullLabel:"Poor Man\'s Covered Call", desc:"Long LEAP call + short calls sold for income. Log as \'Diagonal\' strategy" },
+    { id:"calpress",   label:"Cal Press",           icon:Calendar,  render:"diagonal", strategyType:"CalPress", fullLabel:"Calendar Press",           desc:"Long dated OTM option + short weeklies sold for premium. Log as \'Calendar\' strategy" },
+    { id:"spreads",    label:"Spreads",             icon:Activity,  render:"spreads" },
+    { id:"condors",    label:"Condors",             icon:Shield,    render:"strategy", strategyFilter:["Iron Condor","Condor"],          fullLabel:"Condors",             desc:"Iron Condors and Condors — range-bound multi-leg strategies" },
+    { id:"butterflies",label:"Butterflies",         icon:Target,    render:"strategy", strategyFilter:["Butterfly","Iron Butterfly"],     fullLabel:"Butterflies",         desc:"Butterflies and Iron Butterflies — profit from pinning a target price" },
+    { id:"stradstrng", label:"Straddle/Strangle",   icon:Crosshair, render:"strategy", strategyFilter:["Straddle / Strangle"],           fullLabel:"Straddles & Strangles", desc:"Straddles and Strangles — profit from large moves in either direction" },
+  ];
 
   return (
     <div>
@@ -3338,15 +3359,15 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
         )}
       </div>
 
-      <div style={{ display:"flex", gap:4, marginBottom:16, borderBottom:"1px solid var(--tp-border)", paddingBottom:8 }}>
-        {subTabs.map(st => <button key={st.id} onClick={()=>setSubTab(st.id)} style={{ padding:"7px 14px", borderRadius:8, border:"none", background:subTab===st.id?"rgba(99,102,241,0.15)":"transparent", color:subTab===st.id?"#a5b4fc":"var(--tp-faint)", cursor:"pointer", fontSize:12, fontWeight:subTab===st.id?600:400, display:"flex", alignItems:"center", gap:5, transition:"all 0.15s" }}><st.icon size={13}/> {st.label}</button>)}
+      <div style={{ display:"flex", gap:4, marginBottom:16, borderBottom:"1px solid var(--tp-border)", paddingBottom:8, overflowX:"auto" }}>
+        {PREMIUM_SUB_TABS.map(st => <button key={st.id} onClick={()=>setSubTab(st.id)} style={{ padding:"7px 14px", borderRadius:8, border:"none", background:subTab===st.id?"rgba(99,102,241,0.15)":"transparent", color:subTab===st.id?"#a5b4fc":"var(--tp-faint)", cursor:"pointer", fontSize:12, fontWeight:subTab===st.id?600:400, display:"flex", alignItems:"center", gap:5, transition:"all 0.15s", whiteSpace:"nowrap", flexShrink:0 }}><st.icon size={13}/> {st.label}</button>)}
       </div>
 
       {subTab === "overview" && <PremiumOverview data={overviewData}/>}
       {subTab === "wheel" && <WheelSubTab wheelTrades={wheelTrades} onSave={onSave} accounts={accounts} trades={trades} onSaveTrades={onSaveTrades} accountFilter={accountFilter}/>}
-      {subTab === "pmcc" && <DiagonalPositionTracker trades={trades} accountFilter={accountFilter} strategyType="PMCC" label="Poor Man's Covered Call" description="Long LEAP call + short calls sold for income. Log as 'Diagonal' strategy" prefs={prefs} onEditTrade={onEditTrade}/>}
-      {subTab === "calpress" && <DiagonalPositionTracker trades={trades} accountFilter={accountFilter} strategyType="CalPress" label="Calendar Press" description="Long dated OTM option + short weeklies sold for premium. Log as 'Calendar' strategy" prefs={prefs} onEditTrade={onEditTrade}/>}
+      {PREMIUM_SUB_TABS.filter(st => st.render === "diagonal").map(st => subTab === st.id && <DiagonalPositionTracker key={st.id} trades={trades} accountFilter={accountFilter} strategyType={st.strategyType} label={st.fullLabel} description={st.desc} prefs={prefs} onEditTrade={onEditTrade}/>)}
       {subTab === "spreads" && <SpreadsSubTab trades={trades} accountFilter={accountFilter} prefs={prefs} onEditTrade={onEditTrade}/>}
+      {PREMIUM_SUB_TABS.filter(st => st.render === "strategy").map(st => subTab === st.id && <StrategySubTab key={st.id} trades={trades} accountFilter={accountFilter} prefs={prefs} onEditTrade={onEditTrade} strategyFilter={st.strategyFilter} label={st.fullLabel} description={st.desc}/>)}
     </div>
   );
 }
@@ -3609,6 +3630,136 @@ function SpreadsSubTab({ trades, accountFilter, prefs, onEditTrade }) {
                 <div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:"var(--tp-faintest)" }}>P&L</div><div style={{ fontSize:13, fontWeight:700, color:pnl>=0?"#4ade80":"#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{pnl!==null?`${pnl>=0?"+":""}$${pnl.toFixed(0)}`:"Open"}</div></div>
                 <span style={{ fontSize:9, padding:"3px 8px", borderRadius:4, background:t.status==="Open"?"rgba(234,179,8,0.1)":"rgba(74,222,128,0.1)", color:t.status==="Open"?"#eab308":"#4ade80", fontWeight:600 }}>{t.status||"Open"}</span>
               </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+// ─── STRATEGY SUB-TAB (generic, config-driven) ──────────────────────────────
+// Used by Condors, Butterflies, Straddle/Strangle — any multi-leg strategy
+// that opens and closes as a unit (not ongoing premium harvesting like PMCC).
+function StrategySubTab({ trades, accountFilter, prefs, onEditTrade, strategyFilter, label, description }) {
+  const resets = prefs?.accountResets || {};
+  const filtered = useMemo(() => trades.filter(t => {
+    if (t.assetType !== "Options" || !strategyFilter.includes(t.optionsStrategyType)) return false;
+    if (accountFilter !== "All" && t.account !== accountFilter) return false;
+    if (t.account && resets[t.account]?.resetDate && t.date < resets[t.account].resetDate) return false;
+    return true;
+  }).sort((a,b) => new Date(b.date)-new Date(a.date)), [trades, accountFilter, resets, strategyFilter]);
+
+  // Strategy-specific metrics extracted from legs
+  function getMetrics(t) {
+    const legs = t.legs || [];
+    const strikes = legs.map(l => parseFloat(l.strike)).filter(s => !isNaN(s)).sort((a,b) => a - b);
+    const minContracts = Math.min(...legs.map(l => parseInt(l.contracts) || 1));
+    let netPremium = 0;
+    legs.forEach(l => {
+      const p = parseFloat(l.entryPremium) || 0;
+      const c = parseInt(l.contracts) || 1;
+      netPremium += (l.action === "Sell" ? -1 : 1) * p * c * 100;
+    });
+    // netPremium: negative = net credit received, positive = net debit paid
+    const isCredit = netPremium < 0;
+    const creditDebit = Math.abs(netPremium);
+    const st = t.optionsStrategyType;
+
+    const result = { isCredit, creditDebit, strikes, legs: legs.length, strategyType: st, maxProfit: null, maxLoss: null, profitRange: null, breakevens: [] };
+
+    if ((st === "Iron Condor" || st === "Condor") && strikes.length >= 4) {
+      const putSideWidth = (strikes[1] - strikes[0]) * minContracts * 100;
+      const callSideWidth = (strikes[3] - strikes[2]) * minContracts * 100;
+      const maxWidth = Math.max(putSideWidth, callSideWidth);
+      if (isCredit) {
+        result.maxProfit = creditDebit;
+        result.maxLoss = maxWidth - creditDebit;
+        result.profitRange = `${strikes[1]} – ${strikes[2]}`;
+        const perShare = creditDebit / (minContracts * 100);
+        result.breakevens = [+(strikes[1] - perShare).toFixed(2), +(strikes[2] + perShare).toFixed(2)];
+      } else {
+        result.maxProfit = maxWidth - creditDebit;
+        result.maxLoss = creditDebit;
+        result.profitRange = `${strikes[1]} – ${strikes[2]}`;
+      }
+    } else if ((st === "Butterfly" || st === "Iron Butterfly") && strikes.length >= 3) {
+      const width = (strikes[2] - strikes[0]) / 2 * minContracts * 100;
+      const center = strikes.length === 4 ? (strikes[1] + strikes[2]) / 2 : strikes[1];
+      if (isCredit) {
+        result.maxProfit = creditDebit;
+        result.maxLoss = width - creditDebit;
+      } else {
+        result.maxProfit = width - creditDebit;
+        result.maxLoss = creditDebit;
+      }
+      result.profitRange = `Pin ${center}`;
+      const perShare = (isCredit ? creditDebit : width - creditDebit) / (minContracts * 100);
+      if (strikes.length === 3) {
+        result.breakevens = [+(strikes[0] + perShare).toFixed(2), +(strikes[2] - perShare).toFixed(2)];
+      }
+    } else if (st === "Straddle / Strangle") {
+      const totalPrem = creditDebit / (minContracts * 100);
+      if (strikes.length >= 2) {
+        result.breakevens = [+(strikes[0] - totalPrem).toFixed(2), +(strikes[strikes.length-1] + totalPrem).toFixed(2)];
+      } else if (strikes.length === 1) {
+        result.breakevens = [+(strikes[0] - totalPrem).toFixed(2), +(strikes[0] + totalPrem).toFixed(2)];
+      }
+      if (isCredit) {
+        result.maxProfit = creditDebit;
+        result.maxLoss = null; // unlimited
+      } else {
+        result.maxProfit = null; // unlimited
+        result.maxLoss = creditDebit;
+      }
+    }
+
+    return result;
+  }
+
+  if (filtered.length === 0) return (
+    <div>
+      <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>{label}</div>
+      <div style={{ fontSize:12, color:"var(--tp-faint)", marginBottom:16 }}>{description}</div>
+      <div style={{ textAlign:"center", padding:"50px 20px", color:"var(--tp-faint)" }}>
+        <Shield size={36} style={{ margin:"0 auto 12px", opacity:0.3 }}/>
+        <p style={{ fontSize:13, margin:"0 0 6px" }}>No {label.toLowerCase()} found.</p>
+        <p style={{ fontSize:11, color:"var(--tp-faintest)", margin:0 }}>Log a trade with the "{strategyFilter.join("\" or \"")}" strategy type to see it here.</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>{label}</div>
+      <div style={{ fontSize:12, color:"var(--tp-faint)", marginBottom:16 }}>{description}</div>
+      {filtered.map(t => {
+        const pnl = calcPnL(t);
+        const m = getMetrics(t);
+        const legsStr = (t.legs||[]).map(l => `${l.action[0]} ${l.strike}${l.type?l.type[0]:""}${l.expiration?" "+l.expiration.slice(5):""}`).join(" / ");
+        return (
+          <div key={t.id} onClick={()=>onEditTrade && onEditTrade(t)} style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:10, padding:"14px 18px", marginBottom:8, cursor:onEditTrade?"pointer":"default", transition:"border-color 0.15s" }} onMouseEnter={e=>{if(onEditTrade)e.currentTarget.style.borderColor="rgba(99,102,241,0.35)"}} onMouseLeave={e=>e.currentTarget.style.borderColor="var(--tp-panel-b)"}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:15, fontWeight:700, color:"var(--tp-text)" }}>{t.ticker}</span>
+                <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:m.isCredit?"rgba(74,222,128,0.1)":"rgba(96,165,250,0.1)", color:m.isCredit?"#4ade80":"#60a5fa", fontWeight:600 }}>{m.strategyType}{m.isCredit?" (Credit)":" (Debit)"}</span>
+                <span style={{ fontSize:10, color:"var(--tp-faintest)" }}>{t.date}</span>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                <div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:"var(--tp-faintest)" }}>{m.isCredit?"Credit":"Debit"}</div><div style={{ fontSize:13, fontWeight:600, color:"var(--tp-muted)", fontFamily:"'JetBrains Mono', monospace" }}>${m.creditDebit.toFixed(0)}</div></div>
+                <div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:"var(--tp-faintest)" }}>P&L</div><div style={{ fontSize:13, fontWeight:700, color:pnl!==null?(pnl>=0?"#4ade80":"#f87171"):"var(--tp-faint)", fontFamily:"'JetBrains Mono', monospace" }}>{pnl!==null?`${pnl>=0?"+":""}$${pnl.toFixed(0)}`:"Open"}</div></div>
+                <span style={{ fontSize:9, padding:"3px 8px", borderRadius:4, background:t.status==="Open"?"rgba(234,179,8,0.1)":"rgba(74,222,128,0.1)", color:t.status==="Open"?"#eab308":"#4ade80", fontWeight:600 }}>{t.status||"Open"}</span>
+              </div>
+            </div>
+            <div style={{ fontSize:10, color:"var(--tp-faintest)", marginBottom:8, fontFamily:"'JetBrains Mono', monospace" }}>{legsStr}</div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {m.maxProfit !== null && <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:"rgba(74,222,128,0.08)", color:"#4ade80" }}>Max Profit: ${m.maxProfit.toFixed(0)}</span>}
+              {m.maxProfit === null && m.isCredit && <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:"rgba(74,222,128,0.08)", color:"#4ade80" }}>Max Profit: ${m.creditDebit.toFixed(0)}</span>}
+              {m.maxLoss !== null && <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:"rgba(248,113,113,0.08)", color:"#f87171" }}>Max Loss: ${m.maxLoss.toFixed(0)}</span>}
+              {m.maxLoss === null && <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:"rgba(248,113,113,0.08)", color:"#f87171" }}>Max Loss: Unlimited</span>}
+              {m.profitRange && <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:"rgba(99,102,241,0.08)", color:"#a5b4fc" }}>Range: {m.profitRange}</span>}
+              {m.breakevens.length > 0 && <span style={{ fontSize:9, padding:"2px 8px", borderRadius:4, background:"rgba(234,179,8,0.08)", color:"#eab308" }}>BE: {m.breakevens.join(" / ")}</span>}
             </div>
           </div>
         );
