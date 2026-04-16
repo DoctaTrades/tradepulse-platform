@@ -75,6 +75,20 @@ function currentUtcDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Returns today's date in the user's LOCAL timezone as "YYYY-MM-DD".
+// Use this for anything user-facing (trade entry forms, roll dates, close dates).
+// Do NOT use for daily snapshot keys or cross-timezone comparisons — use
+// currentUtcDateString() for those. The bug this fixes: toISOString() returns
+// UTC, so after ~8 PM ET (midnight UTC) it returns tomorrow's date, making
+// trade entry forms default to the wrong day.
+function currentLocalDateString() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 async function snapshotIfNeeded(userId) {
   if (!userId) return;
   try {
@@ -450,7 +464,7 @@ function formatWeekLabel(ws) { const d = new Date(ws + "T12:00:00"); const e = n
 
 // ─── LEG HELPERS ──────────────────────────────────────────────────────────────
 const emptyLeg = (action = "Buy", type = "Call") => ({ id: Date.now() + Math.random(), action, type, strike: "", expiration: "", contracts: "1", entryPremium: "", exitPremium: "", partialCloses: [], rolls: [] });
-const emptyRoll = () => ({ id: Date.now() + Math.random(), date: new Date().toISOString().split("T")[0], sellPremium: "", buybackPremium: "", contracts: "" });
+const emptyRoll = () => ({ id: Date.now() + Math.random(), date: currentLocalDateString(), sellPremium: "", buybackPremium: "", contracts: "" });
 
 function defaultLegs(strategyType) {
   switch (strategyType) {
@@ -650,7 +664,7 @@ function fmt(n) { if (n === null || n === undefined || isNaN(n)) return "—"; c
 function fmtPct(n) { if (n === null || isNaN(n)) return "—"; return (n >= 0 ? "+" : "") + n.toFixed(1) + "%"; }
 
 const emptyTrade = (prefill = {}) => ({
-  id: Date.now(), date: new Date().toISOString().split("T")[0], ticker: "", assetType: "Stock",
+  id: Date.now(), date: currentLocalDateString(), ticker: "", assetType: "Stock",
   direction: "Long", status: "Open", strategy: "Day Trade", entryPrice: "", exitPrice: "",
   quantity: "", fees: "0", pnl: null, notes: "", grade: "", entryTime: "", exitTime: "", exitDate: "",
   stopLoss: "", takeProfit: "",
@@ -730,7 +744,7 @@ function RiskRewardPanel({ trade }) {
 function LegRow({ leg, index, onChange, onRemove, showRemove, locked, showRolls }) {
   const [showRollHistory, setShowRollHistory] = useState(false);
   const [showPartialCloses, setShowPartialCloses] = useState(false);
-  const [newClose, setNewClose] = useState({ qty: "1", exitPremium: "", date: new Date().toISOString().split("T")[0] });
+  const [newClose, setNewClose] = useState({ qty: "1", exitPremium: "", date: currentLocalDateString() });
   const set = k => v => onChange(index, { ...leg, [k]: v });
   
   const addRoll = () => {
@@ -775,7 +789,7 @@ function LegRow({ leg, index, onChange, onRemove, showRemove, locked, showRolls 
     if (isNaN(exit) || qty <= 0 || qty > remainingQty) return;
     const pc = { id: Date.now() + Math.random(), qty: String(qty), exitPremium: newClose.exitPremium, date: newClose.date };
     onChange(index, { ...leg, partialCloses: [...partials, pc] });
-    setNewClose({ qty: String(Math.min(remainingQty - qty, remainingQty)), exitPremium: "", date: new Date().toISOString().split("T")[0] });
+    setNewClose({ qty: String(Math.min(remainingQty - qty, remainingQty)), exitPremium: "", date: currentLocalDateString() });
     // Also update the legacy exitPremium to weighted avg for backward compat
     const allCloses = [...partials, pc];
     const totalClosedQty = allCloses.reduce((s, p) => s + (parseInt(p.qty) || 0), 0);
