@@ -464,7 +464,7 @@ function formatWeekLabel(ws) { const d = new Date(ws + "T12:00:00"); const e = n
 
 // ─── LEG HELPERS ──────────────────────────────────────────────────────────────
 const emptyLeg = (action = "Buy", type = "Call") => ({ id: Date.now() + Math.random(), action, type, strike: "", expiration: "", contracts: "1", entryPremium: "", exitPremium: "", partialCloses: [], rolls: [] });
-const emptyRoll = () => ({ id: Date.now() + Math.random(), date: currentLocalDateString(), sellPremium: "", buybackPremium: "", contracts: "" });
+const emptyRoll = () => ({ id: Date.now() + Math.random(), date: currentLocalDateString(), sellPremium: "", buybackPremium: "", contracts: "", fee: "" });
 
 function defaultLegs(strategyType) {
   switch (strategyType) {
@@ -525,9 +525,10 @@ function calcPnL(trade) {
         leg.rolls.forEach(roll => {
           const sell = parseFloat(roll.sellPremium) || 0;
           const buyback = parseFloat(roll.buybackPremium) || 0;
+          const rollFee = parseFloat(roll.fee) || 0;
           // Rolls apply per-contract for remaining open contracts at time of roll
           const rollQty = parseInt(roll.contracts) || contracts;
-          total += (sell - buyback) * rollQty * 100;
+          total += (sell - buyback) * rollQty * 100 - rollFee;
         });
       }
     }
@@ -673,6 +674,15 @@ const emptyTrade = (prefill = {}) => ({
   // New customizable fields
   emotions: [], account: "", timeframe: "", tradeStrategy: "",
   screenshots: [], playbook: "",
+  // Trade-linking scaffolding (Phase 1 data model foundation, April 2026).
+  // linkedTradeIds: IDs of other trades this trade is related to (e.g., a CSP's
+  // shares-assigned holding, a CC that closes out those shares, rolls of the
+  // same position logged as separate trades). No reader uses these yet —
+  // they're here so new features can link trades without a data migration.
+  // groupId: tag identifying a multi-trade cycle (e.g., a full wheel turn:
+  // CSP → assignment → CC → called-away). All trades in the same cycle share
+  // the same groupId. Null when the trade is standalone.
+  linkedTradeIds: [], groupId: null,
   ...prefill
 });
 
@@ -945,15 +955,17 @@ function RollRow({ roll, index, onChange, onRemove, legContracts }) {
   const set = k => v => onChange({ ...roll, [k]: v });
   const qty = parseInt(roll.contracts) || parseInt(legContracts) || 1;
   const netCredit = (parseFloat(roll.sellPremium) || 0) - (parseFloat(roll.buybackPremium) || 0);
-  const totalCredit = netCredit * qty * 100;
+  const fee = parseFloat(roll.fee) || 0;
+  const totalCredit = netCredit * qty * 100 - fee;
   
   return (
     <div style={{ background:"rgba(0,0,0,0.2)", borderRadius:6, padding:"8px 10px" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 1fr 70px 24px", gap:8, alignItems:"center" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 1fr 60px 70px 24px", gap:8, alignItems:"center" }}>
         <input type="date" value={roll.date} onChange={e=>set("date")(e.target.value)} style={{ padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/>
         <div><input type="number" value={roll.contracts || ""} onChange={e=>set("contracts")(e.target.value)} placeholder={String(legContracts || 1)} min="1" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", textAlign:"center" }}/></div>
         <div><input type="number" value={roll.buybackPremium} onChange={e=>set("buybackPremium")(e.target.value)} placeholder="Buyback $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div><input type="number" value={roll.sellPremium} onChange={e=>set("sellPremium")(e.target.value)} placeholder="Sell $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
+        <div><input type="number" value={roll.fee || ""} onChange={e=>set("fee")(e.target.value)} placeholder="Fee $" step="0.01" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div style={{ fontSize:11, fontFamily:"'JetBrains Mono', monospace", color: totalCredit > 0 ? "#4ade80" : totalCredit < 0 ? "#f87171" : "var(--tp-faintest)", textAlign:"right" }}>
           {totalCredit !== 0 ? `${totalCredit > 0 ? "+" : ""}$${totalCredit.toFixed(0)}` : "—"}
         </div>
@@ -3262,9 +3274,10 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
           leg.rolls.forEach(roll => {
             const sell = parseFloat(roll.sellPremium) || 0;
             const buyback = parseFloat(roll.buybackPremium) || 0;
+            const rollFee = parseFloat(roll.fee) || 0;
             const rqty = parseInt(roll.contracts) || contracts;
             collected += sell * rqty * 100;
-            kept += (sell - buyback) * rqty * 100;
+            kept += (sell - buyback) * rqty * 100 - rollFee;
           });
         }
       });
@@ -3510,7 +3523,8 @@ function DiagonalPositionTracker({ trades, accountFilter, strategyType, label, d
             else { const exit = parseFloat(leg.exitPremium); totalPremKept += !isNaN(exit) ? (entry-exit)*contracts*100 : entry*contracts*100; }
             if (leg.rolls?.length) leg.rolls.forEach(roll => {
               const sell=parseFloat(roll.sellPremium)||0, buyback=parseFloat(roll.buybackPremium)||0, rqty=parseInt(roll.contracts)||contracts;
-              totalPremCollected += sell*rqty*100; totalPremKept += (sell-buyback)*rqty*100;
+              const rollFee = parseFloat(roll.fee) || 0;
+              totalPremCollected += sell*rqty*100; totalPremKept += (sell-buyback)*rqty*100 - rollFee;
             });
           }
         });
@@ -3575,7 +3589,7 @@ function DiagonalPositionTracker({ trades, accountFilter, strategyType, label, d
                       const partials = leg.partialCloses || [];
                       if (partials.length > 0) partials.forEach(pc => income += (entry - (parseFloat(pc.exitPremium)||0)) * (parseInt(pc.qty)||1) * 100);
                       else { const exit = parseFloat(leg.exitPremium); income += !isNaN(exit) ? (entry - exit) * contracts * 100 : entry * contracts * 100; }
-                      if (leg.rolls?.length) leg.rolls.forEach(r => { income += ((parseFloat(r.sellPremium)||0) - (parseFloat(r.buybackPremium)||0)) * (parseInt(r.contracts)||contracts) * 100; });
+                      if (leg.rolls?.length) leg.rolls.forEach(r => { income += ((parseFloat(r.sellPremium)||0) - (parseFloat(r.buybackPremium)||0)) * (parseInt(r.contracts)||contracts) * 100 - (parseFloat(r.fee)||0); });
                     }
                   });
                   tradePnL = income - cost - (parseFloat(t.fees)||0);
