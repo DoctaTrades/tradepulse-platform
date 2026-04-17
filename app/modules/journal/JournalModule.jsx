@@ -458,6 +458,70 @@ function wheelTradeToMultiLeg(wheelTrade) {
   };
 }
 
+// ─── WHEEL FORMAT ADAPTERS (Phase 2) ────────────────────────────────────────
+// The Wheel tab UI components (WheelPositionCard, TradeHistoryRow,
+// WheelTradeModal) speak the old wheel format: trade.type, trade.openPremium,
+// trade.strike, etc. These adapters translate between that format and the
+// unified trades format so the UI doesn't need to be rewritten.
+
+// Convert a unified trade (from trades array) to wheel display format
+function toWheelFormat(t) {
+  if (!t || !t.wheelType) return t; // not a wheel trade or already in wheel format
+  if (t.type === "CSP" || t.type === "CC" || t.type === "Shares") return t; // already wheel format
+  const wt = { id: t.id, ticker: t.ticker, date: t.date, account: t.account || "", fees: t.fees || "0", notes: t.notes || "",
+    assigned: !!t.assigned, calledAway: !!t.calledAway, sharesCalledAway: t.sharesCalledAway || "",
+    linkedTradeIds: t.linkedTradeIds || [], groupId: t.groupId || null, wheelType: t.wheelType };
+  if (t.wheelType === "CSP" || t.wheelType === "CC") {
+    wt.type = t.wheelType;
+    const leg = t.legs?.[0] || {};
+    wt.contracts = leg.contracts || "1";
+    wt.strike = leg.strike || "";
+    wt.openPremium = leg.entryPremium || "";
+    wt.closePremium = leg.exitPremium || "";
+    wt.expiry = leg.expiration || "";
+  } else if (t.wheelType === "Shares") {
+    wt.type = "Shares";
+    wt.shares = t.quantity || "";
+    wt.avgPrice = t.entryPrice || "";
+  }
+  return wt;
+}
+
+// Convert a wheel-format trade (from WheelTradeModal) to unified trades format
+function fromWheelFormat(wt) {
+  if (wt.wheelType === "CSP" || wt.wheelType === "CC" || wt.type === "CSP" || wt.type === "CC") {
+    const type = wt.wheelType || wt.type;
+    const hasClosed = wt.closePremium && parseFloat(wt.closePremium) > 0;
+    return {
+      ...emptyTrade(),
+      id: wt.id, ticker: wt.ticker, date: wt.date, account: wt.account || "",
+      assetType: "Options", optionsStrategyType: "Single Leg", direction: "Short",
+      status: hasClosed || wt.assigned || wt.calledAway ? "Closed" : "Open",
+      legs: [{ id: Date.now() + Math.random(), action: "Sell", type: type === "CSP" ? "Put" : "Call",
+        strike: wt.strike || "", expiration: wt.expiry || "", contracts: wt.contracts || "1",
+        entryPremium: wt.openPremium || "", exitPremium: wt.closePremium || "",
+        partialCloses: [], rolls: [] }],
+      fees: wt.fees || "0", notes: wt.notes || "",
+      wheelType: type, assigned: !!wt.assigned, calledAway: !!wt.calledAway,
+      sharesCalledAway: wt.sharesCalledAway || "",
+      linkedTradeIds: wt.linkedTradeIds || [], groupId: wt.groupId || null,
+      strategy: "Wheel Strategy", timeframe: "Swing", tradeStrategy: "Wheel Strategy",
+    };
+  } else if (wt.wheelType === "Shares" || wt.type === "Shares") {
+    return {
+      ...emptyTrade(),
+      id: wt.id, ticker: wt.ticker, date: wt.date, account: wt.account || "",
+      assetType: "Stocks", direction: "Long", status: "Open",
+      entryPrice: wt.avgPrice || "", quantity: wt.shares || "",
+      fees: wt.fees || "0", notes: wt.notes || "",
+      wheelType: "Shares", linkedTradeIds: wt.linkedTradeIds || [], groupId: wt.groupId || null,
+      strategy: "Wheel Strategy", timeframe: "Swing", tradeStrategy: "Wheel Strategy",
+      legs: [],
+    };
+  }
+  return wt; // fallback
+}
+
 // ─── WEEK HELPERS ─────────────────────────────────────────────────────────────
 function getWeekStart(date = new Date()) { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0,0,0,0); return d.toISOString().split("T")[0]; }
 function formatWeekLabel(ws) { const d = new Date(ws + "T12:00:00"); const e = new Date(d); e.setDate(e.getDate()+4); const o = {month:"short",day:"numeric"}; return `Week of ${d.toLocaleDateString("en-US",o)} – ${e.toLocaleDateString("en-US",o)}`; }
@@ -2220,7 +2284,7 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
   );
 }
 
-function Dashboard({ trades, customFields, accountBalances, theme, logo, banner, dashWidgets, futuresSettings, prefs, onSavePrefs, wheelTrades, cashTransactions, dividends, hideBalances, setHideBalances, onNavigate, onNewTrade }) {
+function Dashboard({ trades, customFields, accountBalances, theme, logo, banner, dashWidgets, futuresSettings, prefs, onSavePrefs, cashTransactions, dividends, hideBalances, setHideBalances, onNavigate, onNewTrade }) {
   const widgetConfig = useMemo(() => {
     if (!dashWidgets || dashWidgets.length === 0) return DEFAULT_DASH_WIDGETS;
     const merged = [];
@@ -2327,11 +2391,10 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
 
       // Calculate wheel premium income for this account
       let wheelPremium = 0;
-      (wheelTrades || []).filter(wt => wt.account === name && (!resetDate || wt.date >= resetDate)).forEach(wt => {
-        if (wt.type === "CSP" || wt.type === "CC") {
-          wheelPremium += ((parseFloat(wt.openPremium)||0) - (parseFloat(wt.closePremium)||0)) * (parseInt(wt.contracts)||0) * 100 - (parseFloat(wt.fees)||0);
-        }
-      });
+      // Wheel premium is now included in regular trades P&L (Phase 2 merge).
+      // Migrated wheel CSPs/CCs have wheelType set and their premium is already
+      // captured by the realized P&L calculation above via legs[0].entryPremium/exitPremium.
+      // Setting wheelPremium to 0 avoids double-counting.
       wheelPremium = Math.round(wheelPremium * 100) / 100;
 
       // Calculate cash deposits/withdrawals for this account
@@ -2364,7 +2427,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
 
       return { name, startBal: start, currentBal, realizedPnL, unrealizedPnL, wheelPremium, cashNet, dividendIncome, totalPnL, returnPct, tradeCount: acctTrades.length, hasOverride, overrideVal, resetDate, reconcileAdj };
     });
-  }, [accountBalances, trades, prefs, wheelTrades, cashTransactions, dividends]);
+  }, [accountBalances, trades, prefs, cashTransactions, dividends]);
 
   // ── Compute Stats ──
   const stats = useMemo(() => {
@@ -3342,10 +3405,10 @@ function Watchlist({ watchlists, onSave, onPromoteTrade }) {
 }
 
 // ─── WHEEL TAB ────────────────────────────────────────────────────────────────
-function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, accountBalances, onEditTrade }) {
+function WheelTab({ accounts, trades, onSaveTrades, prefs, accountBalances, onEditTrade }) {
   const [subTab, setSubTab] = useState("overview");
   const [accountFilter, setAccountFilter] = useState("All");
-  const allAccounts = useMemo(() => [...new Set([...(accounts||[]), ...wheelTrades.map(t=>t.account).filter(Boolean)])], [accounts, wheelTrades]);
+  const allAccounts = useMemo(() => [...new Set([...(accounts||[]), ...trades.filter(t=>t.wheelType).map(t=>t.account).filter(Boolean)])], [accounts, trades]);
 
   const overviewData = useMemo(() => {
     const resets = prefs?.accountResets || {};
@@ -3356,11 +3419,9 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
       // Only include trades that have a sell leg (net premium sellers)
       return t.legs.some(l => l.action === "Sell");
     });
-    const filteredWheel = wheelTrades.filter(wt => {
-      if (accountFilter !== "All" && wt.account !== accountFilter) return false;
-      if (wt.account && resets[wt.account]?.resetDate && wt.date < resets[wt.account].resetDate) return false;
-      return (wt.type === "CSP" || wt.type === "CC");
-    });
+    // After the Phase 2 merge, wheel CSPs/CCs are now in the trades array
+    // with wheelType set. The premiumTrades filter above already catches them
+    // (they have sell legs), so no separate filteredWheel loop is needed.
 
     let totalCollected = 0, totalKept = 0, closedCount = 0, winCount = 0;
     const strategyMap = {}, tickerMap = {}, weekMap = {};
@@ -3423,27 +3484,7 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
       weekMap[wk].collected += collected; weekMap[wk].kept += kept; weekMap[wk].trades++;
     });
 
-    filteredWheel.forEach(wt => {
-      const contracts = parseInt(wt.contracts) || 0;
-      const openP = (parseFloat(wt.openPremium) || 0) * contracts * 100;
-      const closeP = (parseFloat(wt.closePremium) || 0) * contracts * 100;
-      const fees = parseFloat(wt.fees) || 0;
-      const net = openP - closeP - fees;
-      totalCollected += openP; totalKept += net; closedCount++;
-      if (net > 0) winCount++;
-      const label = wt.type;
-      if (!strategyMap[label]) strategyMap[label] = { trades:0, collected:0, kept:0, wins:0 };
-      strategyMap[label].trades++; strategyMap[label].collected += openP; strategyMap[label].kept += net;
-      if (net > 0) strategyMap[label].wins++;
-      if (!tickerMap[wt.ticker]) tickerMap[wt.ticker] = { trades:0, kept:0 };
-      tickerMap[wt.ticker].trades++; tickerMap[wt.ticker].kept += net;
-      const d = new Date(wt.date); const ws = new Date(d); ws.setDate(d.getDate() - d.getDay());
-      const wk = ws.toISOString().split("T")[0];
-      if (!weekMap[wk]) weekMap[wk] = { collected:0, kept:0, trades:0 };
-      weekMap[wk].collected += openP; weekMap[wk].kept += net; weekMap[wk].trades++;
-    });
-
-    const totalTrades = premiumTrades.length + filteredWheel.length;
+    const totalTrades = premiumTrades.length;
     const winRate = closedCount > 0 ? (winCount / closedCount) * 100 : 0;
     const avgPerTrade = totalTrades > 0 ? totalKept / totalTrades : 0;
     const slippage = totalCollected - totalKept;
@@ -3451,7 +3492,7 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
     const tickers = Object.entries(tickerMap).map(([ticker, t]) => ({ ticker, trades:t.trades, kept:t.kept })).sort((a,b) => b.kept - a.kept);
     const weeks = Object.entries(weekMap).sort((a,b) => a[0].localeCompare(b[0])).map(([wk, w]) => ({ week:wk, ...w }));
     return { totalCollected, totalKept, totalTrades, closedCount, winCount, winRate, avgPerTrade, slippage, strategies, tickers, weeks };
-  }, [trades, wheelTrades, accountFilter, prefs]);
+  }, [trades, accountFilter, prefs]);
 
   // ─── PREMIUM SUB-TABS CONFIG ─────────────────────────────────────────────
   // Add new strategy tabs here. Each entry defines a sub-tab in the Premium
@@ -3489,7 +3530,7 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
       </div>
 
       {subTab === "overview" && <PremiumOverview data={overviewData}/>}
-      {subTab === "wheel" && <WheelSubTab wheelTrades={wheelTrades} onSave={onSave} accounts={accounts} trades={trades} onSaveTrades={onSaveTrades} accountFilter={accountFilter}/>}
+      {subTab === "wheel" && <WheelSubTab accounts={accounts} trades={trades} onSaveTrades={onSaveTrades} accountFilter={accountFilter}/>}
       {PREMIUM_SUB_TABS.filter(st => st.render === "diagonal").map(st => subTab === st.id && <DiagonalPositionTracker key={st.id} trades={trades} accountFilter={accountFilter} strategyType={st.strategyType} label={st.fullLabel} description={st.desc} prefs={prefs} onEditTrade={onEditTrade}/>)}
       {subTab === "spreads" && <SpreadsSubTab trades={trades} accountFilter={accountFilter} prefs={prefs} onEditTrade={onEditTrade}/>}
       {PREMIUM_SUB_TABS.filter(st => st.render === "strategy").map(st => subTab === st.id && <StrategySubTab key={st.id} trades={trades} accountFilter={accountFilter} prefs={prefs} onEditTrade={onEditTrade} strategyFilter={st.strategyFilter} label={st.fullLabel} description={st.desc}/>)}
@@ -3894,100 +3935,82 @@ function StrategySubTab({ trades, accountFilter, prefs, onEditTrade, strategyFil
   );
 }
 
-function WheelSubTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, accountFilter }) {
+function WheelSubTab({ accounts, trades, onSaveTrades, accountFilter }) {
   const [collapsed, setCollapsed] = useState({});
   const [showAddPositionModal, setShowAddPositionModal] = useState(false);
   const [showAddTradeModal, setShowAddTradeModal] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
   const [selectedAccount, setSelectedAccount] = useState("");
+  // Filter trades to wheel entries and convert to wheel display format
+  const wheelEntries = useMemo(() => trades.filter(t => t.wheelType).map(toWheelFormat), [trades]);
+
   const positions = useMemo(() => {
     const grouped = {};
-    const filtered = accountFilter === "All" ? wheelTrades : wheelTrades.filter(t => t.account === accountFilter);
+    const filtered = accountFilter === "All" ? wheelEntries : wheelEntries.filter(t => t.account === accountFilter);
     filtered.forEach(trade => {
       const key = `${trade.ticker}|${trade.account || "Unassigned"}`;
       if (!grouped[key]) grouped[key] = { ticker:trade.ticker, account:trade.account||"Unassigned", trades:[] };
       grouped[key].trades.push(trade);
     });
     return Object.values(grouped).map(g => ({ ...g, trades:g.trades.sort((a,b) => new Date(b.date)-new Date(a.date)) }));
-  }, [wheelTrades, accountFilter]);
+  }, [wheelEntries, accountFilter]);
 
-  useEffect(() => {
-    if (!onSaveTrades || !wheelTrades.length) return;
-    const needsSync = wheelTrades.filter(wt => {
-      if (wt.type === "CSP" && wt.assigned) return true;
-      if (wt.type === "Shares" && (parseInt(wt.shares)||0) > 0) return true;
-      return false;
-    });
-    const missing = needsSync.filter(wt => !trades.find(t => t.id === `wheel-assigned-${wt.id}`));
-    if (missing.length === 0) return;
+  // Bridge code removed in Phase 2 — wheel trades are now in the unified trades array
+
+
+  const handleSaveTrade = (wheelFormatTrade) => {
+    // Convert wheel-format trade to unified format and save to trades
+    const unified = fromWheelFormat(wheelFormatTrade);
     onSaveTrades(prev => {
-      const newH = missing.filter(wt => !prev.find(t => t.id === `wheel-assigned-${wt.id}`)).map(wt => {
-        if (wt.type === "CSP") {
-          const shares = (parseInt(wt.contracts)||1)*100, strike = parseFloat(wt.strike)||0, prem = parseFloat(wt.openPremium)||0;
-          return { id:`wheel-assigned-${wt.id}`, ticker:wt.ticker, date:wt.expiry||wt.date, assetType:"Stocks", direction:"Long", status:"Open",
-            entryPrice:String((strike-prem).toFixed(2)), quantity:String(shares), account:wt.account||"", timeframe:"Swing",
-            notes:`Wheel assignment from CSP @ $${strike} strike. Premium received: $${prem}/contract.`, tradeStrategy:"Wheel Strategy", source:"wheel-assignment" };
-        } else {
-          // Shares type
-          const shares = parseInt(wt.shares)||0, price = parseFloat(wt.avgPrice)||0;
-          return { id:`wheel-assigned-${wt.id}`, ticker:wt.ticker, date:wt.date, assetType:"Stocks", direction:"Long", status:"Open",
-            entryPrice:String(price.toFixed(2)), quantity:String(shares), account:wt.account||"", timeframe:"Swing",
-            notes:wt.notes || `Wheel shares purchased @ $${price.toFixed(2)}`, tradeStrategy:"Wheel Strategy", source:"wheel-assignment" };
-        }
-      });
-      return [...newH, ...prev];
+      const idx = prev.findIndex(t => t.id === unified.id);
+      if (idx >= 0) { const u = [...prev]; u[idx] = unified; return u; }
+      return [unified, ...prev];
     });
-  }, []);
 
-
-  const handleSaveTrade = (trade) => {
-    onSave(prev => {
-      const idx = prev.findIndex(t => t.id === trade.id);
-      if (idx >= 0) { const u = [...prev]; u[idx] = trade; return u; }
-      return [trade, ...prev];
-    });
-    if (trade.type === "CSP" && trade.assigned && onSaveTrades) {
-      const holdingId = `wheel-assigned-${trade.id}`;
-      const shares = (parseInt(trade.contracts)||1)*100, strike = parseFloat(trade.strike)||0, premiumCredit = parseFloat(trade.openPremium)||0;
+    // CSP Assignment: create a linked Shares entry
+    if (wheelFormatTrade.type === "CSP" && wheelFormatTrade.assigned) {
+      const holdingId = `wheel-shares-${wheelFormatTrade.id}`;
+      const shares = (parseInt(wheelFormatTrade.contracts)||1)*100;
+      const strike = parseFloat(wheelFormatTrade.strike)||0;
+      const premiumCredit = parseFloat(wheelFormatTrade.openPremium)||0;
       const costBasis = strike - premiumCredit;
+      const gid = unified.groupId || `wheel-${wheelFormatTrade.ticker}-${wheelFormatTrade.date}-${Math.random().toString(36).slice(2,8)}`;
       onSaveTrades(prev => {
         const existing = prev.find(t => t.id === holdingId);
-        const ht = { id:holdingId, ticker:trade.ticker, date:trade.expiry||trade.date, assetType:"Stocks", direction:"Long", status:"Open",
-          entryPrice:String(costBasis.toFixed(2)), quantity:String(shares), account:trade.account||"", timeframe:"Swing",
-          notes:`Wheel assignment from CSP @ $${strike} strike. Premium received: $${premiumCredit}/contract.`, tradeStrategy:"Wheel Strategy", source:"wheel-assignment" };
-        if (existing) return prev.map(t => t.id === holdingId ? {...t,...ht} : t);
-        return [ht, ...prev];
+        const ht = { ...emptyTrade(), id:holdingId, ticker:wheelFormatTrade.ticker, date:wheelFormatTrade.expiry||wheelFormatTrade.date,
+          assetType:"Stocks", direction:"Long", status:"Open",
+          entryPrice:String(costBasis.toFixed(2)), quantity:String(shares), account:wheelFormatTrade.account||"",
+          notes:`Wheel assignment from CSP @ $${strike} strike. Premium received: $${premiumCredit}/contract.`,
+          wheelType:"Shares", strategy:"Wheel Strategy", tradeStrategy:"Wheel Strategy", timeframe:"Swing",
+          linkedTradeIds:[unified.id], groupId:gid, legs:[] };
+        // Also link the CSP back to the shares entry
+        const updatedPrev = prev.map(t => t.id === unified.id ? { ...t, linkedTradeIds: [...(t.linkedTradeIds||[]).filter(x=>x!==holdingId), holdingId], groupId: gid } : t);
+        if (existing) return updatedPrev.map(t => t.id === holdingId ? {...t,...ht} : t);
+        return [ht, ...updatedPrev];
       });
     }
-    if (trade.type === "CSP" && !trade.assigned && onSaveTrades) onSaveTrades(prev => prev.filter(t => t.id !== `wheel-assigned-${trade.id}`));
-    // Sync Shares-type wheel trades to Holdings
-    if (trade.type === "Shares" && onSaveTrades) {
-      const holdingId = `wheel-assigned-${trade.id}`;
-      const shares = parseInt(trade.shares)||0;
-      const price = parseFloat(trade.avgPrice)||0;
-      if (shares > 0) {
-        onSaveTrades(prev => {
-          const existing = prev.find(t => t.id === holdingId);
-          const ht = { id:holdingId, ticker:trade.ticker, date:trade.date, assetType:"Stocks", direction:"Long", status:"Open",
-            entryPrice:String(price.toFixed(2)), quantity:String(shares), account:trade.account||"", timeframe:"Swing",
-            notes:trade.notes || `Wheel shares purchased @ $${price.toFixed(2)}`, tradeStrategy:"Wheel Strategy", source:"wheel-assignment" };
-          if (existing) return prev.map(t => t.id === holdingId ? {...t,...ht} : t);
-          return [ht, ...prev];
-        });
-      } else {
-        // Shares set to 0 = remove
-        onSaveTrades(prev => prev.filter(t => t.id !== holdingId));
-      }
+    // CSP un-assigned: remove the linked shares entry
+    if (wheelFormatTrade.type === "CSP" && !wheelFormatTrade.assigned) {
+      const holdingId = `wheel-shares-${wheelFormatTrade.id}`;
+      onSaveTrades(prev => prev.filter(t => t.id !== holdingId));
     }
-    if (trade.type === "CC" && trade.calledAway && onSaveTrades) {
-      const sharesCalledAway = parseInt(trade.sharesCalledAway) || ((parseInt(trade.contracts)||1)*100);
-      const callStrike = parseFloat(trade.strike)||0;
+    // CC Called Away: find and close the linked shares
+    if (wheelFormatTrade.type === "CC" && wheelFormatTrade.calledAway) {
+      const sharesCalledAway = parseInt(wheelFormatTrade.sharesCalledAway) || ((parseInt(wheelFormatTrade.contracts)||1)*100);
+      const callStrike = parseFloat(wheelFormatTrade.strike)||0;
       onSaveTrades(prev => {
-        const match = prev.find(t => t.source === "wheel-assignment" && t.ticker === trade.ticker && t.account === (trade.account||"") && t.status === "Open");
+        // Try explicit link first, then fuzzy match
+        const match = prev.find(t =>
+          t.wheelType === "Shares" && t.ticker === wheelFormatTrade.ticker &&
+          t.account === (wheelFormatTrade.account||"") && t.status === "Open"
+        ) || prev.find(t =>
+          t.source === "wheel-assignment" && t.ticker === wheelFormatTrade.ticker &&
+          t.account === (wheelFormatTrade.account||"") && t.status === "Open"
+        );
         if (match) {
           const es = parseInt(match.quantity)||0;
-          if (sharesCalledAway >= es) return prev.map(t => t.id===match.id?{...t, status:"Closed", exitPrice:String(callStrike), exitDate:trade.expiry||trade.date}:t);
+          if (sharesCalledAway >= es) return prev.map(t => t.id===match.id?{...t, status:"Closed", exitPrice:String(callStrike), exitDate:wheelFormatTrade.expiry||wheelFormatTrade.date}:t);
           else return prev.map(t => t.id===match.id?{...t, quantity:String(es-sharesCalledAway)}:t);
         }
         return prev;
@@ -3996,8 +4019,8 @@ function WheelSubTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, acco
     setShowAddTradeModal(false); setEditingTrade(null); setSelectedTicker(null); setSelectedAccount("");
   };
 
-  const handleDeleteTrade = (id) => onSave(prev => prev.filter(t => t.id !== id));
-  const handleDeletePosition = (ticker, account) => onSave(prev => prev.filter(t => !(t.ticker === ticker && (t.account || "Unassigned") === account)));
+  const handleDeleteTrade = (id) => onSaveTrades(prev => prev.filter(t => t.id !== id));
+  const handleDeletePosition = (ticker, account) => onSaveTrades(prev => prev.filter(t => !(t.wheelType && t.ticker === ticker && (t.account || "Unassigned") === account)));
   const openNewPosition = () => setShowAddPositionModal(true);
   const openNewTrade = (ticker, account) => { setSelectedTicker(ticker); setSelectedAccount(account||""); setEditingTrade(null); setShowAddTradeModal(true); };
   const openEditTrade = (trade) => { setEditingTrade(trade); setShowAddTradeModal(true); };
@@ -8111,7 +8134,7 @@ function SetupGuide() {
 }
 
 // ─── REPORTS TAB ─────────────────────────────────────────────────────────────
-function ReportsTab({ trades, wheelTrades, accountBalances, customFields, theme, prefs }) {
+function ReportsTab({ trades, accountBalances, customFields, theme, prefs }) {
   const [reportType, setReportType] = useState("summary");
   const [account, setAccount] = useState("All");
   const [dateRange, setDateRange] = useState("month");
@@ -8581,7 +8604,7 @@ function BackupsSection({ user, theme }) {
   );
 }
 
-function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances }) {
+function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, cashTransactions, onSaveCashTransactions, hideBalances }) {
   const [section, setSection] = useState("accounts"); // accounts | appearance | futures | custom | importexport | ai
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPreset, setEditingPreset] = useState(null);
@@ -8613,7 +8636,7 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
         <button onClick={()=>setSection("backups")} style={{ padding:"8px 16px", border:"none", background:section==="backups"?"rgba(99,102,241,0.15)":"transparent", color:section==="backups"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="backups"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Backups</button>
       </div>
 
-      {section === "accounts" && <AccountBalancesManager accountBalances={accountBalances} onSave={onSaveAccountBalances} customFields={customFields} trades={trades} prefs={prefs} onSavePrefs={onSavePrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={onSaveCashTransactions} hideBalances={hideBalances}/>}
+      {section === "accounts" && <AccountBalancesManager accountBalances={accountBalances} onSave={onSaveAccountBalances} customFields={customFields} trades={trades} prefs={prefs} onSavePrefs={onSavePrefs} cashTransactions={cashTransactions} onSaveCashTransactions={onSaveCashTransactions} hideBalances={hideBalances}/>}
 
       {section === "backups" && <BackupsSection user={user} theme={theme}/>}
 
@@ -10529,7 +10552,7 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
 }
 
 // ─── ACCOUNT BALANCES MANAGER ────────────────────────────────────────────────
-function AccountBalancesManager({ accountBalances, onSave, customFields, trades, prefs, onSavePrefs, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances }) {
+function AccountBalancesManager({ accountBalances, onSave, customFields, trades, prefs, onSavePrefs, cashTransactions, onSaveCashTransactions, hideBalances }) {
   const [addingAccount, setAddingAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountBalance, setNewAccountBalance] = useState("");
@@ -10734,7 +10757,8 @@ function AccountBalancesManager({ accountBalances, onSave, customFields, trades,
                   unrealizedPnL += (cp - (parseFloat(t.entryPrice)||0)) * (parseFloat(t.quantity)||0) * dir;
                 }
               });
-              const autoBal = start + realizedPnL + Math.round(unrealizedPnL * 100) / 100 + (wheelTrades || []).filter(wt => wt.account === name && (wt.type === "CSP" || wt.type === "CC")).reduce((s, wt) => s + ((parseFloat(wt.openPremium)||0) - (parseFloat(wt.closePremium)||0)) * (parseInt(wt.contracts)||0) * 100, 0);
+              // Wheel premium is now included in realized P&L (Phase 2 merge)
+              const autoBal = start + realizedPnL + Math.round(unrealizedPnL * 100) / 100;
 
               return (
                 <div key={name} style={{ background:"var(--tp-panel)", border:`1px solid ${hasOverride ? "rgba(234,179,8,0.2)" : "var(--tp-panel-b)"}`, borderRadius:10, padding:"14px 16px" }}>
@@ -11201,7 +11225,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
 
   return (
     <>
-      {tab==="dashboard" && <Dashboard trades={trades} customFields={customFields} accountBalances={accountBalances} theme={theme} logo={prefs.logo} banner={prefs.banner} dashWidgets={prefs.dashWidgets} futuresSettings={futuresSettings} prefs={prefs} onSavePrefs={setPrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} dividends={dividends} hideBalances={hideBalances} setHideBalances={setHideBalances} onNavigate={setTab} onNewTrade={()=>{setEditingTrade(null);setShowTradeModal(true);}}/>}
+      {tab==="dashboard" && <Dashboard trades={trades} customFields={customFields} accountBalances={accountBalances} theme={theme} logo={prefs.logo} banner={prefs.banner} dashWidgets={prefs.dashWidgets} futuresSettings={futuresSettings} prefs={prefs} onSavePrefs={setPrefs} cashTransactions={cashTransactions} dividends={dividends} hideBalances={hideBalances} setHideBalances={setHideBalances} onNavigate={setTab} onNewTrade={()=>{setEditingTrade(null);setShowTradeModal(true);}}/>}
       {tab==="journal" && <JournalTab journal={journal} onSave={setJournal} trades={trades} theme={theme}/>}
       {tab==="goals" && <GoalTracker goals={goals} onSave={setGoals} trades={trades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} prefs={prefs}/>}
       {tab==="holdings" && <HoldingsTab trades={trades} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}} theme={theme} dividends={dividends} onSaveDividends={setDividends} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} onStartWheel={(ticker, account, shares, avgPrice) => {
@@ -11211,11 +11235,11 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
       }}/>}
       {tab==="review" && <ReviewTab trades={trades} accountBalances={accountBalances} theme={theme} prefs={prefs} journal={journal} goals={goals} playbooks={playbooks}/>}
       {tab==="playbook" && <PlaybookTab playbooks={playbooks} onSave={setPlaybooks} trades={trades} theme={theme}/>}
-      {tab==="wheel" && <WheelTab wheelTrades={wheelTrades} onSave={setWheelTrades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} trades={trades} onSaveTrades={setTrades} prefs={prefs} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}}/>}
+      {tab==="wheel" && <WheelTab accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} trades={trades} onSaveTrades={setTrades} prefs={prefs} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}}/>}
       {tab==="watchlist" && <Watchlist watchlists={watchlists} onSave={setWatchlists} onPromoteTrade={promoteTrade} theme={theme}/>}
       {tab==="log" && <TradeLog trades={trades} onEdit={t=>{setEditingTrade(t);setShowTradeModal(true);}} onDelete={handleTradeDelete} theme={theme} prefs={prefs}/>}
-      {tab==="reports" && <ReportsTab trades={trades} wheelTrades={wheelTrades} accountBalances={accountBalances} customFields={customFields} theme={theme} prefs={prefs}/>}
-      {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances}/>}
+      {tab==="reports" && <ReportsTab trades={trades} accountBalances={accountBalances} customFields={customFields} theme={theme} prefs={prefs}/>}
+      {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances}/>}
       {showTradeModal && <TradeModal onSave={handleTradeSave} onClose={()=>{setShowTradeModal(false);setEditingTrade(null);}} editTrade={editingTrade} futuresSettings={futuresSettings} customFields={customFields} playbooks={playbooks} theme={theme} accountBalances={accountBalances} onAssign={handleAssignment}/>}
       {showMigration && <MigrationPrompt onMigrate={handleMigrate} onSkip={()=>setShowMigration(false)}/>}
     </>
