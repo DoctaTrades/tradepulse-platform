@@ -4467,7 +4467,7 @@ function DailyLogRow({ row, dailyLog, onUpdatePnL, onToggleHit, onUpdateNote, on
   );
 }
 
-function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
+function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBalances }) {
   const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {}, weeklyGoalOverride: null, monthlyGoalOverride: null, weeklyLossLimit: null, withdrawals: [] };
 
   // Migrate old flat structure → per-account structure
@@ -4508,16 +4508,36 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
 
   // Sync when account changes
   useEffect(() => {
-    const acctGoal = goalsData.accounts?.[selectedAccount] || defaultGoal;
-    setStartingBalance(acctGoal.startingBalance || 200);
-    setProfitPct(acctGoal.profitPct || 2);
-    setStopPct(acctGoal.stopPct || 1);
-    setDailyLog(acctGoal.dailyLog || {});
-    setWeeklyGoalOverride(acctGoal.weeklyGoalOverride || null);
-    setMonthlyGoalOverride(acctGoal.monthlyGoalOverride || null);
-    setWeeklyLossLimit(acctGoal.weeklyLossLimit || null);
-    setWithdrawals(acctGoal.withdrawals || []);
-  }, [selectedAccount, goalsData]);
+    const acctGoal = goalsData.accounts?.[selectedAccount];
+    if (acctGoal) {
+      // Existing goals data for this account — load it
+      setStartingBalance(acctGoal.startingBalance || 200);
+      setProfitPct(acctGoal.profitPct || 2);
+      setStopPct(acctGoal.stopPct || 1);
+      setDailyLog(acctGoal.dailyLog || {});
+      setWeeklyGoalOverride(acctGoal.weeklyGoalOverride || null);
+      setMonthlyGoalOverride(acctGoal.monthlyGoalOverride || null);
+      setWeeklyLossLimit(acctGoal.weeklyLossLimit || null);
+      setWithdrawals(acctGoal.withdrawals || []);
+    } else {
+      // No goals data yet for this account — pre-fill from account balance if available
+      let prefillBalance = 200;
+      if (selectedAccount !== "All" && accountBalances && accountBalances[selectedAccount]) {
+        prefillBalance = parseFloat(accountBalances[selectedAccount]) || 200;
+      } else if (selectedAccount === "All" && accountBalances) {
+        const total = Object.values(accountBalances).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+        if (total > 0) prefillBalance = total;
+      }
+      setStartingBalance(prefillBalance);
+      setProfitPct(defaultGoal.profitPct);
+      setStopPct(defaultGoal.stopPct);
+      setDailyLog({});
+      setWeeklyGoalOverride(null);
+      setMonthlyGoalOverride(null);
+      setWeeklyLossLimit(null);
+      setWithdrawals([]);
+    }
+  }, [selectedAccount, goalsData, accountBalances]);
 
   // Save per-account
   const saveGoals = useCallback((overrides = {}) => {
@@ -9371,55 +9391,8 @@ function AppearanceManager({ prefs, onSave, theme }) {
         </div>
       </div>
 
-      {/* Tab Order */}
-      <TabOrderManager prefs={prefs} onSave={onSave} theme={theme}/>
-
       {/* Dashboard Widgets */}
       <DashWidgetManager prefs={prefs} onSave={onSave} theme={theme}/>
-    </div>
-  );
-}
-
-function TabOrderManager({ prefs, onSave, theme }) {
-  const DEFAULT_TAB_IDS = ["dashboard","journal","goals","holdings","review","playbook","wheel","watchlist","log","reports","settings"];
-  const TAB_LABELS = { dashboard:"Dashboard", journal:"Journal", goals:"Goals", holdings:"Holdings", review:"Review", playbook:"Playbook", wheel:"Wheel", watchlist:"Watchlist", log:"Trade Log", reports:"Reports", settings:"Settings" };
-  const TAB_ICONS = { dashboard:Home, journal:Clipboard, goals:Target, holdings:Briefcase, review:Shield, playbook:BookOpen, wheel:RefreshCw, watchlist:Crosshair, log:List, reports:FileText, settings:Settings };
-
-  const currentOrder = (prefs.tabOrder && prefs.tabOrder.length > 0) ? prefs.tabOrder : DEFAULT_TAB_IDS;
-  // Ensure all tabs present
-  const fullOrder = [...currentOrder, ...DEFAULT_TAB_IDS.filter(id => !currentOrder.includes(id))];
-
-  const moveTab = (idx, dir) => {
-    const newOrder = [...fullOrder];
-    const targetIdx = idx + dir;
-    if (targetIdx < 0 || targetIdx >= newOrder.length) return;
-    [newOrder[idx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[idx]];
-    onSave(p => ({ ...p, tabOrder: newOrder }));
-  };
-
-  const resetOrder = () => onSave(p => ({ ...p, tabOrder: [] }));
-
-  return (
-    <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text }}>Tab Order</div>
-        <button onClick={resetOrder} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${theme.borderLight}`, background:theme.inputBg, color:theme.textFaint, cursor:"pointer", fontSize:10 }}>Reset Default</button>
-      </div>
-      <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>Drag tabs up or down to reorder the navigation bar</div>
-      <div style={{ display:"grid", gap:4 }}>
-        {fullOrder.map((id, idx) => {
-          const Icon = TAB_ICONS[id] || List;
-          return (
-            <div key={id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:theme.cardBg, borderRadius:8, border:`1px solid ${theme.borderLight}` }}>
-              <span style={{ fontSize:12, color:theme.textFaintest, fontFamily:"'JetBrains Mono', monospace", minWidth:18 }}>{idx + 1}</span>
-              <Icon size={14} color={theme.textMuted}/>
-              <span style={{ flex:1, fontSize:13, fontWeight:500, color:theme.text }}>{TAB_LABELS[id] || id}</span>
-              <button onClick={()=>moveTab(idx,-1)} disabled={idx===0} style={{ width:26, height:26, borderRadius:6, border:`1px solid ${theme.borderLight}`, background: idx===0 ? "transparent" : theme.inputBg, color: idx===0 ? theme.textFaintest : theme.textMuted, cursor: idx===0 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronUp size={12}/></button>
-              <button onClick={()=>moveTab(idx,1)} disabled={idx===fullOrder.length-1} style={{ width:26, height:26, borderRadius:6, border:`1px solid ${theme.borderLight}`, background: idx===fullOrder.length-1 ? "transparent" : theme.inputBg, color: idx===fullOrder.length-1 ? theme.textFaintest : theme.textMuted, cursor: idx===fullOrder.length-1 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronDown size={12}/></button>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -11426,7 +11399,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
     <>
       {tab==="dashboard" && <Dashboard trades={trades} customFields={customFields} accountBalances={accountBalances} theme={theme} logo={prefs.logo} banner={prefs.banner} dashWidgets={prefs.dashWidgets} futuresSettings={futuresSettings} prefs={prefs} onSavePrefs={setPrefs} cashTransactions={cashTransactions} dividends={dividends} hideBalances={hideBalances} setHideBalances={setHideBalances} onNavigate={setTab} onNewTrade={()=>{setEditingTrade(null);setShowTradeModal(true);}}/>}
       {tab==="journal" && <JournalTab journal={journal} onSave={setJournal} trades={trades} theme={theme}/>}
-      {tab==="goals" && <GoalTracker goals={goals} onSave={setGoals} trades={trades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} prefs={prefs}/>}
+      {tab==="goals" && <GoalTracker goals={goals} onSave={setGoals} trades={trades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} prefs={prefs} accountBalances={accountBalances}/>}
       {tab==="holdings" && <HoldingsTab trades={trades} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}} theme={theme} dividends={dividends} onSaveDividends={setDividends} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} onStartWheel={(ticker, account, shares, avgPrice) => {
         const wheelShareEntry = { id: Date.now() + Math.random(), ticker, type: "Shares", date: new Date().toISOString().split("T")[0], shares: String(shares), avgPrice: String(avgPrice), notes: `Linked from Holdings (${shares} shares @ $${avgPrice.toFixed(2)})`, account, contracts:"", strike:"", openPremium:"", closePremium:"", expiry:"", assigned:false, calledAway:false, sharesCalledAway:"" };
         setWheelTrades(prev => [wheelShareEntry, ...prev]);
