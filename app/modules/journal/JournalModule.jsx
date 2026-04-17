@@ -45,6 +45,56 @@ function getLocalData() {
   };
 }
 
+
+// ─── TRADING QUOTES LIBRARY ──────────────────────────────────────────────────
+const TRADING_QUOTES = [
+  "The goal is not to be right. The goal is to make money.",
+  "Risk management is the only edge that never stops working.",
+  "You don't need to trade every day. You need to trade the right days.",
+  "A good trade can lose money. A bad trade can make money. Judge the process, not the outcome.",
+  "The market doesn't care about your opinion.",
+  "Cut losers fast. Let winners breathe.",
+  "Your job is to find asymmetric risk/reward and size appropriately.",
+  "Discipline is choosing between what you want now and what you want most.",
+  "The best trade is often no trade.",
+  "Protect capital first. Profits follow.",
+  "Plan the trade. Trade the plan.",
+  "Never risk more than you can afford to lose on a single trade.",
+  "Consistency beats intensity. Show up, execute, repeat.",
+  "The market rewards patience and punishes impatience.",
+  "Your edge is not a single trade. Your edge is 1,000 trades.",
+  "If you can't define your risk, you don't have a trade.",
+  "Emotional decisions are expensive decisions.",
+  "The best traders are the best losers.",
+  "Don't confuse a bull market with brains.",
+  "Position size is the volume knob on your conviction.",
+  "Every expert was once a beginner.",
+  "You are one trade away from humility. Stay humble.",
+  "Time in the market beats timing the market — but timing your entries still matters.",
+  "Revenge trading is paying tuition twice for the same lesson.",
+  "The market will always be there tomorrow. Your capital might not.",
+  "Focus on the process and the results will take care of themselves.",
+  "A trader who can't take a loss will eventually take THE loss.",
+  "Simplify your system. Complexity is the enemy of execution.",
+  "The hardest skill in trading is doing nothing.",
+  "Winners keep their losses small and their wins big. That's the whole game.",
+];
+
+function getTradingQuote(prefs) {
+  const mode = prefs?.quoteMode || "library";
+  if (mode === "off") return null;
+  const personalQuotes = (prefs?.personalQuotes || "").split("\n").map(q => q.trim()).filter(Boolean);
+  let pool = [];
+  if (mode === "personal" && personalQuotes.length > 0) pool = personalQuotes;
+  else if (mode === "both" && personalQuotes.length > 0) pool = [...personalQuotes, ...TRADING_QUOTES];
+  else pool = TRADING_QUOTES;
+  if (pool.length === 0) return null;
+  // Pick based on day of year so it's consistent within a day but changes daily
+  const now = new Date();
+  const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
+  return pool[dayOfYear % pool.length];
+}
+
 // ─── CLOUD SYNC FUNCTIONS ───────────────────────────────────────────────────
 async function cloudLoad(userId) {
   const { data, error } = await supabase.from("user_data").select("*").eq("user_id", userId).single();
@@ -2624,6 +2674,16 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
         </div>
       )}
 
+      {/* ═══════ DAILY QUOTE ═══════ */}
+      {(() => {
+        const quote = getTradingQuote(prefs);
+        return quote ? (
+          <div style={{ marginBottom:12, padding:"8px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, order:-1 }}>
+            <span style={{ fontSize:12, color:"var(--tp-faint)", fontStyle:"italic", textAlign:"center", lineHeight:1.5 }}>{quote}</span>
+          </div>
+        ) : null;
+      })()}
+
       {/* ═══════ RISK CALCULATOR TOGGLE ═══════ */}
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: showRiskCalc ? 0 : 12, order:-1 }}>
         <button onClick={()=>setShowRiskCalc(!showRiskCalc)} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", borderRadius:8, border:`1px solid ${showRiskCalc ? "rgba(99,102,241,0.4)" : theme.borderLight}`, background: showRiskCalc ? "rgba(99,102,241,0.12)" : theme.inputBg, color: showRiskCalc ? "#a5b4fc" : theme.textMuted, cursor:"pointer", fontSize:12, fontWeight:600 }}>
@@ -4267,6 +4327,146 @@ function WheelTradeModal({ ticker, onSave, onClose, editTrade, accounts, default
   );
 }
 // ─── DAILY GOAL TRACKER ─────────────────────────────────────────────────────
+// ─── INCOME & GOAL CALCULATOR ────────────────────────────────────────────────
+// Two reverse calculators:
+//   1. Annual salary → required daily P&L in $ and %
+//   2. Monthly % target → required daily P&L in $ and %
+// Uses 252 trading days/year and ~21 trading days/month.
+function IncomeGoalCalculator({ currentBalance, profitPct, inputStyle }) {
+  const [annualTarget, setAnnualTarget] = useState("");
+  const [monthlyPctTarget, setMonthlyPctTarget] = useState("");
+  const [expanded, setExpanded] = useState(false);
+
+  const tradingDaysPerYear = 252;
+  const tradingDaysPerMonth = 21;
+
+  // Annual salary → daily
+  const annualVal = parseFloat(annualTarget) || 0;
+  const dailyFromAnnual = annualVal > 0 ? annualVal / tradingDaysPerYear : 0;
+  const dailyPctFromAnnual = currentBalance > 0 && dailyFromAnnual > 0 ? (dailyFromAnnual / currentBalance) * 100 : 0;
+  const annualRealistic = currentBalance > 0 && dailyPctFromAnnual > 0 ? dailyPctFromAnnual <= 5 : true;
+
+  // Monthly % → daily
+  const monthlyPctVal = parseFloat(monthlyPctTarget) || 0;
+  const dailyPctFromMonthly = monthlyPctVal > 0 ? monthlyPctVal / tradingDaysPerMonth : 0;
+  const dailyDollarFromMonthly = currentBalance * (dailyPctFromMonthly / 100);
+  const monthlyRealistic = dailyPctFromMonthly <= 5;
+
+  // Current daily target for comparison
+  const currentDailyDollar = currentBalance * (profitPct / 100);
+  const currentAnnualProjection = currentDailyDollar * tradingDaysPerYear;
+  const currentMonthlyProjection = currentDailyDollar * tradingDaysPerMonth;
+  const currentMonthlyPct = profitPct * tradingDaysPerMonth;
+
+  return (
+    <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 22px", marginBottom:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: expanded ? 14 : 0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <Calculator size={15} color="#a5b4fc"/>
+          <span style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)" }}>Income & Goal Calculator</span>
+          <span style={{ fontSize:11, color:"var(--tp-faint)" }}>What do you need to hit daily?</span>
+        </div>
+        <button onClick={()=>setExpanded(!expanded)} style={{ padding:"5px 12px", borderRadius:6, border:"1px solid var(--tp-border-l)", background: expanded ? "rgba(99,102,241,0.1)" : "var(--tp-input)", color: expanded ? "#a5b4fc" : "var(--tp-faint)", cursor:"pointer", fontSize:11 }}>{expanded ? "Hide" : "Show"}</button>
+      </div>
+
+      {expanded && (
+        <div>
+          {/* Current projections at current daily target */}
+          <div style={{ padding:"10px 14px", background:"var(--tp-card)", borderRadius:8, marginBottom:14, fontSize:11, color:"var(--tp-faint)" }}>
+            At your current <span style={{ color:"#4ade80", fontWeight:600 }}>{profitPct}%</span> daily target (<span style={{ color:"#4ade80", fontWeight:600 }}>${currentDailyDollar.toFixed(2)}</span>/day), you'd make <span style={{ color:"var(--tp-text)", fontWeight:600 }}>${currentMonthlyProjection.toFixed(0)}</span>/month (<span style={{ fontWeight:600 }}>{currentMonthlyPct.toFixed(1)}%</span>) and <span style={{ color:"var(--tp-text)", fontWeight:600 }}>${currentAnnualProjection.toLocaleString("en-US",{maximumFractionDigits:0})}</span>/year — assuming you hit target every trading day.
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            {/* Annual Salary Calculator */}
+            <div style={{ background:"var(--tp-card)", borderRadius:10, padding:"14px 16px" }}>
+              <div style={{ fontSize:10, color:"#a5b4fc", fontWeight:600, textTransform:"uppercase", letterSpacing:0.6, marginBottom:10 }}>Annual Income Target</div>
+              <div style={{ marginBottom:10 }}>
+                <div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:4 }}>Target yearly income ($)</div>
+                <div style={{ position:"relative" }}>
+                  <span style={{ position:"absolute", left:8, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:12, fontFamily:"'JetBrains Mono', monospace" }}>$</span>
+                  <input type="number" value={annualTarget} onChange={e=>setAnnualTarget(e.target.value)} placeholder="50000" style={{ ...inputStyle, width:"100%", fontSize:12, padding:"7px 8px 7px 20px", textAlign:"left" }}/>
+                </div>
+              </div>
+              {annualVal > 0 && (
+                <div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+                    <div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}>
+                      <div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily</div>
+                      <div style={{ fontSize:16, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>${dailyFromAnnual.toFixed(2)}</div>
+                    </div>
+                    <div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}>
+                      <div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily %</div>
+                      <div style={{ fontSize:16, fontWeight:700, color: annualRealistic ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{dailyPctFromAnnual.toFixed(2)}%</div>
+                    </div>
+                  </div>
+                  {!annualRealistic && <div style={{ fontSize:10, color:"#eab308", padding:"4px 8px", background:"rgba(234,179,8,0.06)", borderRadius:4, textAlign:"center" }}>This requires {dailyPctFromAnnual.toFixed(1)}% daily — aggressive for most strategies</div>}
+                </div>
+              )}
+            </div>
+
+            {/* Monthly % Calculator */}
+            <div style={{ background:"var(--tp-card)", borderRadius:10, padding:"14px 16px" }}>
+              <div style={{ fontSize:10, color:"#a5b4fc", fontWeight:600, textTransform:"uppercase", letterSpacing:0.6, marginBottom:10 }}>Monthly % Target</div>
+              <div style={{ marginBottom:10 }}>
+                <div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:4 }}>Target monthly return (%)</div>
+                <div style={{ position:"relative" }}>
+                  <input type="number" step="0.5" value={monthlyPctTarget} onChange={e=>setMonthlyPctTarget(e.target.value)} placeholder="10" style={{ ...inputStyle, width:"100%", fontSize:12, padding:"7px 8px", textAlign:"left" }}/>
+                  <span style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:12 }}>%</span>
+                </div>
+              </div>
+              {monthlyPctVal > 0 && (
+                <div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+                    <div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}>
+                      <div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily</div>
+                      <div style={{ fontSize:16, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>${dailyDollarFromMonthly.toFixed(2)}</div>
+                    </div>
+                    <div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}>
+                      <div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily %</div>
+                      <div style={{ fontSize:16, fontWeight:700, color: monthlyRealistic ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{dailyPctFromMonthly.toFixed(2)}%</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize:10, color:"var(--tp-faintest)", textAlign:"center" }}>{monthlyPctVal}%/month = ${(dailyDollarFromMonthly * tradingDaysPerMonth).toFixed(0)}/month = ${(dailyDollarFromMonthly * tradingDaysPerYear).toLocaleString("en-US",{maximumFractionDigits:0})}/year</div>
+                  {!monthlyRealistic && <div style={{ fontSize:10, color:"#eab308", padding:"4px 8px", background:"rgba(234,179,8,0.06)", borderRadius:4, textAlign:"center", marginTop:4 }}>This requires {dailyPctFromMonthly.toFixed(1)}% daily — aggressive for most strategies</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── DAILY LOG ROW (editable P&L and hit/miss toggle) ───────────────────────
+function DailyLogRow({ row, dailyLog, onUpdatePnL, onToggleHit, onUpdateNote, onRemove }) {
+  const [editing, setEditing] = useState(false);
+  const [editVal, setEditVal] = useState("");
+
+  const startEdit = () => { setEditVal(String(row.pnl)); setEditing(true); };
+  const commitEdit = () => {
+    const v = parseFloat(editVal);
+    if (!isNaN(v)) onUpdatePnL(row.date, v);
+    setEditing(false);
+  };
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"90px 1fr 80px 50px 80px 80px 28px", gap:8, padding:"8px 10px", background:"var(--tp-card)", borderRadius:6, alignItems:"center", borderLeft: row.hit ? "3px solid #4ade80" : row.hit === false ? "3px solid #f87171" : "3px solid var(--tp-border)" }}>
+      <span style={{ fontSize:11, color:"var(--tp-muted)", fontFamily:"'JetBrains Mono', monospace" }}>{row.date.slice(5)}</span>
+      <input value={row.note} onChange={e=>onUpdateNote(row.date, e.target.value)} placeholder="Quick note..." style={{ padding:"3px 6px", background:"transparent", border:"1px solid transparent", borderRadius:4, color:"var(--tp-text2)", fontSize:11, outline:"none", boxSizing:"border-box" }} onFocus={e=>e.target.style.borderColor="var(--tp-border-l)"} onBlur={e=>e.target.style.borderColor="transparent"}/>
+      {editing ? (
+        <input type="number" step="0.01" value={editVal} onChange={e=>setEditVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape"){setEditing(false);}}} autoFocus style={{ textAlign:"right", fontSize:12, fontWeight:600, fontFamily:"'JetBrains Mono', monospace", padding:"2px 4px", background:"var(--tp-input)", border:"1px solid #6366f1", borderRadius:4, color:"var(--tp-text)", outline:"none", width:"100%", boxSizing:"border-box" }}/>
+      ) : (
+        <span onClick={startEdit} title="Click to edit P&L" style={{ textAlign:"right", fontSize:12, fontWeight:600, color: row.pnl >= 0 ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace", cursor:"pointer", borderBottom:"1px dashed rgba(255,255,255,0.1)" }}>{row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(2)}</span>
+      )}
+      <span style={{ textAlign:"right", fontSize:10, color: row.pctPnL >= 0 ? "rgba(74,222,128,0.6)" : "rgba(248,113,113,0.6)", fontFamily:"'JetBrains Mono', monospace" }}>{row.pctPnL >= 0 ? "+" : ""}{row.pctPnL.toFixed(1)}%</span>
+      <span style={{ textAlign:"right", fontSize:12, fontWeight:600, color:"var(--tp-text)", fontFamily:"'JetBrains Mono', monospace" }}>${row.balance.toFixed(2)}</span>
+      <span onClick={()=>onToggleHit(row.date)} title="Click to toggle" style={{ textAlign:"center", fontSize:14, cursor:"pointer" }}>{row.hit === true ? "✅" : row.hit === false ? "❌" : "—"}</span>
+      <button onClick={()=>onRemove(row.date)} style={{ background:"none", border:"none", color:"var(--tp-faintest)", cursor:"pointer", padding:0 }}><Trash2 size={12}/></button>
+    </div>
+  );
+}
+
 function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
   const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {}, weeklyGoalOverride: null, monthlyGoalOverride: null, weeklyLossLimit: null, withdrawals: [] };
 
@@ -4501,6 +4701,9 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
           </div>
         </div>
       </div>
+
+      {/* Income & Goal Calculator */}
+      <IncomeGoalCalculator currentBalance={currentBalance} profitPct={profitPct} inputStyle={inputStyle}/>
 
       <div className="tp-goals-main" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
         {/* Today's Numbers - the big display */}
@@ -4828,15 +5031,7 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
               <span>Date</span><span>Note</span><span style={{ textAlign:"right" }}>P&L</span><span style={{ textAlign:"right" }}>%</span><span style={{ textAlign:"right" }}>Balance</span><span style={{ textAlign:"center" }}>Goal</span><span/>
             </div>
             {[...runningBalances].reverse().map(row => (
-              <div key={row.date} style={{ display:"grid", gridTemplateColumns:"90px 1fr 80px 50px 80px 80px 28px", gap:8, padding:"8px 10px", background:"var(--tp-card)", borderRadius:6, alignItems:"center", borderLeft: row.hit ? "3px solid #4ade80" : row.hit === false ? "3px solid #f87171" : "3px solid var(--tp-border)" }}>
-                <span style={{ fontSize:11, color:"var(--tp-muted)", fontFamily:"'JetBrains Mono', monospace" }}>{row.date.slice(5)}</span>
-                <input value={row.note} onChange={e=>updateNote(row.date, e.target.value)} placeholder="Quick note..." style={{ padding:"3px 6px", background:"transparent", border:"1px solid transparent", borderRadius:4, color:"var(--tp-text2)", fontSize:11, outline:"none", boxSizing:"border-box" }} onFocus={e=>e.target.style.borderColor="var(--tp-border-l)"} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                <span style={{ textAlign:"right", fontSize:12, fontWeight:600, color: row.pnl >= 0 ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(2)}</span>
-                <span style={{ textAlign:"right", fontSize:10, color: row.pctPnL >= 0 ? "rgba(74,222,128,0.6)" : "rgba(248,113,113,0.6)", fontFamily:"'JetBrains Mono', monospace" }}>{row.pctPnL >= 0 ? "+" : ""}{row.pctPnL.toFixed(1)}%</span>
-                <span style={{ textAlign:"right", fontSize:12, fontWeight:600, color:"var(--tp-text)", fontFamily:"'JetBrains Mono', monospace" }}>${row.balance.toFixed(2)}</span>
-                <span style={{ textAlign:"center", fontSize:14 }}>{row.hit === true ? "✅" : row.hit === false ? "❌" : "—"}</span>
-                <button onClick={()=>removeDay(row.date)} style={{ background:"none", border:"none", color:"var(--tp-faintest)", cursor:"pointer", padding:0 }}><Trash2 size={12}/></button>
-              </div>
+              <DailyLogRow key={row.date} row={row} dailyLog={dailyLog} onUpdatePnL={(date, pnl) => { const entry = dailyLog[date]; logDay(date, pnl, entry?.hit ?? (pnl >= (currentBalance * profitPct / 100))); }} onToggleHit={(date) => { const entry = dailyLog[date]; if (entry) logDay(date, entry.pnl, !entry.hit); }} onUpdateNote={updateNote} onRemove={removeDay}/>
             ))}
           </div>
         </div>
