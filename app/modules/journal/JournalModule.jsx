@@ -523,7 +523,11 @@ function fromWheelFormat(wt) {
 }
 
 // ─── WEEK HELPERS ─────────────────────────────────────────────────────────────
-function getWeekStart(date = new Date()) { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0,0,0,0); return d.toISOString().split("T")[0]; }
+// getWeekStart: returns Monday of the given date's week as "YYYY-MM-DD" in LOCAL time.
+// Previously used toISOString() which returns UTC — same class of bug as the
+// currentLocalDateString() fix. After ~8 PM ET the UTC date rolls to the next day,
+// which could shift the week boundary by one day.
+function getWeekStart(date = new Date()) { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0,0,0,0); const yyyy = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0'); return `${yyyy}-${mm}-${dd}`; }
 function formatWeekLabel(ws) { const d = new Date(ws + "T12:00:00"); const e = new Date(d); e.setDate(e.getDate()+4); const o = {month:"short",day:"numeric"}; return `Week of ${d.toLocaleDateString("en-US",o)} – ${e.toLocaleDateString("en-US",o)}`; }
 
 // ─── LEG HELPERS ──────────────────────────────────────────────────────────────

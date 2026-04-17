@@ -33,6 +33,7 @@ interface TokenPair {
   refresh_token: string;
   expires_at: number;
   token_type: string;
+  refresh_expires_at?: number;
 }
 
 interface UserCredentials {
@@ -50,6 +51,7 @@ interface CachedEntry {
 interface TokenStatus {
   connected: boolean;
   expiresAt: number | null;
+  refreshExpiresAt: number | null;
   refreshExpiresEstimate: string;
   hasCredentials: boolean;
 }
@@ -98,7 +100,7 @@ async function dbLoadRow(userId: string): Promise<{
   try {
     const data = await supabaseFreshRead(
       'user_schwab_credentials',
-      'app_key,app_secret,callback_url,access_token,refresh_token,access_expires_at',
+      'app_key,app_secret,callback_url,access_token,refresh_token,access_expires_at,refresh_expires_at',
       { user_id: `eq.${userId}` },
       { single: true },
     ) as Record<string, any> | null;
@@ -119,6 +121,7 @@ async function dbLoadRow(userId: string): Promise<{
           refresh_token: data.refresh_token,
           expires_at: data.access_expires_at || 0,
           token_type: 'Bearer',
+          refresh_expires_at: data.refresh_expires_at || 0,
         }
       : null;
 
@@ -416,7 +419,7 @@ export async function deleteUserCredentials(userId: string): Promise<void> {
 
 export async function getTokenStatus(userId?: string): Promise<TokenStatus> {
   if (!userId) {
-    return { connected: false, expiresAt: null, refreshExpiresEstimate: 'N/A', hasCredentials: false };
+    return { connected: false, expiresAt: null, refreshExpiresAt: null, refreshExpiresEstimate: 'N/A', hasCredentials: false };
   }
 
   // Force reload for status checks — user is probably on Settings page
@@ -426,10 +429,12 @@ export async function getTokenStatus(userId?: string): Promise<TokenStatus> {
   const hasCreds = !!entry.credentials;
   const connected = !!(entry.tokens?.access_token && entry.tokens.expires_at > Date.now());
   const expiresAt = entry.tokens?.expires_at || null;
+  const refreshExpiresAt = entry.tokens?.refresh_expires_at || null;
 
   return {
     connected,
     expiresAt,
+    refreshExpiresAt,
     refreshExpiresEstimate: connected ? '~7 days from last auth' : 'N/A',
     hasCredentials: hasCreds,
   };
