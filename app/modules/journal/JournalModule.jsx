@@ -675,16 +675,128 @@ const emptyTrade = (prefill = {}) => ({
   emotions: [], account: "", timeframe: "", tradeStrategy: "",
   screenshots: [], playbook: "",
   // Trade-linking scaffolding (Phase 1 data model foundation, April 2026).
-  // linkedTradeIds: IDs of other trades this trade is related to (e.g., a CSP's
-  // shares-assigned holding, a CC that closes out those shares, rolls of the
-  // same position logged as separate trades). No reader uses these yet —
-  // they're here so new features can link trades without a data migration.
-  // groupId: tag identifying a multi-trade cycle (e.g., a full wheel turn:
-  // CSP → assignment → CC → called-away). All trades in the same cycle share
-  // the same groupId. Null when the trade is standalone.
   linkedTradeIds: [], groupId: null,
+  // Wheel merge fields (Phase 2, April 2026).
+  // wheelType identifies trades that belong to the Wheel tab view.
+  // null = not a wheel trade, "CSP"/"CC"/"Shares" = wheel trade.
+  // assigned/calledAway/sharesCalledAway are CSP/CC-specific state.
+  wheelType: null, assigned: false, calledAway: false, sharesCalledAway: "",
   ...prefill
 });
+
+// ─── WHEEL MIGRATION (Phase 2) ──────────────────────────────────────────────
+// Converts legacy wheel_trades entries into unified trades shape.
+// Pure function — no side effects, no DB writes. Caller handles persistence.
+// Idempotent: skips entries whose migrated ID already exists in trades.
+function migrateWheelTrades(wheelTrades, existingTrades) {
+  if (!wheelTrades?.length) return { merged: existingTrades, migrated: 0 };
+  const existingIds = new Set((existingTrades || []).map(t => String(t.id)));
+  const newEntries = [];
+
+  for (const wt of wheelTrades) {
+    const migratedId = `migrated-wheel-${wt.id}`;
+    if (existingIds.has(migratedId)) continue; // already migrated
+
+    if (wt.type === "CSP" || wt.type === "CC") {
+      const isCSP = wt.type === "CSP";
+      const hasClosed = wt.closePremium && parseFloat(wt.closePremium) > 0;
+      newEntries.push({
+        id: migratedId,
+        ticker: wt.ticker || "",
+        date: wt.date || currentLocalDateString(),
+        assetType: "Options",
+        optionsStrategyType: "Single Leg",
+        direction: "Short",
+        status: hasClosed || wt.assigned || wt.calledAway ? "Closed" : "Open",
+        legs: [{
+          id: Date.now() + Math.random(),
+          action: "Sell",
+          type: isCSP ? "Put" : "Call",
+          strike: wt.strike || "",
+          expiration: wt.expiry || "",
+          contracts: wt.contracts || "1",
+          entryPremium: wt.openPremium || "",
+          exitPremium: wt.closePremium || "",
+          partialCloses: [],
+          rolls: [],
+        }],
+        fees: wt.fees || "0",
+        account: wt.account || "",
+        notes: wt.notes ? `${wt.notes} (migrated from Wheel tab)` : "Migrated from Wheel tab",
+        wheelType: wt.type,
+        assigned: !!wt.assigned,
+        calledAway: !!wt.calledAway,
+        sharesCalledAway: wt.sharesCalledAway || "",
+        linkedTradeIds: [],
+        groupId: null,
+        // Carry over fields that emptyTrade provides so the object is complete
+        entryPrice: "", exitPrice: "", quantity: "", pnl: null, grade: "",
+        entryTime: "", exitTime: "", exitDate: wt.calledAway ? (wt.expiry || "") : "",
+        stopLoss: "", takeProfit: "", strategy: "Wheel Strategy",
+        emotions: [], timeframe: "Swing", tradeStrategy: "Wheel Strategy",
+        screenshots: [], playbook: "", futuresContract: "", tickSize: "", tickValue: "",
+        futuresScaleOuts: [],
+      });
+    } else if (wt.type === "Shares") {
+      newEntries.push({
+        id: migratedId,
+        ticker: wt.ticker || "",
+        date: wt.date || currentLocalDateString(),
+        assetType: "Stocks",
+        direction: "Long",
+        status: "Open",
+        entryPrice: wt.avgPrice || "",
+        quantity: wt.shares || "",
+        fees: wt.fees || "0",
+        account: wt.account || "",
+        notes: wt.notes ? `${wt.notes} (migrated from Wheel tab)` : "Migrated from Wheel tab",
+        wheelType: "Shares",
+        assigned: false, calledAway: false, sharesCalledAway: "",
+        linkedTradeIds: [],
+        groupId: null,
+        exitPrice: "", pnl: null, grade: "", entryTime: "", exitTime: "", exitDate: "",
+        stopLoss: "", takeProfit: "", strategy: "Wheel Strategy",
+        optionsStrategyType: "Single Leg", legs: [],
+        emotions: [], timeframe: "Swing", tradeStrategy: "Wheel Strategy",
+        screenshots: [], playbook: "", futuresContract: "", tickSize: "", tickValue: "",
+        futuresScaleOuts: [],
+      });
+    }
+  }
+
+  // Now link CSP assignments to their shares entries
+  for (const entry of newEntries) {
+    if (entry.wheelType === "CSP" && entry.assigned) {
+      // Find the corresponding Shares entry for this ticker+account
+      const sharesEntry = newEntries.find(e =>
+        e.wheelType === "Shares" && e.ticker === entry.ticker && e.account === entry.account
+      );
+      if (sharesEntry) {
+        const gid = `wheel-${entry.ticker}-${entry.date}-${Math.random().toString(36).slice(2, 8)}`;
+        entry.groupId = gid;
+        sharesEntry.groupId = gid;
+        entry.linkedTradeIds = [sharesEntry.id];
+        sharesEntry.linkedTradeIds = [entry.id];
+      }
+    }
+  }
+
+  // Also check if the old bridge created synthetic holdings (wheel-assigned-{id})
+  // and link those to the migrated CSP
+  for (const entry of newEntries) {
+    if (entry.wheelType === "CSP" && entry.assigned) {
+      const oldWheelId = String(entry.id).replace("migrated-wheel-", "");
+      const syntheticId = `wheel-assigned-${oldWheelId}`;
+      const existingSynthetic = (existingTrades || []).find(t => String(t.id) === syntheticId);
+      if (existingSynthetic && !entry.linkedTradeIds.includes(syntheticId)) {
+        entry.linkedTradeIds.push(syntheticId);
+      }
+    }
+  }
+
+  console.log(`[WHEEL-MIGRATION] Converted ${newEntries.length} wheel trades`);
+  return { merged: [...newEntries, ...(existingTrades || [])], migrated: newEntries.length };
+}
 
 // ─── SHARED UI ────────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, color, icon: Icon }) {
@@ -10894,9 +11006,9 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
     (async () => {
       const cloud = await cloudLoad(user.id);
       if (cloud) {
-        setTrades(Array.isArray(cloud.trades) ? cloud.trades : []);
+        let loadedTrades = Array.isArray(cloud.trades) ? cloud.trades : [];
+        const loadedWheelTrades = Array.isArray(cloud.wheel_trades) ? cloud.wheel_trades : [];
         setWatchlists(Array.isArray(cloud.watchlists) ? cloud.watchlists : []);
-        setWheelTrades(Array.isArray(cloud.wheel_trades) ? cloud.wheel_trades : []);
         setFuturesSettings(Array.isArray(cloud.futures_settings) ? cloud.futures_settings : []);
         setCustomFields(cloud.custom_fields && typeof cloud.custom_fields === "object" && Object.keys(cloud.custom_fields).length > 0 ? cloud.custom_fields : DEFAULT_CUSTOM_FIELDS);
         setAccountBalances(cloud.account_balances && typeof cloud.account_balances === "object" && !Array.isArray(cloud.account_balances) ? cloud.account_balances : {});
@@ -10911,6 +11023,29 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
           const localCash = localLoad(CASH_TRANSACTIONS_KEY);
           if (Array.isArray(localCash) && localCash.length > 0) loadedPrefs.cashTransactions = localCash;
         }
+
+        // ─── WHEEL MIGRATION (Phase 2) ──────────────────────────────────
+        // One-time conversion of wheel_trades into the unified trades array.
+        // wheel_trades stays in the DB as backup — it's never cleared.
+        if (!loadedPrefs.wheelMigrationComplete && loadedWheelTrades.length > 0) {
+          console.log(`[WHEEL-MIGRATION] Starting: ${loadedWheelTrades.length} wheel trades to migrate`);
+          const { merged, migrated } = migrateWheelTrades(loadedWheelTrades, loadedTrades);
+          if (migrated > 0) {
+            loadedTrades = merged;
+            loadedPrefs.wheelMigrationComplete = true;
+            // Save merged trades + updated prefs to cloud immediately
+            await cloudSaveAll(user.id, { trades: merged, prefs: loadedPrefs });
+            console.log(`[WHEEL-MIGRATION] Complete: ${migrated} entries migrated and saved`);
+          } else {
+            // All entries already migrated (idempotent re-run)
+            loadedPrefs.wheelMigrationComplete = true;
+            await cloudSave(user.id, "prefs", loadedPrefs);
+            console.log("[WHEEL-MIGRATION] Already complete (all entries exist)");
+          }
+        }
+
+        setTrades(loadedTrades);
+        setWheelTrades(loadedWheelTrades); // Keep in state for now — Wheel tab still reads this until Step 4
         setPrefs(loadedPrefs);
       }
       // Check for local data to migrate (only if cloud is empty or doesn't exist)
