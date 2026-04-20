@@ -4048,79 +4048,182 @@ function WheelSubTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, acco
 
 function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTrade, onDeleteTrade, onDeletePosition, isCompleted, onStartNewWheel }) {
   const { ticker, trades, account } = position;
+  const [activeTab, setActiveTab] = useState("trades");
   
   // Calculate totals across all trades
-  let totalPremium = 0;
-  let ownedShares = 0;
-  let totalCost = 0;
+  let totalPremium = 0, cspPremium = 0, ccPremium = 0, cspCount = 0, ccCount = 0;
+  let ownedShares = 0, totalCost = 0, totalFees = 0;
+  let assignedShares = 0, calledAwayShares = 0;
+  let hadAssignment = false;
+  const firstDate = trades.length > 0 ? trades.reduce((min, t) => t.date < min ? t.date : min, trades[0].date) : "";
   
   trades.forEach(trade => {
+    const fees = parseFloat(trade.fees) || 0;
+    totalFees += fees;
     if (trade.type === "CSP") {
-      const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0);
+      const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - fees;
       totalPremium += net;
+      cspPremium += net;
+      cspCount++;
       if (trade.assigned) {
+        hadAssignment = true;
         const shares = (parseInt(trade.contracts)||0) * 100;
         ownedShares += shares;
+        assignedShares += shares;
         totalCost += shares * (parseFloat(trade.strike)||0);
       }
     } else if (trade.type === "CC") {
-      const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0);
+      const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - fees;
       totalPremium += net;
+      ccPremium += net;
+      ccCount++;
       if (trade.calledAway) {
-        ownedShares -= (parseInt(trade.sharesCalledAway)||0);
+        const called = parseInt(trade.sharesCalledAway) || ((parseInt(trade.contracts)||1)*100);
+        ownedShares -= called;
+        calledAwayShares += called;
       }
     } else if (trade.type === "Shares") {
       const shares = parseInt(trade.shares)||0;
       ownedShares += shares;
+      assignedShares += shares;
       totalCost += shares * (parseFloat(trade.avgPrice)||0);
     }
   });
   
   const adjCostPerShare = ownedShares > 0 ? (totalCost - totalPremium) / ownedShares : 0;
+  const netCost = totalCost - totalPremium;
+  const roi = totalCost > 0 ? (totalPremium / totalCost) * 100 : 0;
+  const avgPremPerTrade = (cspCount + ccCount) > 0 ? totalPremium / (cspCount + ccCount) : 0;
+  const daysInWheel = firstDate ? Math.max(0, Math.round((new Date() - new Date(firstDate)) / (1000*60*60*24))) : 0;
   const status = isCompleted ? "Completed" : ownedShares > 0 ? "Active" : totalPremium > 0 ? "Collecting" : "Closed";
 
-  return (
-    <div style={{ background:"var(--tp-panel)", border:`1px solid ${isCompleted ? "rgba(74,222,128,0.15)" : "var(--tp-panel-b)"}`, borderRadius:12, overflow:"hidden", transition:"border-color 0.2s", opacity: isCompleted ? 0.7 : 1 }} onMouseEnter={e=>{e.currentTarget.style.borderColor=isCompleted?"rgba(74,222,128,0.3)":"rgba(99,102,241,0.3)";if(isCompleted)e.currentTarget.style.opacity="1";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=isCompleted?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.07)";if(isCompleted)e.currentTarget.style.opacity="0.7";}}>
-      {/* Summary Header (always visible) */}
-      <div style={{ padding:"18px 20px", cursor:"pointer" }} onClick={onToggle}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"start", marginBottom:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            {collapsed ? <ChevronRight size={16} color="#6366f1"/> : <ChevronDown size={16} color="#6366f1"/>}
-            <div>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ fontSize:18, fontWeight:700, color:"var(--tp-text)" }}>{ticker}</div>
-                <span style={{ fontSize:10, fontWeight:600, color: status==="Completed"?"#4ade80":status==="Active"?"#60a5fa":status==="Collecting"?"#4ade80":"#8a8f9e", background: status==="Completed"?"rgba(74,222,128,0.12)":status==="Active"?"rgba(96,165,250,0.15)":status==="Collecting"?"rgba(74,222,128,0.15)":"rgba(138,143,158,0.15)", padding:"2px 8px", borderRadius:4, textTransform:"uppercase", letterSpacing:0.5 }}>{status === "Completed" ? "✓ Completed" : status}</span>
-                {account && account !== "Unassigned" && <span style={{ fontSize:9, fontWeight:600, color:"#a5b4fc", background:"rgba(99,102,241,0.12)", padding:"2px 8px", borderRadius:4 }}>{account}</span>}
-                <span style={{ fontSize:11, color:"var(--tp-faint)" }}>{trades.length} trade{trades.length!==1?"s":""}</span>
-              </div>
-            </div>
-          </div>
-          <div style={{ display:"flex", gap:6 }} onClick={e=>e.stopPropagation()}>
-            <button onClick={onAddTrade} style={{ padding:"6px 10px", borderRadius:6, border:"1px solid rgba(99,102,241,0.3)", background:"rgba(99,102,241,0.1)", color:"#a5b4fc", cursor:"pointer", fontSize:11, fontWeight:500 }}>+ Trade</button>
-            {isCompleted && onStartNewWheel && (
-              <button onClick={onStartNewWheel} style={{ padding:"6px 10px", borderRadius:6, border:"1px solid rgba(74,222,128,0.3)", background:"rgba(74,222,128,0.08)", color:"#4ade80", cursor:"pointer", fontSize:11, fontWeight:500, display:"flex", alignItems:"center", gap:4 }}><RefreshCw size={11}/> New Wheel</button>
-            )}
-            <button onClick={onDeletePosition} style={{ padding:"6px 8px", borderRadius:6, border:"none", background:"transparent", color:"var(--tp-faint)", cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color="#5c6070"}><Trash2 size={13}/></button>
-          </div>
-        </div>
+  const hasCSP = cspCount > 0;
+  const hasAssignment = hadAssignment;
+  const hasCC = ccCount > 0;
+  const hasCalled = calledAwayShares > 0;
 
-        {/* Summary Metrics */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
-          <div style={{ background:"rgba(99,102,241,0.08)", border:"1px solid rgba(99,102,241,0.18)", borderRadius:8, padding:"10px 12px" }}><div style={{ fontSize:9, color:"#6366f1", textTransform:"uppercase", letterSpacing:0.6, marginBottom:3, fontWeight:600 }}>Shares Owned</div><div style={{ fontSize:15, fontWeight:700, color:"#6366f1", fontFamily:"'JetBrains Mono', monospace" }}>{ownedShares}</div></div>
-          {ownedShares > 0 && <div style={{ background:"rgba(234,179,8,0.08)", border:"1px solid rgba(234,179,8,0.18)", borderRadius:8, padding:"10px 12px" }}><div style={{ fontSize:9, color:"#eab308", textTransform:"uppercase", letterSpacing:0.6, marginBottom:3, fontWeight:600 }}>Adj. Cost/Share</div><div style={{ fontSize:15, fontWeight:700, color:"#eab308", fontFamily:"'JetBrains Mono', monospace" }}>${adjCostPerShare.toFixed(2)}</div></div>}
-          <div style={{ background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.18)", borderRadius:8, padding:"10px 12px" }}><div style={{ fontSize:9, color:"#4ade80", textTransform:"uppercase", letterSpacing:0.6, marginBottom:3, fontWeight:600 }}>Total Premium</div><div style={{ fontSize:15, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>${totalPremium.toFixed(2)}</div></div>
+  const WheelIndicator = ({ size }) => {
+    const r = size * 0.41, cx = size/2, cy = size/2;
+    const q = (sa, ea, fill, dashed) => {
+      const s = sa * Math.PI / 180, e = ea * Math.PI / 180;
+      const x1 = cx + r * Math.sin(s), y1 = cy - r * Math.cos(s);
+      const x2 = cx + r * Math.sin(e), y2 = cy - r * Math.cos(e);
+      if (dashed) return <path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2} Z`} fill="none" stroke="var(--tp-border)" strokeWidth="0.5" strokeDasharray="1.5 1.5"/>;
+      return <path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2} Z`} fill={fill} stroke={fill.replace(/[\d.]+\)$/,'0.8)')} strokeWidth="0.5"/>;
+    };
+    return (<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--tp-border)" strokeWidth="0.5"/>{hasCSP ? q(0,90,"rgba(96,165,250,0.5)") : q(0,90,null,true)}{hasAssignment ? q(90,180,"rgba(127,119,221,0.5)") : q(90,180,null,true)}{hasCC ? q(180,270,"rgba(186,117,23,0.4)") : q(180,270,null,true)}{hasCalled ? q(270,360,"rgba(74,222,128,0.5)") : q(270,360,null,true)}<circle cx={cx} cy={cy} r={size*0.05} fill="var(--tp-faint)"/>{isCompleted && <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="central" fontSize={size*0.25} fill="var(--tp-text)" fontWeight="500">\u2713</text>}</svg>);
+  };
+
+  return (
+    <div style={{ background:"var(--tp-panel)", border:`1px solid ${isCompleted ? "rgba(74,222,128,0.15)" : "var(--tp-panel-b)"}`, borderRadius:12, overflow:"hidden", transition:"all 0.2s", opacity: isCompleted ? 0.7 : 1 }} onMouseEnter={e=>{e.currentTarget.style.borderColor=isCompleted?"rgba(74,222,128,0.3)":"rgba(99,102,241,0.3)";if(isCompleted)e.currentTarget.style.opacity="1";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=isCompleted?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.07)";if(isCompleted)e.currentTarget.style.opacity="0.7";}}>
+      {/* Header */}
+      <div style={{ padding:"14px 20px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }} onClick={onToggle}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          {collapsed ? <ChevronRight size={16} color="#6366f1"/> : <ChevronDown size={16} color="#6366f1"/>}
+          <div style={{ fontSize:18, fontWeight:700, color:"var(--tp-text)" }}>{ticker}</div>
+          <span style={{ fontSize:10, fontWeight:600, color: status==="Completed"?"#4ade80":status==="Active"?"#60a5fa":status==="Collecting"?"#4ade80":"#8a8f9e", background: status==="Completed"?"rgba(74,222,128,0.12)":status==="Active"?"rgba(96,165,250,0.15)":status==="Collecting"?"rgba(74,222,128,0.15)":"rgba(138,143,158,0.15)", padding:"2px 8px", borderRadius:4, textTransform:"uppercase", letterSpacing:0.5 }}>{status === "Completed" ? "\u2713 Completed" : status}</span>
+          {account && account !== "Unassigned" && <span style={{ fontSize:9, fontWeight:600, color:"#a5b4fc", background:"rgba(99,102,241,0.12)", padding:"2px 8px", borderRadius:4 }}>{account}</span>}
+          <WheelIndicator size={22}/>
+          <span style={{ fontSize:11, color:"var(--tp-faint)" }}>{trades.length} trade{trades.length!==1?"s":""}</span>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }} onClick={e=>e.stopPropagation()}>
+          {isCompleted && <span style={{ fontSize:14, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>+${totalPremium.toFixed(0)}</span>}
+          {!isCompleted && ownedShares > 0 && <span style={{ fontSize:12, color:"var(--tp-faint)" }}>{ownedShares} shares</span>}
+          <button onClick={onAddTrade} style={{ padding:"6px 10px", borderRadius:6, border:"1px solid rgba(99,102,241,0.3)", background:"rgba(99,102,241,0.1)", color:"#a5b4fc", cursor:"pointer", fontSize:11, fontWeight:500 }}>+ Trade</button>
+          {isCompleted && onStartNewWheel && (<button onClick={onStartNewWheel} style={{ padding:"6px 10px", borderRadius:6, border:"1px solid rgba(74,222,128,0.3)", background:"rgba(74,222,128,0.08)", color:"#4ade80", cursor:"pointer", fontSize:11, fontWeight:500, display:"flex", alignItems:"center", gap:4 }}><RefreshCw size={11}/> New Wheel</button>)}
+          <button onClick={onDeletePosition} style={{ padding:"6px 8px", borderRadius:6, border:"none", background:"transparent", color:"var(--tp-faint)", cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color="#5c6070"}><Trash2 size={13}/></button>
         </div>
       </div>
 
-      {/* Trade History (collapsible) */}
-      {!collapsed && (
-        <div style={{ borderTop:"1px solid var(--tp-border)", background:"rgba(0,0,0,0.2)", padding:"14px 20px" }}>
-          <div style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:10, fontWeight:600 }}>Trade History</div>
-          <div style={{ display:"grid", gap:8 }}>
-            {trades.map(trade => <TradeHistoryRow key={trade.id} trade={trade} onEdit={()=>onEditTrade(trade)} onDelete={()=>onDeleteTrade(trade.id)}/>)}
-          </div>
+      {!collapsed && (<div>
+        {/* Tab bar */}
+        <div style={{ display:"flex", borderTop:"1px solid var(--tp-border)", borderBottom:"1px solid var(--tp-border)" }}>
+          {["trades","summary","timeline"].map(tab => (<button key={tab} onClick={()=>setActiveTab(tab)} style={{ flex:1, padding:"8px", fontSize:12, fontWeight: activeTab===tab?600:400, border:"none", cursor:"pointer", background: activeTab===tab?"rgba(99,102,241,0.06)":"transparent", color: activeTab===tab?"var(--tp-text)":"var(--tp-faint)", borderBottom: activeTab===tab?"2px solid #6366f1":"2px solid transparent", textTransform:"capitalize" }}>{tab}</button>))}
         </div>
-      )}
+
+        {/* Trades tab */}
+        {activeTab === "trades" && (<div style={{ padding:"14px 20px" }}><div style={{ display:"grid", gap:8 }}>{trades.map(trade => <TradeHistoryRow key={trade.id} trade={trade} onEdit={()=>onEditTrade(trade)} onDelete={()=>onDeleteTrade(trade.id)}/>)}</div></div>)}
+
+        {/* Summary tab */}
+        {activeTab === "summary" && (<div style={{ padding:"16px 20px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:16 }}>
+            <div style={{ background:"rgba(99,102,241,0.08)", border:"1px solid rgba(99,102,241,0.18)", borderRadius:8, padding:"12px 14px" }}><div style={{ fontSize:9, color:"#6366f1", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4, fontWeight:600 }}>Shares owned</div><div style={{ fontSize:22, fontWeight:700, color:"#6366f1", fontFamily:"'JetBrains Mono', monospace" }}>{ownedShares}</div></div>
+            <div style={{ background:"rgba(234,179,8,0.08)", border:"1px solid rgba(234,179,8,0.18)", borderRadius:8, padding:"12px 14px" }}><div style={{ fontSize:9, color:"#eab308", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4, fontWeight:600 }}>Adj. cost/share</div><div style={{ fontSize:22, fontWeight:700, color:"#eab308", fontFamily:"'JetBrains Mono', monospace" }}>{ownedShares > 0 ? `$${adjCostPerShare.toFixed(2)}` : "\u2014"}</div></div>
+            <div style={{ background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.18)", borderRadius:8, padding:"12px 14px" }}><div style={{ fontSize:9, color:"#4ade80", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4, fontWeight:600 }}>Total premium</div><div style={{ fontSize:22, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>${totalPremium.toFixed(2)}</div></div>
+          </div>
+          {/* Wheel phase */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:20, padding:"12px 0 16px", borderBottom:"1px solid var(--tp-border)", marginBottom:16 }}>
+            <WheelIndicator size={56}/>
+            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}><div style={{ width:8, height:8, borderRadius:2, background:"rgba(96,165,250,0.6)" }}/><span style={{ fontSize:11, color:"var(--tp-faint)" }}>CSPs sold: <span style={{ fontWeight:600, color:"var(--tp-text)" }}>{cspCount}</span></span></div>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}><div style={{ width:8, height:8, borderRadius:2, background:"rgba(127,119,221,0.6)" }}/><span style={{ fontSize:11, color:"var(--tp-faint)" }}>Assigned: <span style={{ fontWeight:600, color:"var(--tp-text)" }}>{assignedShares} shares</span></span></div>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}><div style={{ width:8, height:8, borderRadius:2, background:"rgba(186,117,23,0.6)" }}/><span style={{ fontSize:11, color:"var(--tp-faint)" }}>CCs sold: <span style={{ fontWeight:600, color:"var(--tp-text)" }}>{ccCount}</span></span></div>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}><div style={{ width:8, height:8, borderRadius:2, background: calledAwayShares > 0 ? "rgba(74,222,128,0.6)" : "var(--tp-border)" }}/><span style={{ fontSize:11, color: calledAwayShares > 0 ? "var(--tp-faint)" : "var(--tp-faintest)" }}>Called away: <span style={{ fontWeight:600 }}>{calledAwayShares}</span></span></div>
+            </div>
+          </div>
+          {/* Cost basis breakdown */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:10, textTransform:"uppercase", letterSpacing:0.5, fontWeight:600 }}>Cost basis breakdown</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:4, fontSize:12 }}>
+              {totalCost > 0 && <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 10px", background:"var(--tp-card)", borderRadius:6 }}><span style={{ color:"var(--tp-muted)" }}>Share cost ({assignedShares} shares)</span><span style={{ fontFamily:"'JetBrains Mono', monospace", color:"var(--tp-text)" }}>${totalCost.toFixed(2)}</span></div>}
+              {cspPremium !== 0 && <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 10px", background:"var(--tp-card)", borderRadius:6 }}><span style={{ color:"#4ade80" }}>CSP premium ({cspCount} trades)</span><span style={{ fontFamily:"'JetBrains Mono', monospace", color:"#4ade80" }}>-${cspPremium.toFixed(2)}</span></div>}
+              {ccPremium !== 0 && <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 10px", background:"var(--tp-card)", borderRadius:6 }}><span style={{ color:"#4ade80" }}>CC premium ({ccCount} trades)</span><span style={{ fontFamily:"'JetBrains Mono', monospace", color:"#4ade80" }}>-${ccPremium.toFixed(2)}</span></div>}
+              {totalFees > 0 && <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 10px", background:"var(--tp-card)", borderRadius:6 }}><span style={{ color:"var(--tp-faint)" }}>Fees</span><span style={{ fontFamily:"'JetBrains Mono', monospace", color:"var(--tp-faint)" }}>-${totalFees.toFixed(2)}</span></div>}
+              <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 10px", borderTop:"1px solid var(--tp-border)", marginTop:2 }}><span style={{ color:"var(--tp-text)", fontWeight:600 }}>Net cost</span><span style={{ fontFamily:"'JetBrains Mono', monospace", fontWeight:600, color:"var(--tp-text)" }}>${netCost.toFixed(2)}</span></div>
+              {ownedShares > 0 && <div style={{ display:"flex", justifyContent:"space-between", padding:"4px 10px" }}><span style={{ color:"var(--tp-text)", fontWeight:600 }}>Per share</span><span style={{ fontFamily:"'JetBrains Mono', monospace", fontWeight:600, color: adjCostPerShare >= 0 ? "#eab308" : "#4ade80" }}>${adjCostPerShare.toFixed(2)}</span></div>}
+            </div>
+          </div>
+          {/* Premium by type */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:10, textTransform:"uppercase", letterSpacing:0.5, fontWeight:600 }}>Premium by type</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", borderLeft:"3px solid rgba(96,165,250,0.6)" }}><div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:2 }}>CSP premium</div><div style={{ fontSize:16, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>+${cspPremium.toFixed(0)}</div><div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:2 }}>{cspCount} trade{cspCount!==1?"s":""}{cspCount > 0 ? ` \u00b7 avg $${(cspPremium/cspCount).toFixed(2)}` : ""}</div></div>
+              <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", borderLeft:"3px solid rgba(186,117,23,0.6)" }}><div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:2 }}>CC premium</div><div style={{ fontSize:16, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>+${ccPremium.toFixed(0)}</div><div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:2 }}>{ccCount} trade{ccCount!==1?"s":""}{ccCount > 0 ? ` \u00b7 avg $${(ccPremium/ccCount).toFixed(2)}` : ""}</div></div>
+            </div>
+          </div>
+          {/* Key metrics */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+            <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}><div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Return on capital</div><div style={{ fontSize:15, fontWeight:700, color: roi >= 0 ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{roi >= 0 ? "+" : ""}{roi.toFixed(1)}%</div></div>
+            <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}><div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Avg premium/trade</div><div style={{ fontSize:15, fontWeight:700, color:"var(--tp-text)", fontFamily:"'JetBrains Mono', monospace" }}>${avgPremPerTrade.toFixed(2)}</div></div>
+            <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}><div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Days in wheel</div><div style={{ fontSize:15, fontWeight:700, color:"var(--tp-text)", fontFamily:"'JetBrains Mono', monospace" }}>{daysInWheel}</div></div>
+          </div>
+        </div>)}
+
+        {/* Timeline tab */}
+        {activeTab === "timeline" && (<div style={{ padding:"16px 20px" }}>
+          <div style={{ position:"relative", paddingLeft:20, marginLeft:8 }}>
+            <div style={{ position:"absolute", left:8, top:8, bottom:8, width:1.5, background:"var(--tp-border)" }}/>
+            {[...trades].sort((a,b) => new Date(a.date) - new Date(b.date)).map((trade, i, arr) => {
+              const isLast = i === arr.length - 1;
+              const dotColor = trade.type === "CSP" ? (trade.assigned ? "#7F77DD" : "#60a5fa") : trade.type === "CC" ? "#BA7517" : "#6366f1";
+              const dotGlow = isLast && !isCompleted;
+              const net = trade.type !== "Shares" ? ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0) : 0;
+              let label = "";
+              if (trade.type === "CSP" && trade.assigned) label = `Assigned ${(parseInt(trade.contracts)||1)*100} shares @ $${trade.strike}`;
+              else if (trade.type === "CSP") label = `${trade.contracts} contracts @ $${trade.strike} \u2192 +$${net.toFixed(0)}`;
+              else if (trade.type === "CC" && trade.calledAway) label = `Called away ${trade.sharesCalledAway || ((parseInt(trade.contracts)||1)*100)} shares @ $${trade.strike}`;
+              else if (trade.type === "CC") label = `${trade.contracts} contracts @ $${trade.strike} \u2192 +$${net.toFixed(0)}`;
+              else if (trade.type === "Shares") label = `${trade.shares} shares @ $${trade.avgPrice}`;
+              const badges = [];
+              if (trade.assigned) badges.push({ text:"ASSIGNED", bg:"rgba(127,119,221,0.12)", color:"#7F77DD" });
+              if (trade.calledAway) badges.push({ text:"CALLED", bg:"rgba(74,222,128,0.12)", color:"#4ade80" });
+              if (isLast && !isCompleted && !trade.calledAway && !trade.assigned) badges.push({ text:"OPEN", bg:"rgba(186,117,23,0.12)", color:"#BA7517" });
+              return (<div key={trade.id} style={{ position:"relative", marginBottom: isLast ? 0 : 16 }}>
+                <div style={{ position:"absolute", left:-20, top:3, width:14, height:14, borderRadius:"50%", background:dotColor, border:"2px solid var(--tp-panel)", zIndex:1, boxShadow: dotGlow ? `0 0 0 3px ${dotColor}33` : "none" }}/>
+                <div style={{ paddingLeft:6 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:10, fontWeight:600, color: trade.type === "CSP" ? "#60a5fa" : trade.type === "CC" ? "#eab308" : "#6366f1", background: trade.type === "CSP" ? "rgba(96,165,250,0.12)" : trade.type === "CC" ? "rgba(234,179,8,0.12)" : "rgba(99,102,241,0.12)", padding:"1px 6px", borderRadius:3 }}>{trade.type}</span>
+                    {badges.map(b => <span key={b.text} style={{ fontSize:9, fontWeight:600, background:b.bg, color:b.color, padding:"1px 5px", borderRadius:3 }}>{b.text}</span>)}
+                    <span style={{ fontSize:11, color:"var(--tp-faintest)" }}>{trade.date}</span>
+                    {trade.expiry && <span style={{ fontSize:11, color:"var(--tp-faintest)" }}>Exp: {trade.expiry}</span>}
+                  </div>
+                  <div style={{ fontSize:12, color:"var(--tp-muted)", marginTop:3 }}>{label}</div>
+                </div>
+              </div>);
+            })}
+          </div>
+        </div>)}
+      </div>)}
     </div>
   );
 }
