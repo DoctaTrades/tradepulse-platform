@@ -4111,7 +4111,7 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
       if (dashed) return <path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2} Z`} fill="none" stroke="var(--tp-border)" strokeWidth="0.5" strokeDasharray="1.5 1.5"/>;
       return <path d={`M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2} Z`} fill={fill} stroke={fill.replace(/[\d.]+\)$/,'0.8)')} strokeWidth="0.5"/>;
     };
-    return (<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--tp-border)" strokeWidth="0.5"/>{hasCSP ? q(0,90,"rgba(96,165,250,0.5)") : q(0,90,null,true)}{hasAssignment ? q(90,180,"rgba(127,119,221,0.5)") : q(90,180,null,true)}{hasCC ? q(180,270,"rgba(186,117,23,0.4)") : q(180,270,null,true)}{hasCalled ? q(270,360,"rgba(74,222,128,0.5)") : q(270,360,null,true)}<circle cx={cx} cy={cy} r={size*0.05} fill="var(--tp-faint)"/>{isCompleted && <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="central" fontSize={size*0.25} fill="var(--tp-text)" fontWeight="500">\u2713</text>}</svg>);
+    return (<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--tp-border)" strokeWidth="0.5"/>{hasCSP ? q(0,90,"rgba(96,165,250,0.5)") : q(0,90,null,true)}{hasAssignment ? q(90,180,"rgba(127,119,221,0.5)") : q(90,180,null,true)}{hasCC ? q(180,270,"rgba(186,117,23,0.4)") : q(180,270,null,true)}{hasCalled ? q(270,360,"rgba(74,222,128,0.5)") : q(270,360,null,true)}<circle cx={cx} cy={cy} r={size*0.05} fill="var(--tp-faint)"/>{isCompleted && <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="central" fontSize={size*0.25} fill="var(--tp-text)" fontWeight="500">{"✓"}</text>}</svg>);
   };
 
   return (
@@ -4121,7 +4121,7 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           {collapsed ? <ChevronRight size={16} color="#6366f1"/> : <ChevronDown size={16} color="#6366f1"/>}
           <div style={{ fontSize:18, fontWeight:700, color:"var(--tp-text)" }}>{ticker}</div>
-          <span style={{ fontSize:10, fontWeight:600, color: status==="Completed"?"#4ade80":status==="Active"?"#60a5fa":status==="Collecting"?"#4ade80":"#8a8f9e", background: status==="Completed"?"rgba(74,222,128,0.12)":status==="Active"?"rgba(96,165,250,0.15)":status==="Collecting"?"rgba(74,222,128,0.15)":"rgba(138,143,158,0.15)", padding:"2px 8px", borderRadius:4, textTransform:"uppercase", letterSpacing:0.5 }}>{status === "Completed" ? "\u2713 Completed" : status}</span>
+          <span style={{ fontSize:10, fontWeight:600, color: status==="Completed"?"#4ade80":status==="Active"?"#60a5fa":status==="Collecting"?"#4ade80":"#8a8f9e", background: status==="Completed"?"rgba(74,222,128,0.12)":status==="Active"?"rgba(96,165,250,0.15)":status==="Collecting"?"rgba(74,222,128,0.15)":"rgba(138,143,158,0.15)", padding:"2px 8px", borderRadius:4, textTransform:"uppercase", letterSpacing:0.5 }}>{status === "Completed" ? "✓ Completed" : status}</span>
           {account && account !== "Unassigned" && <span style={{ fontSize:9, fontWeight:600, color:"#a5b4fc", background:"rgba(99,102,241,0.12)", padding:"2px 8px", borderRadius:4 }}>{account}</span>}
           <WheelIndicator size={22}/>
           <span style={{ fontSize:11, color:"var(--tp-faint)" }}>{trades.length} trade{trades.length!==1?"s":""}</span>
