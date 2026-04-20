@@ -45,6 +45,55 @@ function getLocalData() {
   };
 }
 
+
+// ─── TRADING QUOTES LIBRARY ──────────────────────────────────────────────────
+const TRADING_QUOTES = [
+  "The goal is not to be right. The goal is to make money.",
+  "Risk management is the only edge that never stops working.",
+  "You don't need to trade every day. You need to trade the right days.",
+  "A good trade can lose money. A bad trade can make money. Judge the process, not the outcome.",
+  "The market doesn't care about your opinion.",
+  "Cut losers fast. Let winners breathe.",
+  "Your job is to find asymmetric risk/reward and size appropriately.",
+  "Discipline is choosing between what you want now and what you want most.",
+  "The best trade is often no trade.",
+  "Protect capital first. Profits follow.",
+  "Plan the trade. Trade the plan.",
+  "Never risk more than you can afford to lose on a single trade.",
+  "Consistency beats intensity. Show up, execute, repeat.",
+  "The market rewards patience and punishes impatience.",
+  "Your edge is not a single trade. Your edge is 1,000 trades.",
+  "If you can't define your risk, you don't have a trade.",
+  "Emotional decisions are expensive decisions.",
+  "The best traders are the best losers.",
+  "Don't confuse a bull market with brains.",
+  "Position size is the volume knob on your conviction.",
+  "Every expert was once a beginner.",
+  "You are one trade away from humility. Stay humble.",
+  "Time in the market beats timing the market — but timing your entries still matters.",
+  "Revenge trading is paying tuition twice for the same lesson.",
+  "The market will always be there tomorrow. Your capital might not.",
+  "Focus on the process and the results will take care of themselves.",
+  "A trader who can't take a loss will eventually take THE loss.",
+  "Simplify your system. Complexity is the enemy of execution.",
+  "The hardest skill in trading is doing nothing.",
+  "Winners keep their losses small and their wins big. That's the whole game.",
+];
+
+function getTradingQuote(prefs) {
+  const mode = prefs?.quoteMode || "library";
+  if (mode === "off") return null;
+  const personalQuotes = (prefs?.personalQuotes || "").split("\n").map(q => q.trim()).filter(Boolean);
+  let pool = [];
+  if (mode === "personal" && personalQuotes.length > 0) pool = personalQuotes;
+  else if (mode === "both" && personalQuotes.length > 0) pool = [...personalQuotes, ...TRADING_QUOTES];
+  else pool = TRADING_QUOTES;
+  if (pool.length === 0) return null;
+  const now = new Date();
+  const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
+  return pool[dayOfYear % pool.length];
+}
+
 // ─── CLOUD SYNC FUNCTIONS ───────────────────────────────────────────────────
 async function cloudLoad(userId) {
   const { data, error } = await supabase.from("user_data").select("*").eq("user_id", userId).single();
@@ -459,12 +508,13 @@ function wheelTradeToMultiLeg(wheelTrade) {
 }
 
 // ─── WEEK HELPERS ─────────────────────────────────────────────────────────────
-function getWeekStart(date = new Date()) { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0,0,0,0); return d.toISOString().split("T")[0]; }
+// getWeekStart: returns Monday of the given date's week as "YYYY-MM-DD" in LOCAL time.
+function getWeekStart(date = new Date()) { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0,0,0,0); const yyyy = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0'); return `${yyyy}-${mm}-${dd}`; }
 function formatWeekLabel(ws) { const d = new Date(ws + "T12:00:00"); const e = new Date(d); e.setDate(e.getDate()+4); const o = {month:"short",day:"numeric"}; return `Week of ${d.toLocaleDateString("en-US",o)} – ${e.toLocaleDateString("en-US",o)}`; }
 
 // ─── LEG HELPERS ──────────────────────────────────────────────────────────────
 const emptyLeg = (action = "Buy", type = "Call") => ({ id: Date.now() + Math.random(), action, type, strike: "", expiration: "", contracts: "1", entryPremium: "", exitPremium: "", partialCloses: [], rolls: [] });
-const emptyRoll = () => ({ id: Date.now() + Math.random(), date: currentLocalDateString(), sellPremium: "", buybackPremium: "", contracts: "" });
+const emptyRoll = () => ({ id: Date.now() + Math.random(), date: currentLocalDateString(), sellPremium: "", buybackPremium: "", contracts: "", fee: "" });
 
 function defaultLegs(strategyType) {
   switch (strategyType) {
@@ -525,9 +575,10 @@ function calcPnL(trade) {
         leg.rolls.forEach(roll => {
           const sell = parseFloat(roll.sellPremium) || 0;
           const buyback = parseFloat(roll.buybackPremium) || 0;
+          const rollFee = parseFloat(roll.fee) || 0;
           // Rolls apply per-contract for remaining open contracts at time of roll
           const rollQty = parseInt(roll.contracts) || contracts;
-          total += (sell - buyback) * rollQty * 100;
+          total += (sell - buyback) * rollQty * 100 - rollFee;
         });
       }
     }
@@ -945,15 +996,17 @@ function RollRow({ roll, index, onChange, onRemove, legContracts }) {
   const set = k => v => onChange({ ...roll, [k]: v });
   const qty = parseInt(roll.contracts) || parseInt(legContracts) || 1;
   const netCredit = (parseFloat(roll.sellPremium) || 0) - (parseFloat(roll.buybackPremium) || 0);
-  const totalCredit = netCredit * qty * 100;
+  const fee = parseFloat(roll.fee) || 0;
+  const totalCredit = netCredit * qty * 100 - fee;
   
   return (
     <div style={{ background:"rgba(0,0,0,0.2)", borderRadius:6, padding:"8px 10px" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 1fr 70px 24px", gap:8, alignItems:"center" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 1fr 60px 70px 24px", gap:8, alignItems:"center" }}>
         <input type="date" value={roll.date} onChange={e=>set("date")(e.target.value)} style={{ padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/>
         <div><input type="number" value={roll.contracts || ""} onChange={e=>set("contracts")(e.target.value)} placeholder={String(legContracts || 1)} min="1" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", textAlign:"center" }}/></div>
         <div><input type="number" value={roll.buybackPremium} onChange={e=>set("buybackPremium")(e.target.value)} placeholder="Buyback $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div><input type="number" value={roll.sellPremium} onChange={e=>set("sellPremium")(e.target.value)} placeholder="Sell $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
+        <div><input type="number" value={roll.fee || ""} onChange={e=>set("fee")(e.target.value)} placeholder="Fee $" step="0.01" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div style={{ fontSize:11, fontFamily:"'JetBrains Mono', monospace", color: totalCredit > 0 ? "#4ade80" : totalCredit < 0 ? "#f87171" : "var(--tp-faintest)", textAlign:"right" }}>
           {totalCredit !== 0 ? `${totalCredit > 0 ? "+" : ""}$${totalCredit.toFixed(0)}` : "—"}
         </div>
@@ -2433,6 +2486,16 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
         </div>
       )}
 
+      {/* ═══════ DAILY QUOTE ═══════ */}
+      {(() => {
+        const quote = getTradingQuote(prefs);
+        return quote ? (
+          <div style={{ marginBottom:12, padding:"8px 16px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, order:-1 }}>
+            <span style={{ fontSize:12, color:"var(--tp-faint)", fontStyle:"italic", textAlign:"center", lineHeight:1.5 }}>{quote}</span>
+          </div>
+        ) : null;
+      })()}
+
       {/* ═══════ RISK CALCULATOR TOGGLE ═══════ */}
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: showRiskCalc ? 0 : 12, order:-1 }}>
         <button onClick={()=>setShowRiskCalc(!showRiskCalc)} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", borderRadius:8, border:`1px solid ${showRiskCalc ? "rgba(99,102,241,0.4)" : theme.borderLight}`, background: showRiskCalc ? "rgba(99,102,241,0.12)" : theme.inputBg, color: showRiskCalc ? "#a5b4fc" : theme.textMuted, cursor:"pointer", fontSize:12, fontWeight:600 }}>
@@ -3262,9 +3325,10 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
           leg.rolls.forEach(roll => {
             const sell = parseFloat(roll.sellPremium) || 0;
             const buyback = parseFloat(roll.buybackPremium) || 0;
+            const rollFee = parseFloat(roll.fee) || 0;
             const rqty = parseInt(roll.contracts) || contracts;
             collected += sell * rqty * 100;
-            kept += (sell - buyback) * rqty * 100;
+            kept += (sell - buyback) * rqty * 100 - rollFee;
           });
         }
       });
@@ -3510,7 +3574,8 @@ function DiagonalPositionTracker({ trades, accountFilter, strategyType, label, d
             else { const exit = parseFloat(leg.exitPremium); totalPremKept += !isNaN(exit) ? (entry-exit)*contracts*100 : entry*contracts*100; }
             if (leg.rolls?.length) leg.rolls.forEach(roll => {
               const sell=parseFloat(roll.sellPremium)||0, buyback=parseFloat(roll.buybackPremium)||0, rqty=parseInt(roll.contracts)||contracts;
-              totalPremCollected += sell*rqty*100; totalPremKept += (sell-buyback)*rqty*100;
+              const rollFee = parseFloat(roll.fee) || 0;
+              totalPremCollected += sell*rqty*100; totalPremKept += (sell-buyback)*rqty*100 - rollFee;
             });
           }
         });
@@ -3575,7 +3640,7 @@ function DiagonalPositionTracker({ trades, accountFilter, strategyType, label, d
                       const partials = leg.partialCloses || [];
                       if (partials.length > 0) partials.forEach(pc => income += (entry - (parseFloat(pc.exitPremium)||0)) * (parseInt(pc.qty)||1) * 100);
                       else { const exit = parseFloat(leg.exitPremium); income += !isNaN(exit) ? (entry - exit) * contracts * 100 : entry * contracts * 100; }
-                      if (leg.rolls?.length) leg.rolls.forEach(r => { income += ((parseFloat(r.sellPremium)||0) - (parseFloat(r.buybackPremium)||0)) * (parseInt(r.contracts)||contracts) * 100; });
+                      if (leg.rolls?.length) leg.rolls.forEach(r => { income += ((parseFloat(r.sellPremium)||0) - (parseFloat(r.buybackPremium)||0)) * (parseInt(r.contracts)||contracts) * 100 - (parseFloat(r.fee)||0); });
                     }
                   });
                   tradePnL = income - cost - (parseFloat(t.fees)||0);
@@ -4114,7 +4179,82 @@ function WheelTradeModal({ ticker, onSave, onClose, editTrade, accounts, default
   );
 }
 // ─── DAILY GOAL TRACKER ─────────────────────────────────────────────────────
-function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
+// ─── INCOME & GOAL CALCULATOR ────────────────────────────────────────────────
+function IncomeGoalCalculator({ currentBalance, profitPct, inputStyle }) {
+  const [annualTarget, setAnnualTarget] = useState("");
+  const [monthlyPctTarget, setMonthlyPctTarget] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const tradingDaysPerYear = 252;
+  const tradingDaysPerMonth = 21;
+  const annualVal = parseFloat(annualTarget) || 0;
+  const dailyFromAnnual = annualVal > 0 ? annualVal / tradingDaysPerYear : 0;
+  const dailyPctFromAnnual = currentBalance > 0 && dailyFromAnnual > 0 ? (dailyFromAnnual / currentBalance) * 100 : 0;
+  const annualRealistic = currentBalance > 0 && dailyPctFromAnnual > 0 ? dailyPctFromAnnual <= 5 : true;
+  const monthlyPctVal = parseFloat(monthlyPctTarget) || 0;
+  const dailyPctFromMonthly = monthlyPctVal > 0 ? monthlyPctVal / tradingDaysPerMonth : 0;
+  const dailyDollarFromMonthly = currentBalance * (dailyPctFromMonthly / 100);
+  const monthlyRealistic = dailyPctFromMonthly <= 5;
+  const currentDailyDollar = currentBalance * (profitPct / 100);
+  const currentAnnualProjection = currentDailyDollar * tradingDaysPerYear;
+  const currentMonthlyProjection = currentDailyDollar * tradingDaysPerMonth;
+  const currentMonthlyPct = profitPct * tradingDaysPerMonth;
+  return (
+    <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 22px", marginBottom:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: expanded ? 14 : 0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <Calculator size={15} color="#a5b4fc"/>
+          <span style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)" }}>Income & Goal Calculator</span>
+          <span style={{ fontSize:11, color:"var(--tp-faint)" }}>What do you need to hit daily?</span>
+        </div>
+        <button onClick={()=>setExpanded(!expanded)} style={{ padding:"5px 12px", borderRadius:6, border:"1px solid var(--tp-border-l)", background: expanded ? "rgba(99,102,241,0.1)" : "var(--tp-input)", color: expanded ? "#a5b4fc" : "var(--tp-faint)", cursor:"pointer", fontSize:11 }}>{expanded ? "Hide" : "Show"}</button>
+      </div>
+      {expanded && (
+        <div>
+          <div style={{ padding:"10px 14px", background:"var(--tp-card)", borderRadius:8, marginBottom:14, fontSize:11, color:"var(--tp-faint)" }}>
+            At your current <span style={{ color:"#4ade80", fontWeight:600 }}>{profitPct}%</span> daily target (<span style={{ color:"#4ade80", fontWeight:600 }}>${currentDailyDollar.toFixed(2)}</span>/day), you'd make <span style={{ color:"var(--tp-text)", fontWeight:600 }}>${currentMonthlyProjection.toFixed(0)}</span>/month (<span style={{ fontWeight:600 }}>{currentMonthlyPct.toFixed(1)}%</span>) and <span style={{ color:"var(--tp-text)", fontWeight:600 }}>${currentAnnualProjection.toLocaleString("en-US",{maximumFractionDigits:0})}</span>/year.
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+            <div style={{ background:"var(--tp-card)", borderRadius:10, padding:"14px 16px" }}>
+              <div style={{ fontSize:10, color:"#a5b4fc", fontWeight:600, textTransform:"uppercase", letterSpacing:0.6, marginBottom:10 }}>Annual Income Target</div>
+              <div style={{ marginBottom:10 }}><div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:4 }}>Target yearly income ($)</div><div style={{ position:"relative" }}><span style={{ position:"absolute", left:8, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:12, fontFamily:"'JetBrains Mono', monospace" }}>$</span><input type="number" value={annualTarget} onChange={e=>setAnnualTarget(e.target.value)} placeholder="50000" style={{ ...inputStyle, width:"100%", fontSize:12, padding:"7px 8px 7px 20px", textAlign:"left" }}/></div></div>
+              {annualVal > 0 && (<div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}><div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}><div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily</div><div style={{ fontSize:16, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>${dailyFromAnnual.toFixed(2)}</div></div><div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}><div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily %</div><div style={{ fontSize:16, fontWeight:700, color: annualRealistic ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{dailyPctFromAnnual.toFixed(2)}%</div></div></div>{!annualRealistic && <div style={{ fontSize:10, color:"#eab308", padding:"4px 8px", background:"rgba(234,179,8,0.06)", borderRadius:4, textAlign:"center" }}>Requires {dailyPctFromAnnual.toFixed(1)}% daily — aggressive</div>}</div>)}
+            </div>
+            <div style={{ background:"var(--tp-card)", borderRadius:10, padding:"14px 16px" }}>
+              <div style={{ fontSize:10, color:"#a5b4fc", fontWeight:600, textTransform:"uppercase", letterSpacing:0.6, marginBottom:10 }}>Monthly % Target</div>
+              <div style={{ marginBottom:10 }}><div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:4 }}>Target monthly return (%)</div><div style={{ position:"relative" }}><input type="number" step="0.5" value={monthlyPctTarget} onChange={e=>setMonthlyPctTarget(e.target.value)} placeholder="10" style={{ ...inputStyle, width:"100%", fontSize:12, padding:"7px 8px", textAlign:"left" }}/><span style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:12 }}>%</span></div></div>
+              {monthlyPctVal > 0 && (<div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}><div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}><div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily</div><div style={{ fontSize:16, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>${dailyDollarFromMonthly.toFixed(2)}</div></div><div style={{ textAlign:"center", padding:"8px", background:"var(--tp-panel)", borderRadius:6 }}><div style={{ fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:2 }}>Required Daily %</div><div style={{ fontSize:16, fontWeight:700, color: monthlyRealistic ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{dailyPctFromMonthly.toFixed(2)}%</div></div></div><div style={{ fontSize:10, color:"var(--tp-faintest)", textAlign:"center" }}>{monthlyPctVal}%/month = ${(dailyDollarFromMonthly * tradingDaysPerMonth).toFixed(0)}/month = ${(dailyDollarFromMonthly * tradingDaysPerYear).toLocaleString("en-US",{maximumFractionDigits:0})}/year</div>{!monthlyRealistic && <div style={{ fontSize:10, color:"#eab308", padding:"4px 8px", background:"rgba(234,179,8,0.06)", borderRadius:4, textAlign:"center", marginTop:4 }}>Requires {dailyPctFromMonthly.toFixed(1)}% daily — aggressive</div>}</div>)}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── DAILY LOG ROW (editable P&L and hit/miss toggle) ───────────────────────
+function DailyLogRow({ row, dailyLog, onUpdatePnL, onToggleHit, onUpdateNote, onRemove }) {
+  const [editing, setEditing] = useState(false);
+  const [editVal, setEditVal] = useState("");
+  const startEdit = () => { setEditVal(String(row.pnl)); setEditing(true); };
+  const commitEdit = () => { const v = parseFloat(editVal); if (!isNaN(v)) onUpdatePnL(row.date, v); setEditing(false); };
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"90px 1fr 80px 50px 80px 80px 28px", gap:8, padding:"8px 10px", background:"var(--tp-card)", borderRadius:6, alignItems:"center", borderLeft: row.hit ? "3px solid #4ade80" : row.hit === false ? "3px solid #f87171" : "3px solid var(--tp-border)" }}>
+      <span style={{ fontSize:11, color:"var(--tp-muted)", fontFamily:"'JetBrains Mono', monospace" }}>{row.date.slice(5)}</span>
+      <input value={row.note} onChange={e=>onUpdateNote(row.date, e.target.value)} placeholder="Quick note..." style={{ padding:"3px 6px", background:"transparent", border:"1px solid transparent", borderRadius:4, color:"var(--tp-text2)", fontSize:11, outline:"none", boxSizing:"border-box" }} onFocus={e=>e.target.style.borderColor="var(--tp-border-l)"} onBlur={e=>e.target.style.borderColor="transparent"}/>
+      {editing ? (
+        <input type="number" step="0.01" value={editVal} onChange={e=>setEditVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape"){setEditing(false);}}} autoFocus style={{ textAlign:"right", fontSize:12, fontWeight:600, fontFamily:"'JetBrains Mono', monospace", padding:"2px 4px", background:"var(--tp-input)", border:"1px solid #6366f1", borderRadius:4, color:"var(--tp-text)", outline:"none", width:"100%", boxSizing:"border-box" }}/>
+      ) : (
+        <span onClick={startEdit} title="Click to edit P&L" style={{ textAlign:"right", fontSize:12, fontWeight:600, color: row.pnl >= 0 ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace", cursor:"pointer", borderBottom:"1px dashed rgba(255,255,255,0.1)" }}>{row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(2)}</span>
+      )}
+      <span style={{ textAlign:"right", fontSize:10, color: row.pctPnL >= 0 ? "rgba(74,222,128,0.6)" : "rgba(248,113,113,0.6)", fontFamily:"'JetBrains Mono', monospace" }}>{row.pctPnL >= 0 ? "+" : ""}{row.pctPnL.toFixed(1)}%</span>
+      <span style={{ textAlign:"right", fontSize:12, fontWeight:600, color:"var(--tp-text)", fontFamily:"'JetBrains Mono', monospace" }}>${row.balance.toFixed(2)}</span>
+      <span onClick={()=>onToggleHit(row.date)} title="Click to toggle" style={{ textAlign:"center", fontSize:14, cursor:"pointer" }}>{row.hit === true ? "✅" : row.hit === false ? "❌" : "—"}</span>
+      <button onClick={()=>onRemove(row.date)} style={{ background:"none", border:"none", color:"var(--tp-faintest)", cursor:"pointer", padding:0 }}><Trash2 size={12}/></button>
+    </div>
+  );
+}
+
+function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBalances }) {
   const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {}, weeklyGoalOverride: null, monthlyGoalOverride: null, weeklyLossLimit: null, withdrawals: [] };
 
   // Migrate old flat structure → per-account structure
@@ -4155,16 +4295,34 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
 
   // Sync when account changes
   useEffect(() => {
-    const acctGoal = goalsData.accounts?.[selectedAccount] || defaultGoal;
-    setStartingBalance(acctGoal.startingBalance || 200);
-    setProfitPct(acctGoal.profitPct || 2);
-    setStopPct(acctGoal.stopPct || 1);
-    setDailyLog(acctGoal.dailyLog || {});
-    setWeeklyGoalOverride(acctGoal.weeklyGoalOverride || null);
-    setMonthlyGoalOverride(acctGoal.monthlyGoalOverride || null);
-    setWeeklyLossLimit(acctGoal.weeklyLossLimit || null);
-    setWithdrawals(acctGoal.withdrawals || []);
-  }, [selectedAccount, goalsData]);
+    const acctGoal = goalsData.accounts?.[selectedAccount];
+    if (acctGoal) {
+      setStartingBalance(acctGoal.startingBalance || 200);
+      setProfitPct(acctGoal.profitPct || 2);
+      setStopPct(acctGoal.stopPct || 1);
+      setDailyLog(acctGoal.dailyLog || {});
+      setWeeklyGoalOverride(acctGoal.weeklyGoalOverride || null);
+      setMonthlyGoalOverride(acctGoal.monthlyGoalOverride || null);
+      setWeeklyLossLimit(acctGoal.weeklyLossLimit || null);
+      setWithdrawals(acctGoal.withdrawals || []);
+    } else {
+      let prefillBalance = 200;
+      if (selectedAccount !== "All" && accountBalances && accountBalances[selectedAccount]) {
+        prefillBalance = parseFloat(accountBalances[selectedAccount]) || 200;
+      } else if (selectedAccount === "All" && accountBalances) {
+        const total = Object.values(accountBalances).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+        if (total > 0) prefillBalance = total;
+      }
+      setStartingBalance(prefillBalance);
+      setProfitPct(defaultGoal.profitPct);
+      setStopPct(defaultGoal.stopPct);
+      setDailyLog({});
+      setWeeklyGoalOverride(null);
+      setMonthlyGoalOverride(null);
+      setWeeklyLossLimit(null);
+      setWithdrawals([]);
+    }
+  }, [selectedAccount, goalsData, accountBalances]);
 
   // Save per-account
   const saveGoals = useCallback((overrides = {}) => {
@@ -4348,6 +4506,9 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
           </div>
         </div>
       </div>
+
+      {/* Income & Goal Calculator */}
+      <IncomeGoalCalculator currentBalance={currentBalance} profitPct={profitPct} inputStyle={inputStyle}/>
 
       <div className="tp-goals-main" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
         {/* Today's Numbers - the big display */}
@@ -4675,15 +4836,7 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs }) {
               <span>Date</span><span>Note</span><span style={{ textAlign:"right" }}>P&L</span><span style={{ textAlign:"right" }}>%</span><span style={{ textAlign:"right" }}>Balance</span><span style={{ textAlign:"center" }}>Goal</span><span/>
             </div>
             {[...runningBalances].reverse().map(row => (
-              <div key={row.date} style={{ display:"grid", gridTemplateColumns:"90px 1fr 80px 50px 80px 80px 28px", gap:8, padding:"8px 10px", background:"var(--tp-card)", borderRadius:6, alignItems:"center", borderLeft: row.hit ? "3px solid #4ade80" : row.hit === false ? "3px solid #f87171" : "3px solid var(--tp-border)" }}>
-                <span style={{ fontSize:11, color:"var(--tp-muted)", fontFamily:"'JetBrains Mono', monospace" }}>{row.date.slice(5)}</span>
-                <input value={row.note} onChange={e=>updateNote(row.date, e.target.value)} placeholder="Quick note..." style={{ padding:"3px 6px", background:"transparent", border:"1px solid transparent", borderRadius:4, color:"var(--tp-text2)", fontSize:11, outline:"none", boxSizing:"border-box" }} onFocus={e=>e.target.style.borderColor="var(--tp-border-l)"} onBlur={e=>e.target.style.borderColor="transparent"}/>
-                <span style={{ textAlign:"right", fontSize:12, fontWeight:600, color: row.pnl >= 0 ? "#4ade80" : "#f87171", fontFamily:"'JetBrains Mono', monospace" }}>{row.pnl >= 0 ? "+" : ""}{row.pnl.toFixed(2)}</span>
-                <span style={{ textAlign:"right", fontSize:10, color: row.pctPnL >= 0 ? "rgba(74,222,128,0.6)" : "rgba(248,113,113,0.6)", fontFamily:"'JetBrains Mono', monospace" }}>{row.pctPnL >= 0 ? "+" : ""}{row.pctPnL.toFixed(1)}%</span>
-                <span style={{ textAlign:"right", fontSize:12, fontWeight:600, color:"var(--tp-text)", fontFamily:"'JetBrains Mono', monospace" }}>${row.balance.toFixed(2)}</span>
-                <span style={{ textAlign:"center", fontSize:14 }}>{row.hit === true ? "✅" : row.hit === false ? "❌" : "—"}</span>
-                <button onClick={()=>removeDay(row.date)} style={{ background:"none", border:"none", color:"var(--tp-faintest)", cursor:"pointer", padding:0 }}><Trash2 size={12}/></button>
-              </div>
+              <DailyLogRow key={row.date} row={row} dailyLog={dailyLog} onUpdatePnL={(date, pnl) => { const entry = dailyLog[date]; logDay(date, pnl, entry?.hit ?? (pnl >= (currentBalance * profitPct / 100))); }} onToggleHit={(date) => { const entry = dailyLog[date]; if (entry) logDay(date, entry.pnl, !entry.hit); }} onUpdateNote={updateNote} onRemove={removeDay}/>
             ))}
           </div>
         </div>
@@ -9023,55 +9176,8 @@ function AppearanceManager({ prefs, onSave, theme }) {
         </div>
       </div>
 
-      {/* Tab Order */}
-      <TabOrderManager prefs={prefs} onSave={onSave} theme={theme}/>
-
       {/* Dashboard Widgets */}
       <DashWidgetManager prefs={prefs} onSave={onSave} theme={theme}/>
-    </div>
-  );
-}
-
-function TabOrderManager({ prefs, onSave, theme }) {
-  const DEFAULT_TAB_IDS = ["dashboard","journal","goals","holdings","review","playbook","wheel","watchlist","log","reports","settings"];
-  const TAB_LABELS = { dashboard:"Dashboard", journal:"Journal", goals:"Goals", holdings:"Holdings", review:"Review", playbook:"Playbook", wheel:"Wheel", watchlist:"Watchlist", log:"Trade Log", reports:"Reports", settings:"Settings" };
-  const TAB_ICONS = { dashboard:Home, journal:Clipboard, goals:Target, holdings:Briefcase, review:Shield, playbook:BookOpen, wheel:RefreshCw, watchlist:Crosshair, log:List, reports:FileText, settings:Settings };
-
-  const currentOrder = (prefs.tabOrder && prefs.tabOrder.length > 0) ? prefs.tabOrder : DEFAULT_TAB_IDS;
-  // Ensure all tabs present
-  const fullOrder = [...currentOrder, ...DEFAULT_TAB_IDS.filter(id => !currentOrder.includes(id))];
-
-  const moveTab = (idx, dir) => {
-    const newOrder = [...fullOrder];
-    const targetIdx = idx + dir;
-    if (targetIdx < 0 || targetIdx >= newOrder.length) return;
-    [newOrder[idx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[idx]];
-    onSave(p => ({ ...p, tabOrder: newOrder }));
-  };
-
-  const resetOrder = () => onSave(p => ({ ...p, tabOrder: [] }));
-
-  return (
-    <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text }}>Tab Order</div>
-        <button onClick={resetOrder} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${theme.borderLight}`, background:theme.inputBg, color:theme.textFaint, cursor:"pointer", fontSize:10 }}>Reset Default</button>
-      </div>
-      <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>Drag tabs up or down to reorder the navigation bar</div>
-      <div style={{ display:"grid", gap:4 }}>
-        {fullOrder.map((id, idx) => {
-          const Icon = TAB_ICONS[id] || List;
-          return (
-            <div key={id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:theme.cardBg, borderRadius:8, border:`1px solid ${theme.borderLight}` }}>
-              <span style={{ fontSize:12, color:theme.textFaintest, fontFamily:"'JetBrains Mono', monospace", minWidth:18 }}>{idx + 1}</span>
-              <Icon size={14} color={theme.textMuted}/>
-              <span style={{ flex:1, fontSize:13, fontWeight:500, color:theme.text }}>{TAB_LABELS[id] || id}</span>
-              <button onClick={()=>moveTab(idx,-1)} disabled={idx===0} style={{ width:26, height:26, borderRadius:6, border:`1px solid ${theme.borderLight}`, background: idx===0 ? "transparent" : theme.inputBg, color: idx===0 ? theme.textFaintest : theme.textMuted, cursor: idx===0 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronUp size={12}/></button>
-              <button onClick={()=>moveTab(idx,1)} disabled={idx===fullOrder.length-1} style={{ width:26, height:26, borderRadius:6, border:`1px solid ${theme.borderLight}`, background: idx===fullOrder.length-1 ? "transparent" : theme.inputBg, color: idx===fullOrder.length-1 ? theme.textFaintest : theme.textMuted, cursor: idx===fullOrder.length-1 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronDown size={12}/></button>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -11054,7 +11160,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
     <>
       {tab==="dashboard" && <Dashboard trades={trades} customFields={customFields} accountBalances={accountBalances} theme={theme} logo={prefs.logo} banner={prefs.banner} dashWidgets={prefs.dashWidgets} futuresSettings={futuresSettings} prefs={prefs} onSavePrefs={setPrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} dividends={dividends} hideBalances={hideBalances} setHideBalances={setHideBalances} onNavigate={setTab} onNewTrade={()=>{setEditingTrade(null);setShowTradeModal(true);}}/>}
       {tab==="journal" && <JournalTab journal={journal} onSave={setJournal} trades={trades} theme={theme}/>}
-      {tab==="goals" && <GoalTracker goals={goals} onSave={setGoals} trades={trades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} prefs={prefs}/>}
+      {tab==="goals" && <GoalTracker goals={goals} onSave={setGoals} trades={trades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} prefs={prefs} accountBalances={accountBalances}/>}
       {tab==="holdings" && <HoldingsTab trades={trades} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}} theme={theme} dividends={dividends} onSaveDividends={setDividends} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} onStartWheel={(ticker, account, shares, avgPrice) => {
         const wheelShareEntry = { id: Date.now() + Math.random(), ticker, type: "Shares", date: new Date().toISOString().split("T")[0], shares: String(shares), avgPrice: String(avgPrice), notes: `Linked from Holdings (${shares} shares @ $${avgPrice.toFixed(2)})`, account, contracts:"", strike:"", openPremium:"", closePremium:"", expiry:"", assigned:false, calledAway:false, sharesCalledAway:"" };
         setWheelTrades(prev => [wheelShareEntry, ...prev]);

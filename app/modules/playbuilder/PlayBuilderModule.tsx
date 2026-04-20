@@ -77,7 +77,8 @@ type Leg = {
 type StrategyId =
   | 'csp' | 'cc' | 'bullput' | 'bearcall'
   | 'iron_condor' | 'iron_butterfly' | 'pmcc' | 'diagonal'
-  | 'calendar_press' | 'custom';
+  | 'calendar_press' | 'long_straddle' | 'short_straddle'
+  | 'long_strangle' | 'short_strangle' | 'butterfly' | 'condor';
 
 type StrategyDef = {
   id: StrategyId;
@@ -99,7 +100,12 @@ const STRATEGIES: StrategyDef[] = [
   { id:'pmcc',          name:"Poor Man's Covered Call",shortName:'PMCC',        category:'leveraged',   legs:2, enabled:true,  description:'Long LEAP call + short near-term call' },
   { id:'diagonal',      name:'Diagonal Spread',        shortName:'Diagonal',    category:'leveraged',   legs:2, enabled:true,  description:'Different strikes + different expiries' },
   { id:'calendar_press',name:'Calendar Press',         shortName:'CalPress',    category:'custom',      legs:2, enabled:true,  description:'Long-dated put + weekly short puts (custom)' },
-  { id:'custom',        name:'Long Straddle',          shortName:'Straddle',    category:'custom',      legs:2, enabled:true,  description:'Long ATM call + long ATM put — volatility play' },
+  { id:'long_straddle', name:'Long Straddle',          shortName:'L Straddle',  category:'neutral',     legs:2, enabled:true,  description:'Long ATM call + long ATM put — profit from large move either direction' },
+  { id:'short_straddle',name:'Short Straddle',         shortName:'S Straddle',  category:'neutral',     legs:2, enabled:true,  description:'Sell ATM call + sell ATM put — profit from staying near strike' },
+  { id:'long_strangle', name:'Long Strangle',          shortName:'L Strangle',  category:'neutral',     legs:2, enabled:true,  description:'Long OTM call + long OTM put — profit from large move, cheaper than straddle' },
+  { id:'short_strangle',name:'Short Strangle',         shortName:'S Strangle',  category:'neutral',     legs:2, enabled:true,  description:'Sell OTM call + sell OTM put — profit from staying between strikes' },
+  { id:'butterfly',     name:'Long Butterfly',         shortName:'Butterfly',   category:'neutral',     legs:3, enabled:true,  description:'Buy wing + sell 2x center + buy wing — profit from pinning center strike' },
+  { id:'condor',        name:'Long Condor',            shortName:'Condor',      category:'neutral',     legs:4, enabled:true,  description:'Buy outer wings + sell inner body — profit from staying in range (debit)' },
 ];
 
 // ─── DEFAULTS (from spec) ────────────────────────────────────────────────────
@@ -411,14 +417,75 @@ function buildStrategy(
       }
       return [contractToLeg(longLeap, 'BUY'), contractToLeg(shortFront, 'SELL')];
     }
-    case 'custom': {
-      // Long Straddle: long ATM call + long ATM put at same strike
+    case 'long_straddle': {
       const atmCall = pickByDelta(contracts, exp, 'CALL', 0.50);
       if (!atmCall) return [];
       const strike = atmCall.strikePrice ?? 0;
       const atmPut = findContract(contracts, exp, strike, 'PUT');
       if (!atmPut) return [contractToLeg(atmCall, 'BUY')];
       return [contractToLeg(atmCall, 'BUY'), contractToLeg(atmPut, 'BUY')];
+    }
+    case 'short_straddle': {
+      const atmCall = pickByDelta(contracts, exp, 'CALL', 0.50);
+      if (!atmCall) return [];
+      const strike = atmCall.strikePrice ?? 0;
+      const atmPut = findContract(contracts, exp, strike, 'PUT');
+      if (!atmPut) return [contractToLeg(atmCall, 'SELL')];
+      return [contractToLeg(atmCall, 'SELL'), contractToLeg(atmPut, 'SELL')];
+    }
+    case 'long_strangle': {
+      const otmCall = pickByDelta(contracts, exp, 'CALL', TARGET_SHORT_DELTA);
+      const otmPut  = pickByDelta(contracts, exp, 'PUT',  TARGET_SHORT_DELTA);
+      if (!otmCall || !otmPut) return [];
+      return [contractToLeg(otmCall, 'BUY'), contractToLeg(otmPut, 'BUY')];
+    }
+    case 'short_strangle': {
+      const otmCall = pickByDelta(contracts, exp, 'CALL', TARGET_SHORT_DELTA);
+      const otmPut  = pickByDelta(contracts, exp, 'PUT',  TARGET_SHORT_DELTA);
+      if (!otmCall || !otmPut) return [];
+      return [contractToLeg(otmCall, 'SELL'), contractToLeg(otmPut, 'SELL')];
+    }
+    case 'butterfly': {
+      const atmCall = pickByDelta(contracts, exp, 'CALL', 0.50);
+      if (!atmCall) return [];
+      const centerStrike = atmCall.strikePrice ?? 0;
+      const callStrikes = strikesForExp(contracts, exp, 'CALL');
+      const lowerWings = callStrikes.filter(s => s < centerStrike);
+      const upperWings = callStrikes.filter(s => s > centerStrike);
+      if (!lowerWings.length || !upperWings.length) return [];
+      const lowerTarget = centerStrike - width;
+      const upperTarget = centerStrike + width;
+      const lowerStrike = lowerWings.sort((a, b) => Math.abs(a - lowerTarget) - Math.abs(b - lowerTarget))[0];
+      const upperStrike = upperWings.sort((a, b) => Math.abs(a - upperTarget) - Math.abs(b - upperTarget))[0];
+      const lowerCall = findContract(contracts, exp, lowerStrike, 'CALL');
+      const upperCall = findContract(contracts, exp, upperStrike, 'CALL');
+      if (!lowerCall || !upperCall) return [];
+      const centerLeg = contractToLeg(atmCall, 'SELL');
+      centerLeg.qty = centerLeg.qty * 2;
+      return [contractToLeg(lowerCall, 'BUY'), centerLeg, contractToLeg(upperCall, 'BUY')];
+    }
+    case 'condor': {
+      const atmCall = pickByDelta(contracts, exp, 'CALL', 0.50);
+      if (!atmCall) return [];
+      const center = atmCall.strikePrice ?? 0;
+      const callStrikes = strikesForExp(contracts, exp, 'CALL');
+      const halfWidth = Math.round(width / 2);
+      const innerLowTarget = center - halfWidth;
+      const innerHighTarget = center + halfWidth;
+      const innerLow = callStrikes.filter(s => s < center).sort((a, b) => Math.abs(a - innerLowTarget) - Math.abs(b - innerLowTarget))[0];
+      const innerHigh = callStrikes.filter(s => s > center).sort((a, b) => Math.abs(a - innerHighTarget) - Math.abs(b - innerHighTarget))[0];
+      if (!innerLow || !innerHigh) return [];
+      const outerLowTarget = innerLow - width;
+      const outerHighTarget = innerHigh + width;
+      const outerLow = callStrikes.filter(s => s < innerLow).sort((a, b) => Math.abs(a - outerLowTarget) - Math.abs(b - outerLowTarget))[0];
+      const outerHigh = callStrikes.filter(s => s > innerHigh).sort((a, b) => Math.abs(a - outerHighTarget) - Math.abs(b - outerHighTarget))[0];
+      if (!outerLow || !outerHigh) return [];
+      const leg1 = findContract(contracts, exp, outerLow, 'CALL');
+      const leg2 = findContract(contracts, exp, innerLow, 'CALL');
+      const leg3 = findContract(contracts, exp, innerHigh, 'CALL');
+      const leg4 = findContract(contracts, exp, outerHigh, 'CALL');
+      if (!leg1 || !leg2 || !leg3 || !leg4) return [];
+      return [contractToLeg(leg1, 'BUY'), contractToLeg(leg2, 'SELL'), contractToLeg(leg3, 'SELL'), contractToLeg(leg4, 'BUY')];
     }
     case 'diagonal': {
       // Long longer-dated call (~0.70 delta, 60–180 DTE) + short shorter-dated call (~0.30 delta)
@@ -1777,7 +1844,12 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
     pmcc: 'PMCC / Diagonal',
     diagonal: 'PMCC / Diagonal',
     calendar_press: 'Calendar Press',
-    custom: 'Straddle / Strangle',
+    long_straddle: 'Straddle / Strangle',
+    short_straddle: 'Straddle / Strangle',
+    long_strangle: 'Straddle / Strangle',
+    short_strangle: 'Straddle / Strangle',
+    butterfly: 'Butterfly',
+    condor: 'Condor',
   };
 
   // Convert a Play Builder leg → Journal leg shape (matches emptyLeg() in JournalModule.jsx)
@@ -1802,13 +1874,16 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
   // Journal: [Buy-Put, Sell-Put, Sell-Call, Buy-Call]
   // Play Builder builds: [Sell-Put, Buy-Put, Sell-Call, Buy-Call]
   const reorderForJournal = useCallback((strategyId: StrategyId, builderLegs: Leg[]): Leg[] => {
-    if (strategyId !== 'iron_butterfly' || builderLegs.length !== 4) return builderLegs;
-    const buyPut   = builderLegs.find(l => l.side === 'BUY'  && l.type === 'PUT');
-    const sellPut  = builderLegs.find(l => l.side === 'SELL' && l.type === 'PUT');
-    const sellCall = builderLegs.find(l => l.side === 'SELL' && l.type === 'CALL');
-    const buyCall  = builderLegs.find(l => l.side === 'BUY'  && l.type === 'CALL');
-    if (buyPut && sellPut && sellCall && buyCall) {
-      return [buyPut, sellPut, sellCall, buyCall];
+    if (strategyId === 'iron_butterfly' && builderLegs.length === 4) {
+      const buyPut   = builderLegs.find(l => l.side === 'BUY'  && l.type === 'PUT');
+      const sellPut  = builderLegs.find(l => l.side === 'SELL' && l.type === 'PUT');
+      const sellCall = builderLegs.find(l => l.side === 'SELL' && l.type === 'CALL');
+      const buyCall  = builderLegs.find(l => l.side === 'BUY'  && l.type === 'CALL');
+      if (buyPut && sellPut && sellCall && buyCall) return [buyPut, sellPut, sellCall, buyCall];
+    }
+    if (strategyId === 'condor' && builderLegs.length === 4) {
+      const sorted = [...builderLegs].sort((a, b) => a.strike - b.strike);
+      return sorted;
     }
     return builderLegs;
   }, []);

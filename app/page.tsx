@@ -161,6 +161,8 @@ export default function TradePulsePlatform() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [schwabDisconnected, setSchwabDisconnected] = useState(false);
+  const [schwabExpiringSoon, setSchwabExpiringSoon] = useState(false);
+  const [schwabExpiryDays, setSchwabExpiryDays] = useState<number | null>(null);
 
   // Global Schwab connection check on mount (once user is loaded)
   useEffect(() => {
@@ -169,6 +171,12 @@ export default function TradePulsePlatform() {
       getAuthHeaders().then(headers => {
         fetch('/api/schwab/refresh', { headers }).then(r => r.json()).then(d => {
           setSchwabDisconnected(!d.connected);
+          if (d.connected && d.refreshExpiresAt) {
+            const msLeft = d.refreshExpiresAt - Date.now();
+            const daysLeft = msLeft / (1000 * 60 * 60 * 24);
+            setSchwabExpiryDays(Math.max(0, Math.round(daysLeft * 10) / 10));
+            setSchwabExpiringSoon(daysLeft > 0 && daysLeft <= 2);
+          }
         }).catch(() => setSchwabDisconnected(true));
       });
     });
@@ -355,6 +363,31 @@ export default function TradePulsePlatform() {
                 }
               }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
                 🔐 Reconnect Schwab
+              </button>
+            </div>
+          )}
+          {/* Schwab session expiring soon banner */}
+          {schwabExpiringSoon && !schwabDisconnected && (
+            <div style={{ margin: tab === "screener" || tab === "discovery" ? "12px 16px" : "0 0 16px 0", padding:"12px 18px", borderRadius:10, background:"rgba(234,179,8,0.05)", border:"1px solid rgba(234,179,8,0.15)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:16 }}>{String.fromCodePoint(0x1F514)}</span>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#ca8a04" }}>Schwab session expiring soon</div>
+                  <div style={{ fontSize:11, color:"#a3870d", marginTop:2 }}>Your Schwab connection expires in ~{schwabExpiryDays} day{schwabExpiryDays === 1 ? '' : 's'}. Reconnect now to avoid interruption.</div>
+                </div>
+              </div>
+              <button onClick={async () => {
+                try {
+                  const { authFetch } = await import('./lib/auth-fetch');
+                  const res = await authFetch('/api/schwab/auth', { method: 'POST' });
+                  const data = await res.json();
+                  if (data.authUrl) window.location.href = data.authUrl;
+                  else alert(data.error || 'Failed to start Schwab auth');
+                } catch (e: any) {
+                  alert(`Failed to start Schwab auth: ${e?.message || e}`);
+                }
+              }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
+                {String.fromCodePoint(0x1F510)} Reconnect Now
               </button>
             </div>
           )}
