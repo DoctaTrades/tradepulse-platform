@@ -3840,16 +3840,77 @@ function WheelSubTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, acco
   const [editingTrade, setEditingTrade] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
   const [selectedAccount, setSelectedAccount] = useState("");
+  const [selectedCycleId, setSelectedCycleId] = useState(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  // Auto-assign cycleId to existing trades that don't have one (one-time migration)
+  useEffect(() => {
+    if (!wheelTrades.length) return;
+    const needsCycle = wheelTrades.filter(t => !t.cycleId);
+    if (needsCycle.length === 0) return;
+    // Group by ticker+account, assign one cycleId per group
+    const groups = {};
+    needsCycle.forEach(t => {
+      const key = `${t.ticker}|${t.account || ""}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t.id);
+    });
+    onSave(prev => {
+      const updated = [...prev];
+      Object.entries(groups).forEach(([key, ids]) => {
+        const cid = `wheel-cycle-${key.replace("|","-")}-${Date.now()}`;
+        ids.forEach(id => {
+          const idx = updated.findIndex(t => t.id === id);
+          if (idx >= 0) updated[idx] = { ...updated[idx], cycleId: cid };
+        });
+      });
+      return updated;
+    });
+  }, []);
+
+  // Determine if a cycle is completed: had assignments + all shares called away
+  const getCycleStatus = useCallback((cycleTrades) => {
+    let ownedShares = 0;
+    let hadAssignment = false;
+    cycleTrades.forEach(t => {
+      if (t.type === "CSP" && t.assigned) {
+        hadAssignment = true;
+        ownedShares += (parseInt(t.contracts) || 0) * 100;
+      }
+      if (t.type === "CC" && t.calledAway) {
+        ownedShares -= parseInt(t.sharesCalledAway) || ((parseInt(t.contracts) || 1) * 100);
+      }
+      if (t.type === "Shares") {
+        ownedShares += parseInt(t.shares) || 0;
+      }
+    });
+    if (hadAssignment && ownedShares <= 0) return "completed";
+    if (ownedShares > 0) return "active";
+    return "collecting"; // CSPs only, no assignment yet
+  }, []);
+
+  // Group by cycleId instead of ticker+account
   const positions = useMemo(() => {
-    const grouped = {};
     const filtered = accountFilter === "All" ? wheelTrades : wheelTrades.filter(t => t.account === accountFilter);
+    const grouped = {};
     filtered.forEach(trade => {
-      const key = `${trade.ticker}|${trade.account || "Unassigned"}`;
-      if (!grouped[key]) grouped[key] = { ticker:trade.ticker, account:trade.account||"Unassigned", trades:[] };
+      const key = trade.cycleId || `${trade.ticker}|${trade.account || "Unassigned"}`;
+      if (!grouped[key]) grouped[key] = { cycleId: trade.cycleId || key, ticker: trade.ticker, account: trade.account || "Unassigned", trades: [] };
       grouped[key].trades.push(trade);
     });
-    return Object.values(grouped).map(g => ({ ...g, trades:g.trades.sort((a,b) => new Date(b.date)-new Date(a.date)) }));
-  }, [wheelTrades, accountFilter]);
+    return Object.values(grouped).map(g => ({
+      ...g,
+      trades: g.trades.sort((a, b) => new Date(b.date) - new Date(a.date)),
+      cycleStatus: getCycleStatus(g.trades),
+    })).sort((a, b) => {
+      // Active first, then collecting, then completed
+      const order = { active: 0, collecting: 1, completed: 2 };
+      return (order[a.cycleStatus] || 1) - (order[b.cycleStatus] || 1);
+    });
+  }, [wheelTrades, accountFilter, getCycleStatus]);
+
+  const activeCycles = positions.filter(p => p.cycleStatus !== "completed");
+  const completedCycles = positions.filter(p => p.cycleStatus === "completed");
 
   useEffect(() => {
     if (!onSaveTrades || !wheelTrades.length) return;
@@ -3881,11 +3942,14 @@ function WheelSubTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, acco
 
 
   const handleSaveTrade = (trade) => {
+    // Attach cycleId if this trade is being added to an existing cycle
+    const tradeWithCycle = { ...trade, cycleId: trade.cycleId || selectedCycleId || `wheel-cycle-${trade.ticker}-${trade.account||""}-${Date.now()}` };
     onSave(prev => {
-      const idx = prev.findIndex(t => t.id === trade.id);
-      if (idx >= 0) { const u = [...prev]; u[idx] = trade; return u; }
-      return [trade, ...prev];
+      const idx = prev.findIndex(t => t.id === tradeWithCycle.id);
+      if (idx >= 0) { const u = [...prev]; u[idx] = tradeWithCycle; return u; }
+      return [tradeWithCycle, ...prev];
     });
+
     if (trade.type === "CSP" && trade.assigned && onSaveTrades) {
       const holdingId = `wheel-assigned-${trade.id}`;
       const shares = (parseInt(trade.contracts)||1)*100, strike = parseFloat(trade.strike)||0, premiumCredit = parseFloat(trade.openPremium)||0;
@@ -3936,9 +4000,9 @@ function WheelSubTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, acco
   };
 
   const handleDeleteTrade = (id) => onSave(prev => prev.filter(t => t.id !== id));
-  const handleDeletePosition = (ticker, account) => onSave(prev => prev.filter(t => !(t.ticker === ticker && (t.account || "Unassigned") === account)));
+  const handleDeletePosition = (cycleId) => onSave(prev => prev.filter(t => t.cycleId !== cycleId));
   const openNewPosition = () => setShowAddPositionModal(true);
-  const openNewTrade = (ticker, account) => { setSelectedTicker(ticker); setSelectedAccount(account||""); setEditingTrade(null); setShowAddTradeModal(true); };
+  const openNewTrade = (ticker, account, cycleId) => { setSelectedTicker(ticker); setSelectedAccount(account||""); setSelectedCycleId(cycleId||null); setEditingTrade(null); setShowAddTradeModal(true); };
   const openEditTrade = (trade) => { setEditingTrade(trade); setShowAddTradeModal(true); };
 
   return (
@@ -3951,17 +4015,38 @@ function WheelSubTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, acco
         <div style={{ textAlign:"center", padding:"70px 20px", color:"var(--tp-faint)" }}><RefreshCw size={48} style={{ margin:"0 auto 16px", opacity:0.35 }}/><p style={{ margin:0, fontSize:15 }}>No wheel positions yet.</p></div>
       ) : (
         <div style={{ display:"grid", gap:14 }}>
-          {positions.map(pos => <WheelPositionCard key={`${pos.ticker}-${pos.account}`} position={pos} collapsed={collapsed[`${pos.ticker}-${pos.account}`]} onToggle={()=>setCollapsed(p=>({...p,[`${pos.ticker}-${pos.account}`]:!p[`${pos.ticker}-${pos.account}`]}))} onAddTrade={()=>openNewTrade(pos.ticker, pos.account)} onEditTrade={openEditTrade} onDeleteTrade={handleDeleteTrade} onDeletePosition={()=>handleDeletePosition(pos.ticker, pos.account)}/>)}
+          {/* Active & Collecting cycles */}
+          {activeCycles.map(pos => <WheelPositionCard key={pos.cycleId} position={pos} collapsed={collapsed[pos.cycleId]} onToggle={()=>setCollapsed(p=>({...p,[pos.cycleId]:!p[pos.cycleId]}))} onAddTrade={()=>openNewTrade(pos.ticker, pos.account, pos.cycleId)} onEditTrade={openEditTrade} onDeleteTrade={handleDeleteTrade} onDeletePosition={()=>handleDeletePosition(pos.cycleId)} onStartNewWheel={()=>{
+            const newCycleId = `wheel-cycle-${pos.ticker}-${pos.account||""}-${Date.now()}`;
+            openNewTrade(pos.ticker, pos.account, newCycleId);
+          }}/>)}
+
+          {/* Completed cycles */}
+          {completedCycles.length > 0 && (
+            <div>
+              <button onClick={()=>setShowCompleted(!showCompleted)} style={{ width:"100%", padding:"10px 16px", borderRadius:8, border:"1px dashed rgba(74,222,128,0.2)", background: showCompleted ? "rgba(74,222,128,0.04)" : "transparent", color: showCompleted ? "#4ade80" : "var(--tp-faint)", cursor:"pointer", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"all 0.15s" }}>
+                <Check size={14}/> {showCompleted ? "Hide" : "Show"} Completed Wheels ({completedCycles.length})
+              </button>
+              {showCompleted && (
+                <div style={{ display:"grid", gap:10, marginTop:10 }}>
+                  {completedCycles.map(pos => <WheelPositionCard key={pos.cycleId} position={pos} isCompleted collapsed={collapsed[pos.cycleId] !== false} onToggle={()=>setCollapsed(p=>({...p,[pos.cycleId]:p[pos.cycleId]===false?true:false}))} onAddTrade={()=>openNewTrade(pos.ticker, pos.account, pos.cycleId)} onEditTrade={openEditTrade} onDeleteTrade={handleDeleteTrade} onDeletePosition={()=>handleDeletePosition(pos.cycleId)} onStartNewWheel={()=>{
+                    const newCycleId = `wheel-cycle-${pos.ticker}-${pos.account||""}-${Date.now()}`;
+                    openNewTrade(pos.ticker, pos.account, newCycleId);
+                  }}/>)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
-      {showAddPositionModal && <NewPositionModal onSave={(ticker, account)=>{openNewTrade(ticker, account);setShowAddPositionModal(false);}} onClose={()=>setShowAddPositionModal(false)} accounts={accounts||[]}/>}
+      {showAddPositionModal && <NewPositionModal onSave={(ticker, account)=>{const newCycleId=`wheel-cycle-${ticker}-${account||""}-${Date.now()}`;openNewTrade(ticker, account, newCycleId);setShowAddPositionModal(false);}} onClose={()=>setShowAddPositionModal(false)} accounts={accounts||[]}/>}
       {showAddTradeModal && <WheelTradeModal ticker={selectedTicker||editingTrade?.ticker} onSave={handleSaveTrade} onClose={()=>{setShowAddTradeModal(false);setEditingTrade(null);setSelectedTicker(null);setSelectedAccount("");}} editTrade={editingTrade} accounts={accounts||[]} defaultAccount={selectedAccount||editingTrade?.account||""}/>}
     </div>
   );
 }
 
 
-function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTrade, onDeleteTrade, onDeletePosition }) {
+function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTrade, onDeleteTrade, onDeletePosition, isCompleted, onStartNewWheel }) {
   const { ticker, trades, account } = position;
   
   // Calculate totals across all trades
@@ -3992,10 +4077,10 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
   });
   
   const adjCostPerShare = ownedShares > 0 ? (totalCost - totalPremium) / ownedShares : 0;
-  const status = ownedShares > 0 ? "Active" : totalPremium > 0 ? "Collecting" : "Closed";
+  const status = isCompleted ? "Completed" : ownedShares > 0 ? "Active" : totalPremium > 0 ? "Collecting" : "Closed";
 
   return (
-    <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:12, overflow:"hidden", transition:"border-color 0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(99,102,241,0.3)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
+    <div style={{ background:"var(--tp-panel)", border:`1px solid ${isCompleted ? "rgba(74,222,128,0.15)" : "var(--tp-panel-b)"}`, borderRadius:12, overflow:"hidden", transition:"border-color 0.2s", opacity: isCompleted ? 0.7 : 1 }} onMouseEnter={e=>{e.currentTarget.style.borderColor=isCompleted?"rgba(74,222,128,0.3)":"rgba(99,102,241,0.3)";if(isCompleted)e.currentTarget.style.opacity="1";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=isCompleted?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.07)";if(isCompleted)e.currentTarget.style.opacity="0.7";}}>
       {/* Summary Header (always visible) */}
       <div style={{ padding:"18px 20px", cursor:"pointer" }} onClick={onToggle}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"start", marginBottom:12 }}>
@@ -4004,7 +4089,7 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
             <div>
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <div style={{ fontSize:18, fontWeight:700, color:"var(--tp-text)" }}>{ticker}</div>
-                <span style={{ fontSize:10, fontWeight:600, color: status==="Active"?"#60a5fa":status==="Collecting"?"#4ade80":"#8a8f9e", background: status==="Active"?"rgba(96,165,250,0.15)":status==="Collecting"?"rgba(74,222,128,0.15)":"rgba(138,143,158,0.15)", padding:"2px 8px", borderRadius:4, textTransform:"uppercase", letterSpacing:0.5 }}>{status}</span>
+                <span style={{ fontSize:10, fontWeight:600, color: status==="Completed"?"#4ade80":status==="Active"?"#60a5fa":status==="Collecting"?"#4ade80":"#8a8f9e", background: status==="Completed"?"rgba(74,222,128,0.12)":status==="Active"?"rgba(96,165,250,0.15)":status==="Collecting"?"rgba(74,222,128,0.15)":"rgba(138,143,158,0.15)", padding:"2px 8px", borderRadius:4, textTransform:"uppercase", letterSpacing:0.5 }}>{status === "Completed" ? "✓ Completed" : status}</span>
                 {account && account !== "Unassigned" && <span style={{ fontSize:9, fontWeight:600, color:"#a5b4fc", background:"rgba(99,102,241,0.12)", padding:"2px 8px", borderRadius:4 }}>{account}</span>}
                 <span style={{ fontSize:11, color:"var(--tp-faint)" }}>{trades.length} trade{trades.length!==1?"s":""}</span>
               </div>
@@ -4012,6 +4097,9 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
           </div>
           <div style={{ display:"flex", gap:6 }} onClick={e=>e.stopPropagation()}>
             <button onClick={onAddTrade} style={{ padding:"6px 10px", borderRadius:6, border:"1px solid rgba(99,102,241,0.3)", background:"rgba(99,102,241,0.1)", color:"#a5b4fc", cursor:"pointer", fontSize:11, fontWeight:500 }}>+ Trade</button>
+            {isCompleted && onStartNewWheel && (
+              <button onClick={onStartNewWheel} style={{ padding:"6px 10px", borderRadius:6, border:"1px solid rgba(74,222,128,0.3)", background:"rgba(74,222,128,0.08)", color:"#4ade80", cursor:"pointer", fontSize:11, fontWeight:500, display:"flex", alignItems:"center", gap:4 }}><RefreshCw size={11}/> New Wheel</button>
+            )}
             <button onClick={onDeletePosition} style={{ padding:"6px 8px", borderRadius:6, border:"none", background:"transparent", color:"var(--tp-faint)", cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color="#5c6070"}><Trash2 size={13}/></button>
           </div>
         </div>
