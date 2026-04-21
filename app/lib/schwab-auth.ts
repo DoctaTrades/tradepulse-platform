@@ -299,6 +299,7 @@ export async function refreshAccessToken(userId?: string): Promise<TokenPair> {
     refresh_token: data.refresh_token || entry.tokens.refresh_token,
     expires_at: Date.now() + ((data.expires_in || 1800) * 1000) - 60000,
     token_type: data.token_type || 'Bearer',
+    refresh_expires_at: entry.tokens.refresh_expires_at || 0,
   };
 
   await dbSaveTokens(userId, newTokens);
@@ -357,6 +358,7 @@ export async function exchangeCodeForTokens(code: string, userId?: string): Prom
     refresh_token: data.refresh_token,
     expires_at: Date.now() + ((data.expires_in || 1800) * 1000) - 60000,
     token_type: data.token_type || 'Bearer',
+    refresh_expires_at: Date.now() + REFRESH_TOKEN_LIFETIME_MS,
   };
 
   await dbSaveTokens(userId, tokens);
