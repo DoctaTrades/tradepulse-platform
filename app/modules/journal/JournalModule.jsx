@@ -10224,72 +10224,362 @@ function ImportExportManager({ user, trades, onSaveTrades, customFields, account
   };
 
   const snapConfirmImport = () => {
-    // Pair orders into trades
-    const groups = {};
-    snapOrders.forEach(o => {
-      const sym = o.isOption ? (o.optionDetail?.optionSymbol || o.symbol) : o.symbol;
-      const key = `${sym}|${o.date}`;
-      if (!groups[key]) groups[key] = { symbol: o.symbol, isOption: o.isOption, optionDetail: o.optionDetail, date: o.date, buys: [], sells: [] };
-      if (o.action === "Buy") groups[key].buys.push(o);
-      else groups[key].sells.push(o);
+    // ═══ PAIRING ENGINE v2 ═══
+    // Cross-day matching, multi-leg grouping, proper legs, strategy auto-detection
+    
+    // Step 1: Separate options from stocks, and assignments
+    const optionOrders = snapOrders.filter(o => o.isOption && (o.type === "BUY" || o.type === "SELL"));
+    const stockOrders = snapOrders.filter(o => !o.isOption && (o.type === "BUY" || o.type === "SELL"));
+    const assignmentOrders = snapOrders.filter(o => o.type === "ASSIGNMENT" || o.type === "EXERCISE");
+
+    // Step 2: Build option contract keys for cross-day matching
+    // Key: ticker|strike|expiration|putcall — uniquely identifies an option contract
+    const getOptionKey = (o) => {
+      const d = o.optionDetail || {};
+      return `${o.symbol}|${d.strikePrice}|${d.expirationDate}|${(d.optionType||"").toUpperCase()}`;
+    };
+
+    // Step 3: Determine if an order is an open or close
+    const classifyOpenClose = (order) => {
+      if (order.openClose === "open") return "open";
+      if (order.openClose === "close") return "close";
+      // Infer: STO/BTO = open, STC/BTC = close
+      const rt = (order.rawType || "").toUpperCase();
+      if (rt === "STO" || rt === "BTO" || rt === "SELL_TO_OPEN" || rt === "BUY_TO_OPEN") return "open";
+      if (rt === "STC" || rt === "BTC" || rt === "SELL_TO_CLOSE" || rt === "BUY_TO_CLOSE") return "close";
+      return ""; // unknown — will be inferred later
+    };
+
+    // Step 4: Group option orders by contract key, then pair opens with closes
+    const optionsByKey = {};
+    optionOrders.forEach(o => {
+      const key = getOptionKey(o);
+      if (!optionsByKey[key]) optionsByKey[key] = [];
+      optionsByKey[key].push({ ...o, oc: classifyOpenClose(o) });
     });
-    const paired = [];
-    Object.values(groups).forEach(g => {
-      const tBuyQty = g.buys.reduce((s, b) => s + b.quantity, 0);
-      const tBuyVal = g.buys.reduce((s, b) => s + b.quantity * b.price, 0);
-      const tBuyFees = g.buys.reduce((s, b) => s + b.fee, 0);
-      const avgBuy = tBuyQty > 0 ? tBuyVal / tBuyQty : 0;
-      const tSellQty = g.sells.reduce((s, b) => s + b.quantity, 0);
-      const tSellVal = g.sells.reduce((s, b) => s + b.quantity * b.price, 0);
-      const tSellFees = g.sells.reduce((s, b) => s + b.fee, 0);
-      const avgSell = tSellQty > 0 ? tSellVal / tSellQty : 0;
-      const fees = tBuyFees + tSellFees;
-      const qty = Math.min(tBuyQty, tSellQty);
-      if (qty <= 0 && tBuyQty <= 0 && tSellQty <= 0) return;
-      const effectiveQty = qty > 0 ? qty : Math.max(tBuyQty, tSellQty);
-      const isClosed = tBuyQty > 0 && tSellQty > 0;
-      const allOrd = [...g.buys, ...g.sells].sort((a, b) => a.date < b.date ? -1 : 1);
-      const dir = allOrd[0]?.action === "Sell" ? "Short" : "Long";
-      const entry = dir === "Long" ? avgBuy : avgSell;
-      const exit = dir === "Long" ? avgSell : avgBuy;
-      const mult = g.isOption ? 100 : 1;
-      const pnl = isClosed ? (dir === "Long" ? exit - entry : entry - exit) * qty * mult - fees : null;
-      paired.push({
-        id: Date.now() + Math.random(), date: g.date, ticker: g.symbol,
-        assetType: g.isOption ? "Options" : "Stock", direction: dir,
-        status: isClosed ? "Closed" : "Open",
-        entryPrice: entry.toFixed(4), exitPrice: isClosed ? exit.toFixed(4) : "",
-        quantity: String(effectiveQty), fees: fees.toFixed(2),
-        pnl: pnl !== null ? parseFloat(pnl.toFixed(2)) : null,
-        notes: `Broker sync: ${g.buys.length} buy, ${g.sells.length} sell${g.isOption && g.optionDetail ? ` (${g.optionDetail.optionType} ${g.optionDetail.strikePrice})` : ""}`,
-        strategy: g.isOption ? "Options" : "", timeframe: "", account: targetAccount || "",
-        tradeStrategy: "", playbook: "", emotions: [], optionsStrategyType: "", legs: [],
+
+    // For orders without open/close flags, infer: first order on a contract = open, subsequent opposite = close
+    Object.values(optionsByKey).forEach(orders => {
+      orders.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+      let netPosition = 0;
+      orders.forEach(o => {
+        if (o.oc) return; // already classified
+        if (netPosition === 0) {
+          o.oc = "open";
+        } else {
+          // If this action would reduce position, it's a close
+          const isReducing = (o.action === "Buy" && netPosition < 0) || (o.action === "Sell" && netPosition > 0);
+          o.oc = isReducing ? "close" : "open";
+        }
+        netPosition += (o.action === "Buy" ? 1 : -1) * o.quantity;
       });
     });
-    if (paired.length === 0) { setSnapError("No trades to import after pairing"); return; }
 
-    // Duplicate detection: match on ticker + date + direction + quantity
+    // Step 5: Group simultaneous opens into multi-leg trades
+    // Orders on the same ticker, same date, same "open" classification = likely one trade
+    const openGroups = {};
+    Object.entries(optionsByKey).forEach(([key, orders]) => {
+      orders.filter(o => o.oc === "open").forEach(o => {
+        const groupKey = `${o.symbol}|${o.date}|open`;
+        if (!openGroups[groupKey]) openGroups[groupKey] = [];
+        openGroups[groupKey].push({ ...o, contractKey: key });
+      });
+    });
+
+    // Step 6: Build paired trades from option orders
+    const pairedTrades = [];
+    const usedCloseIds = new Set();
+
+    Object.entries(openGroups).forEach(([groupKey, opens]) => {
+      const ticker = opens[0].symbol;
+      const openDate = opens[0].date;
+      const legs = [];
+      let totalFees = 0;
+      const sourceIds = [];
+
+      opens.forEach(openOrder => {
+        const key = openOrder.contractKey;
+        const d = openOrder.optionDetail || {};
+        const closeCandidates = (optionsByKey[key] || []).filter(o => 
+          o.oc === "close" && !usedCloseIds.has(o.id) && o.date >= openOrder.date
+        ).sort((a, b) => a.date < b.date ? -1 : 1);
+
+        // Match quantities — handle partial closes
+        let remainQty = openOrder.quantity;
+        let exitPremium = 0;
+        let exitQty = 0;
+        let closeDate = "";
+        const closeFees = [];
+
+        for (const cl of closeCandidates) {
+          if (remainQty <= 0) break;
+          const matchQty = Math.min(remainQty, cl.quantity);
+          exitPremium += cl.price * matchQty;
+          exitQty += matchQty;
+          remainQty -= matchQty;
+          closeDate = cl.date;
+          closeFees.push(cl.fee * (matchQty / cl.quantity));
+          sourceIds.push(cl.id);
+          if (matchQty >= cl.quantity) usedCloseIds.add(cl.id);
+        }
+
+        const avgExitPrem = exitQty > 0 ? exitPremium / exitQty : 0;
+        const isSell = openOrder.action === "Sell";
+
+        legs.push({
+          id: Date.now() + Math.random(),
+          action: isSell ? "Sell" : "Buy",
+          type: (d.optionType || "").toUpperCase() === "PUT" ? "Put" : "Call",
+          strike: String(d.strikePrice || ""),
+          expiration: d.expirationDate || "",
+          contracts: String(openOrder.quantity),
+          entryPremium: String(openOrder.price.toFixed(2)),
+          exitPremium: exitQty > 0 ? String(avgExitPrem.toFixed(2)) : "",
+          partialCloses: [],
+          rolls: [],
+        });
+
+        totalFees += openOrder.fee + closeFees.reduce((s, f) => s + f, 0);
+        sourceIds.push(openOrder.id);
+      });
+
+      if (legs.length === 0) return;
+
+      // Determine direction and status
+      const firstLeg = legs[0];
+      const allClosed = legs.every(l => l.exitPremium !== "");
+      const direction = firstLeg.action === "Sell" ? "Short" : "Long";
+
+      // Calculate P&L from legs
+      let pnl = null;
+      if (allClosed) {
+        pnl = 0;
+        legs.forEach(l => {
+          const entry = parseFloat(l.entryPremium) || 0;
+          const exit = parseFloat(l.exitPremium) || 0;
+          const qty = parseInt(l.contracts) || 1;
+          const mult = (l.action === "Sell") ? (entry - exit) : (exit - entry);
+          pnl += mult * qty * 100;
+        });
+        pnl -= totalFees;
+        pnl = parseFloat(pnl.toFixed(2));
+      }
+
+      // Auto-detect strategy from leg structure
+      let strategyType = "Single Leg";
+      let tradeStrategy = "";
+      if (legs.length === 1) {
+        strategyType = "Single Leg";
+        const l = legs[0];
+        if (l.action === "Sell" && l.type === "Put") tradeStrategy = "Cash-Secured Put";
+        else if (l.action === "Sell" && l.type === "Call") tradeStrategy = "Covered Call";
+        else if (l.action === "Buy" && l.type === "Call") tradeStrategy = "Long Call";
+        else if (l.action === "Buy" && l.type === "Put") tradeStrategy = "Long Put";
+      } else if (legs.length === 2) {
+        const sorted = [...legs].sort((a, b) => parseFloat(a.strike) - parseFloat(b.strike));
+        const bothPuts = sorted.every(l => l.type === "Put");
+        const bothCalls = sorted.every(l => l.type === "Call");
+        const hasSell = sorted.some(l => l.action === "Sell");
+        const hasBuy = sorted.some(l => l.action === "Buy");
+        if (bothPuts && hasSell && hasBuy) {
+          strategyType = "Put Credit Spread";
+          tradeStrategy = sorted[0].action === "Buy" ? "Put Credit Spread" : "Put Debit Spread";
+        } else if (bothCalls && hasSell && hasBuy) {
+          strategyType = "Call Credit Spread";
+          tradeStrategy = sorted[1].action === "Sell" ? "Call Credit Spread" : "Call Debit Spread";
+        } else if (sorted[0].type === "Put" && sorted[1].type === "Call") {
+          const samestrike = sorted[0].strike === sorted[1].strike;
+          if (samestrike) { strategyType = "Straddle / Strangle"; tradeStrategy = sorted[0].action === "Sell" ? "Short Straddle" : "Long Straddle"; }
+          else { strategyType = "Straddle / Strangle"; tradeStrategy = sorted[0].action === "Sell" ? "Short Strangle" : "Long Strangle"; }
+        }
+      } else if (legs.length === 4) {
+        const sorted = [...legs].sort((a, b) => parseFloat(a.strike) - parseFloat(b.strike));
+        const allPuts = sorted.every(l => l.type === "Put");
+        const allCalls = sorted.every(l => l.type === "Call");
+        const hasPutsAndCalls = sorted.some(l => l.type === "Put") && sorted.some(l => l.type === "Call");
+        if (hasPutsAndCalls) {
+          strategyType = "Iron Condor";
+          tradeStrategy = "Iron Condor";
+        } else if (allPuts || allCalls) {
+          strategyType = "Condor";
+          tradeStrategy = "Condor";
+        }
+      } else if (legs.length === 3) {
+        strategyType = "Butterfly";
+        tradeStrategy = "Butterfly";
+      }
+
+      pairedTrades.push({
+        ...emptyTrade(),
+        id: Date.now() + Math.random(),
+        date: openDate,
+        ticker,
+        assetType: "Options",
+        optionsStrategyType: strategyType,
+        direction,
+        status: allClosed ? "Closed" : "Open",
+        legs,
+        fees: totalFees.toFixed(2),
+        pnl,
+        notes: `Broker sync: ${legs.length} leg${legs.length !== 1 ? "s" : ""} (${strategyType})`,
+        account: targetAccount || "",
+        tradeStrategy,
+        timeframe: "",
+        _sourceIds: sourceIds,
+      });
+    });
+
+    // Step 7: Handle unmatched close orders (closes without opens in this import range)
+    Object.entries(optionsByKey).forEach(([key, orders]) => {
+      orders.filter(o => o.oc === "close" && !usedCloseIds.has(o.id)).forEach(closeOrder => {
+        const d = closeOrder.optionDetail || {};
+        const isSell = closeOrder.action === "Sell";
+        pairedTrades.push({
+          ...emptyTrade(),
+          id: Date.now() + Math.random(),
+          date: closeOrder.date,
+          ticker: closeOrder.symbol,
+          assetType: "Options",
+          optionsStrategyType: "Single Leg",
+          direction: isSell ? "Long" : "Short",
+          status: "Closed",
+          legs: [{
+            id: Date.now() + Math.random(),
+            action: isSell ? "Buy" : "Sell",
+            type: (d.optionType || "").toUpperCase() === "PUT" ? "Put" : "Call",
+            strike: String(d.strikePrice || ""),
+            expiration: d.expirationDate || "",
+            contracts: String(closeOrder.quantity),
+            entryPremium: "",
+            exitPremium: String(closeOrder.price.toFixed(2)),
+            partialCloses: [], rolls: [],
+          }],
+          fees: closeOrder.fee.toFixed(2),
+          notes: `Broker sync: closing trade (open not in import range)`,
+          account: targetAccount || "",
+          _sourceIds: [closeOrder.id],
+        });
+        usedCloseIds.add(closeOrder.id);
+      });
+    });
+
+    // Step 8: Pair stock orders — group by ticker, match buys to sells (FIFO)
+    const stocksByTicker = {};
+    stockOrders.forEach(o => {
+      if (!stocksByTicker[o.symbol]) stocksByTicker[o.symbol] = [];
+      stocksByTicker[o.symbol].push(o);
+    });
+
+    Object.entries(stocksByTicker).forEach(([ticker, orders]) => {
+      orders.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+      const buys = orders.filter(o => o.action === "Buy");
+      const sells = orders.filter(o => o.action === "Sell");
+
+      // FIFO matching
+      let buyIdx = 0;
+      let buyRemain = buys.length > 0 ? buys[0].quantity : 0;
+
+      sells.forEach(sell => {
+        let sellRemain = sell.quantity;
+        while (sellRemain > 0 && buyIdx < buys.length) {
+          const matchQty = Math.min(sellRemain, buyRemain);
+          if (matchQty > 0) {
+            const buyOrder = buys[buyIdx];
+            const pnl = parseFloat(((sell.price - buyOrder.price) * matchQty - buyOrder.fee * (matchQty/buyOrder.quantity) - sell.fee * (matchQty/sell.quantity)).toFixed(2));
+            pairedTrades.push({
+              ...emptyTrade(),
+              id: Date.now() + Math.random(),
+              date: buyOrder.date, ticker,
+              assetType: "Stocks", direction: "Long", status: "Closed",
+              entryPrice: buyOrder.price.toFixed(4), exitPrice: sell.price.toFixed(4),
+              exitDate: sell.date,
+              quantity: String(matchQty),
+              fees: (buyOrder.fee * (matchQty/buyOrder.quantity) + sell.fee * (matchQty/sell.quantity)).toFixed(2),
+              pnl,
+              notes: `Broker sync: bought ${buyOrder.date}, sold ${sell.date}`,
+              account: targetAccount || "",
+              _sourceIds: [buyOrder.id, sell.id],
+            });
+            sellRemain -= matchQty;
+            buyRemain -= matchQty;
+          }
+          if (buyRemain <= 0) {
+            buyIdx++;
+            buyRemain = buyIdx < buys.length ? buys[buyIdx].quantity : 0;
+          }
+        }
+      });
+
+      // Remaining unmatched buys = open stock positions
+      for (let i = buyIdx; i < buys.length; i++) {
+        const qty = i === buyIdx ? buyRemain : buys[i].quantity;
+        if (qty <= 0) continue;
+        pairedTrades.push({
+          ...emptyTrade(),
+          id: Date.now() + Math.random(),
+          date: buys[i].date, ticker,
+          assetType: "Stocks", direction: "Long", status: "Open",
+          entryPrice: buys[i].price.toFixed(4),
+          quantity: String(qty),
+          fees: buys[i].fee.toFixed(2),
+          notes: `Broker sync: open stock position`,
+          account: targetAccount || "",
+          _sourceIds: [buys[i].id],
+        });
+      }
+    });
+
+    // Step 9: Handle assignments
+    assignmentOrders.forEach(a => {
+      const d = a.optionDetail || {};
+      pairedTrades.push({
+        ...emptyTrade(),
+        id: Date.now() + Math.random(),
+        date: a.date, ticker: a.symbol,
+        assetType: "Stocks", direction: "Long", status: "Open",
+        entryPrice: String(d.strikePrice || a.price || 0),
+        quantity: String(a.quantity * 100),
+        notes: `Broker sync: assignment from ${(d.optionType||"").toUpperCase()} @ $${d.strikePrice} exp ${d.expirationDate}`,
+        account: targetAccount || "",
+        tradeStrategy: "Wheel Strategy",
+        _sourceIds: [a.id],
+      });
+    });
+
+    if (pairedTrades.length === 0) { setSnapError("No trades to import after pairing"); return; }
+
+    // Step 10: Duplicate detection — match on source transaction IDs
+    const existingSourceIds = new Set();
+    trades.forEach(t => {
+      if (t._sourceIds) t._sourceIds.forEach(id => existingSourceIds.add(id));
+      if (t.externalRefId) existingSourceIds.add(t.externalRefId);
+    });
+
     const isDuplicate = (newTrade) => {
+      // Primary: check source transaction IDs
+      if (newTrade._sourceIds && newTrade._sourceIds.some(id => existingSourceIds.has(id))) return true;
+      // Fallback: match on ticker + date + direction + quantity + strategy
       return trades.some(existing =>
         existing.ticker === newTrade.ticker &&
         existing.date === newTrade.date &&
         existing.direction === newTrade.direction &&
-        String(existing.quantity) === String(newTrade.quantity)
+        String(existing.quantity) === String(newTrade.quantity) &&
+        existing.assetType === newTrade.assetType
       );
     };
 
-    const unique = paired.filter(t => !isDuplicate(t));
-    const dupeCount = paired.length - unique.length;
+    const unique = pairedTrades.filter(t => !isDuplicate(t));
+    const dupeCount = pairedTrades.length - unique.length;
 
     if (unique.length === 0) {
-      setSnapError(`All ${paired.length} trades already exist in your journal (matched by ticker + date + direction + quantity). Nothing to import.`);
+      setSnapError(`All ${pairedTrades.length} trades already exist in your journal. Nothing to import.`);
       return;
     }
 
     onSaveTrades(prev => [...unique.sort((a, b) => new Date(b.date) - new Date(a.date)), ...prev]);
     setSnapOrders([]);
     setMode(null);
-    alert(`Imported ${unique.length} trades from broker sync!${dupeCount > 0 ? ` Skipped ${dupeCount} duplicate${dupeCount !== 1 ? "s" : ""} already in your journal.` : ""}`);
+    alert(`Imported ${unique.length} trades from broker sync!${dupeCount > 0 ? ` Skipped ${dupeCount} duplicate${dupeCount !== 1 ? "s" : ""}.` : ""}`);
   };
 
   return (

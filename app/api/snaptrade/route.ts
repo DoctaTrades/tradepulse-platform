@@ -253,17 +253,31 @@ export async function POST(req: NextRequest) {
         const rawType = (a.type || a.action_type || a.side || '').toString().toUpperCase();
         const optionDetail = a.option_symbol ? {
           optionSymbol: a.option_symbol.description || a.option_symbol.ticker || '',
-          optionType: a.option_symbol.option_type || '',
+          optionType: (a.option_symbol.option_type || '').toUpperCase(),
           strikePrice: a.option_symbol.strike_price || 0,
-          expirationDate: a.option_symbol.expiration_date || '',
+          expirationDate: a.option_symbol.expiration_date ? a.option_symbol.expiration_date.substring(0, 10) : '',
         } : null;
 
-        // Normalize type — SnapTrade may use BUY/SELL, buy/sell, or other variants
+        // Normalize type — preserve open/close distinction when available
         let normalizedType = '';
-        if (['BUY', 'BTO', 'BTC', 'PURCHASE'].includes(rawType)) normalizedType = 'BUY';
-        else if (['SELL', 'STO', 'STC', 'SALE'].includes(rawType)) normalizedType = 'SELL';
-        else if (rawType.includes('BUY')) normalizedType = 'BUY';
-        else if (rawType.includes('SELL')) normalizedType = 'SELL';
+        let openClose = ''; // 'open', 'close', or '' (unknown)
+        if (rawType === 'BTO' || rawType === 'BUY_TO_OPEN') { normalizedType = 'BUY'; openClose = 'open'; }
+        else if (rawType === 'BTC' || rawType === 'BUY_TO_CLOSE') { normalizedType = 'BUY'; openClose = 'close'; }
+        else if (rawType === 'STO' || rawType === 'SELL_TO_OPEN') { normalizedType = 'SELL'; openClose = 'open'; }
+        else if (rawType === 'STC' || rawType === 'SELL_TO_CLOSE') { normalizedType = 'SELL'; openClose = 'close'; }
+        else if (['BUY', 'PURCHASE'].includes(rawType)) { normalizedType = 'BUY'; }
+        else if (['SELL', 'SALE'].includes(rawType)) { normalizedType = 'SELL'; }
+        else if (rawType.includes('BUY')) { normalizedType = 'BUY'; }
+        else if (rawType.includes('SELL')) { normalizedType = 'SELL'; }
+        else if (['ASSIGNMENT', 'ASSIGN'].includes(rawType)) { normalizedType = 'ASSIGNMENT'; }
+        else if (['EXERCISE', 'EXPIRATION', 'EXPIRE'].includes(rawType)) { normalizedType = 'EXERCISE'; }
+
+        // Try to extract open/close from description if not in type
+        if (!openClose && a.description) {
+          const desc = a.description.toUpperCase();
+          if (desc.includes('TO OPEN') || desc.includes('OPENING')) openClose = 'open';
+          else if (desc.includes('TO CLOSE') || desc.includes('CLOSING')) openClose = 'close';
+        }
 
         return {
           id: a.id || `${a.trade_date}-${symbol}-${Math.random()}`,
@@ -271,10 +285,12 @@ export async function POST(req: NextRequest) {
           isOption,
           optionDetail,
           date: a.trade_date ? a.trade_date.substring(0, 10) : a.settlement_date ? a.settlement_date.substring(0, 10) : '',
+          timestamp: a.trade_date || a.settlement_date || '',
           settlementDate: a.settlement_date ? a.settlement_date.substring(0, 10) : '',
           type: normalizedType,
           rawType,
-          action: normalizedType === 'BUY' ? 'Buy' : normalizedType === 'SELL' ? 'Sell' : rawType,
+          openClose,
+          action: normalizedType === 'BUY' ? 'Buy' : normalizedType === 'SELL' ? 'Sell' : normalizedType,
           quantity: Math.abs(a.units || a.quantity || 0),
           price: Math.abs(a.price || 0),
           amount: a.amount || 0,
@@ -284,13 +300,13 @@ export async function POST(req: NextRequest) {
           institution: a.institution || '',
           externalRefId: a.external_reference_id || '',
         };
-      }).filter((o: any) => o.symbol && o.date && (o.type === 'BUY' || o.type === 'SELL'));
+      }).filter((o: any) => o.symbol && o.date && (o.type === 'BUY' || o.type === 'SELL' || o.type === 'ASSIGNMENT' || o.type === 'EXERCISE'));
 
       return NextResponse.json({
         success: true,
         totalRaw: allActivities.length,
         orders,
-        message: `Found ${orders.length} buy/sell transactions (${allActivities.length} total activities)`,
+        message: `Found ${orders.length} transactions (${allActivities.length} total activities)`,
       });
     }
 
