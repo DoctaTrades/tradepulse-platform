@@ -8970,6 +8970,7 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
       {section === "accounts" && <AccountBalancesManager accountBalances={accountBalances} onSave={onSaveAccountBalances} customFields={customFields} trades={trades} prefs={prefs} onSavePrefs={onSavePrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={onSaveCashTransactions} hideBalances={hideBalances}/>}
 
       {section === "backups" && <BackupsSection user={user} theme={theme}/>}
+      {section === "admin" && isAdmin && <AccessCodeAdmin user={user} theme={theme}/>}
 
       {section === "futures" && (
         <div>
