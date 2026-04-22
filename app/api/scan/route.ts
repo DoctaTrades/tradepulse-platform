@@ -735,39 +735,6 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
       }
     }
 
-      if (bestLP && bestSetup) {
-        const costRatio = Math.round(bestSetup.costRatio * 10) / 10;
-        const weeklyROI = bestSetup.longCost > 0 ? Math.round((weeklyCredit / bestSetup.longCost) * 100 * 100) / 100 : 0;
-        const weeklyROC = Math.round(bestSetup.weeklyROC * 100) / 100;
-
-        logs.push(`  📅 ${ticker} CalPress: Sell $${shortStrike}P @$${weeklyCredit.toFixed(2)} (${shortPutCP.daysToExpiration}DTE) / Buy $${bestLP.strike}P @$${bestSetup.longCost.toFixed(2)} (${bestLP.daysToExpiration}DTE) · Width:$${bestSetup.actualWidth} · Cap:$${bestSetup.capitalRequired} · Ratio:${costRatio}x · ~${bestSetup.weeksToBreakeven}wks · ROC:${weeklyROC}%`);
-
-        result.calendarPress = {
-          longLeg: {
-            strike: bestLP.strike, bid: bestLP.bid, ask: bestLP.ask,
-            delta: bestLP.delta, dte: bestLP.daysToExpiration,
-            expDate: bestLP.expDate?.split(':')[0],
-            intrinsicValue: 0, // OTM, no intrinsic
-          },
-          shortLeg: {
-            strike: shortPutCP.strike, bid: shortPutCP.bid, ask: shortPutCP.ask,
-            delta: shortPutCP.delta, dte: shortPutCP.daysToExpiration,
-            expDate: shortPutCP.expDate?.split(':')[0],
-          },
-          longCost: bestSetup.longCost,
-          weeklyCredit,
-          netDebit: Math.round((bestSetup.longCost - weeklyCredit) * 100) / 100,
-          spreadWidth: bestSetup.actualWidth,
-          capitalRequired: bestSetup.capitalRequired,
-          weeksToBreakeven: bestSetup.weeksToBreakeven,
-          costRatio,
-          weeklyROI,
-          weeklyROC,
-          maxProfitIfBearish: Math.round((shortStrike - bestLP.strike) * 100) / 100,
-        };
-      }
-    }
-
     logs.push(`✓ ${ticker} · IVR:${ivr}% · IV:${iv}% · RoR:${ror}% · Bid:$${optBid.toFixed(2)}${bestPut ? ` · Δ${bestPut.delta?.toFixed(2)} · ${bestPut.daysToExpiration}DTE` : ''}`);
     results.push(result);
   }, { concurrency: 8, onError: (t, e) => logs.push(`✕ ${t} · ${e instanceof Error ? e.message : 'error'}`) });
