@@ -163,6 +163,22 @@ export default function TradePulsePlatform() {
   const [schwabDisconnected, setSchwabDisconnected] = useState(false);
   const [schwabExpiringSoon, setSchwabExpiringSoon] = useState(false);
   const [schwabExpiryDays, setSchwabExpiryDays] = useState<number | null>(null);
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
+  const [accessError, setAccessError] = useState("");
+  const [accessLoading, setAccessLoading] = useState(false);
+
+  // Check access after user logs in
+  useEffect(() => {
+    if (!user?.id) { setAccessChecked(false); setHasAccess(false); return; }
+    import('./lib/auth-fetch').then(({ authFetch }) => {
+      authFetch('/api/access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'check' }) })
+        .then(r => r.json())
+        .then(d => { setHasAccess(d.hasAccess === true); setAccessChecked(true); })
+        .catch(() => { setHasAccess(false); setAccessChecked(true); });
+    });
+  }, [user?.id]);
 
   // Global Schwab connection check on mount (once user is loaded)
   useEffect(() => {
@@ -246,6 +262,63 @@ export default function TradePulsePlatform() {
 
   if (loading) return <div style={{ minHeight:"100vh", background:"var(--shell-bg)", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}><div className="tp-spinner"/><div style={{ color:"var(--text-dim)", fontSize:13, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, letterSpacing:1, textTransform:"uppercase" }}>Loading TradePulse</div></div>;
   if (!user) return <AuthScreen onAuth={setUser}/>;
+
+  // Access code wall — shown after login if user doesn't have access
+  if (!accessChecked) return <div style={{ minHeight:"100vh", background:"var(--shell-bg)", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}><div className="tp-spinner"/><div style={{ color:"var(--text-dim)", fontSize:13, fontFamily:"'Rajdhani', sans-serif", fontWeight:600, letterSpacing:1, textTransform:"uppercase" }}>Checking access</div></div>;
+  if (!hasAccess) return (
+    <div style={{ minHeight:"100vh", background:"var(--shell-bg)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ width:"min(90vw, 420px)", textAlign:"center" }}>
+        <div style={{ fontSize:36, fontWeight:800, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", marginBottom:8 }}>TradePulse</div>
+        <div style={{ fontSize:14, color:"var(--text-dim)", marginBottom:32 }}>Beta access required</div>
+        <div style={{ background:"var(--card-bg)", border:"1px solid var(--border)", borderRadius:16, padding:"32px 28px", boxShadow:"0 8px 32px rgba(0,0,0,0.3)" }}>
+          <div style={{ fontSize:16, fontWeight:600, color:"var(--text)", marginBottom:8 }}>Enter access code</div>
+          <div style={{ fontSize:12, color:"var(--text-dim)", marginBottom:20 }}>Contact the admin to request a beta access code.</div>
+          <input
+            type="text"
+            value={accessCode}
+            onChange={e => { setAccessCode(e.target.value.toUpperCase()); setAccessError(""); }}
+            onKeyDown={async e => {
+              if (e.key !== "Enter" || !accessCode.trim() || accessLoading) return;
+              setAccessLoading(true); setAccessError("");
+              try {
+                const { authFetch } = await import('./lib/auth-fetch');
+                const res = await authFetch('/api/access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'validate', code: accessCode.trim() }) });
+                const d = await res.json();
+                if (d.valid) { setHasAccess(true); } else { setAccessError(d.error || "Invalid code"); }
+              } catch (err: any) { setAccessError(err.message || "Failed to validate"); }
+              setAccessLoading(false);
+            }}
+            placeholder="BETA-XX"
+            style={{ width:"100%", padding:"14px 16px", background:"var(--input-bg)", border:"1px solid var(--border)", borderRadius:10, color:"var(--text)", fontSize:18, fontWeight:600, textAlign:"center", letterSpacing:4, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}
+          />
+          {accessError && <div style={{ marginTop:12, fontSize:12, color:"#f87171" }}>{accessError}</div>}
+          <button
+            onClick={async () => {
+              if (!accessCode.trim() || accessLoading) return;
+              setAccessLoading(true); setAccessError("");
+              try {
+                const { authFetch } = await import('./lib/auth-fetch');
+                const res = await authFetch('/api/access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'validate', code: accessCode.trim() }) });
+                const d = await res.json();
+                if (d.valid) { setHasAccess(true); } else { setAccessError(d.error || "Invalid code"); }
+              } catch (err: any) { setAccessError(err.message || "Failed to validate"); }
+              setAccessLoading(false);
+            }}
+            disabled={accessLoading || !accessCode.trim()}
+            style={{ width:"100%", marginTop:16, padding:"12px", borderRadius:10, border:"none", background: accessLoading ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", fontSize:14, fontWeight:600, cursor: accessLoading ? "wait" : "pointer", boxShadow:"0 4px 14px rgba(99,102,241,0.3)" }}
+          >
+            {accessLoading ? "Verifying..." : "Enter Beta"}
+          </button>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); setUser(null); }}
+            style={{ marginTop:16, padding:"8px 16px", border:"none", background:"transparent", color:"var(--text-dim)", cursor:"pointer", fontSize:12 }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   const handleSignOut = async () => { await supabase.auth.signOut(); setUser(null); };
   const activeItem = SIDEBAR.flatMap(s=>s.items).find(i=>i.id===tab) || { id:"settings", icon:"settings", name:"Settings" };
