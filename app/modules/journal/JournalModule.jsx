@@ -9324,6 +9324,24 @@ function AppearanceManager({ prefs, onSave, theme }) {
         </div>
       </div>
 
+      {/* Daily Quote Settings */}
+      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:4 }}>Daily Quote</div>
+        <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>A trading mindset reminder shown on your dashboard each day</div>
+        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+          {[{id:"library",label:"Library"},{id:"personal",label:"Personal"},{id:"both",label:"Both"},{id:"off",label:"Off"}].map(opt => (
+            <button key={opt.id} onClick={()=>onSave(p=>({...p,quoteMode:opt.id}))} style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${(prefs.quoteMode||"library")===opt.id?"#6366f1":"var(--tp-border-l)"}`, background:(prefs.quoteMode||"library")===opt.id?"rgba(99,102,241,0.12)":"transparent", color:(prefs.quoteMode||"library")===opt.id?"#a5b4fc":theme.textFaint, cursor:"pointer", fontSize:11, fontWeight:(prefs.quoteMode||"library")===opt.id?600:400 }}>{opt.label}</button>
+          ))}
+        </div>
+        {(prefs.quoteMode === "personal" || prefs.quoteMode === "both") && (
+          <div>
+            <div style={{ fontSize:11, color:theme.textFaint, marginBottom:6 }}>Your personal quotes (one per line)</div>
+            <textarea value={prefs.personalQuotes || ""} onChange={e=>onSave(p=>({...p,personalQuotes:e.target.value}))} placeholder={"Are you here to be right or to make money?\nI am a professional manager of risk."} rows={4} style={{ width:"100%", padding:"10px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:12, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.6 }}/>
+          </div>
+        )}
+        {(() => { const q = getTradingQuote(prefs); return q ? (<div style={{ marginTop:12, padding:"8px 14px", background:theme.inputBg, borderRadius:6, textAlign:"center" }}><div style={{ fontSize:9, color:theme.textFaint, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Preview</div><div style={{ fontSize:12, color:theme.textMuted, fontStyle:"italic" }}>{q}</div></div>) : null; })()}
+      </div>
+
       {/* Logo + Banner */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
         {/* Logo Upload */}
