@@ -5,8 +5,8 @@ import { verifyAuth } from '@/app/lib/auth-helpers';
 // Cutoff: users created before this date are grandfathered in
 const GRANDFATHER_CUTOFF = '2026-04-22T23:59:59Z';
 
-// Valid access codes
-const VALID_CODES = ['BETA-26'];
+// Admin user IDs — only these users can manage access codes
+const ADMIN_IDS = ['a4f7c71e-95bc-43f9-bbfd-108f1feb6f48'];
 
 export async function POST(req: NextRequest) {
   const { userId: authUserId } = await verifyAuth(req);
@@ -22,11 +22,15 @@ export async function POST(req: NextRequest) {
   }
 
   const { action } = body;
+  const isAdmin = ADMIN_IDS.includes(authUserId);
 
   try {
     // ═══ CHECK: Does this user have access? ═══
     if (action === 'check') {
-      // 1. Check user_access table
+      if (isAdmin) {
+        return NextResponse.json({ hasAccess: true, method: 'admin', isAdmin: true });
+      }
+
       const { data: access } = await supabase
         .from('user_access')
         .select('*')
@@ -37,10 +41,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ hasAccess: true, method: 'code' });
       }
 
-      // 2. Check if user is grandfathered (account created before cutoff)
       const { data: { user } } = await supabase.auth.admin.getUserById(authUserId);
       if (user?.created_at && new Date(user.created_at) < new Date(GRANDFATHER_CUTOFF)) {
-        // Auto-grant access — grandfather them in
         await supabase.from('user_access').upsert({
           user_id: authUserId,
           access_code: 'GRANDFATHERED',
@@ -51,7 +53,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ hasAccess: true, method: 'grandfathered' });
       }
 
-      // 3. No access
       return NextResponse.json({ hasAccess: false });
     }
 
@@ -63,14 +64,24 @@ export async function POST(req: NextRequest) {
       }
 
       const normalizedCode = code.trim().toUpperCase();
-      if (!VALID_CODES.includes(normalizedCode)) {
+
+      const { data: codeRecord } = await supabase
+        .from('access_codes')
+        .select('*')
+        .eq('code', normalizedCode)
+        .eq('active', true)
+        .single();
+
+      if (!codeRecord) {
         return NextResponse.json({ valid: false, error: 'Invalid access code' });
       }
 
-      // Get user email for tracking
+      if (codeRecord.max_uses > 0 && codeRecord.use_count >= codeRecord.max_uses) {
+        return NextResponse.json({ valid: false, error: 'This code has reached its usage limit' });
+      }
+
       const { data: { user } } = await supabase.auth.admin.getUserById(authUserId);
 
-      // Grant access
       const { error } = await supabase.from('user_access').upsert({
         user_id: authUserId,
         access_code: normalizedCode,
@@ -82,7 +93,105 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ valid: false, error: `Database error: ${error.message}` }, { status: 500 });
       }
 
+      await supabase
+        .from('access_codes')
+        .update({ use_count: (codeRecord.use_count || 0) + 1 })
+        .eq('id', codeRecord.id);
+
       return NextResponse.json({ valid: true, message: 'Access granted' });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ADMIN-ONLY ACTIONS
+    // ═══════════════════════════════════════════════════════════
+
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    if (action === 'admin_list_codes') {
+      const { data: codes } = await supabase
+        .from('access_codes')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      return NextResponse.json({ codes: codes || [] });
+    }
+
+    if (action === 'admin_create_code') {
+      const { code, label, maxUses } = body;
+      if (!code) return NextResponse.json({ error: 'Code is required' }, { status: 400 });
+
+      const { data, error } = await supabase
+        .from('access_codes')
+        .insert({
+          code: code.trim().toUpperCase(),
+          label: label || '',
+          max_uses: maxUses || 0,
+          use_count: 0,
+          active: true,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') return NextResponse.json({ error: 'Code already exists' }, { status: 400 });
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true, code: data });
+    }
+
+    if (action === 'admin_toggle_code') {
+      const { codeId, active } = body;
+      if (!codeId) return NextResponse.json({ error: 'codeId required' }, { status: 400 });
+
+      const { error } = await supabase
+        .from('access_codes')
+        .update({ active: !!active })
+        .eq('id', codeId);
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'admin_delete_code') {
+      const { codeId } = body;
+      if (!codeId) return NextResponse.json({ error: 'codeId required' }, { status: 400 });
+
+      const { error } = await supabase
+        .from('access_codes')
+        .delete()
+        .eq('id', codeId);
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'admin_list_users') {
+      const { data: users } = await supabase
+        .from('user_access')
+        .select('*')
+        .order('activated_at', { ascending: false });
+
+      return NextResponse.json({ users: users || [] });
+    }
+
+    if (action === 'admin_revoke_user') {
+      const { userId } = body;
+      if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+
+      if (ADMIN_IDS.includes(userId)) {
+        return NextResponse.json({ error: 'Cannot revoke admin access' }, { status: 400 });
+      }
+
+      const { error } = await supabase
+        .from('user_access')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });

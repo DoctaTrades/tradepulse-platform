@@ -165,17 +165,18 @@ export default function TradePulsePlatform() {
   const [schwabExpiryDays, setSchwabExpiryDays] = useState<number | null>(null);
   const [accessChecked, setAccessChecked] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [accessError, setAccessError] = useState("");
   const [accessLoading, setAccessLoading] = useState(false);
 
   // Check access after user logs in
   useEffect(() => {
-    if (!user?.id) { setAccessChecked(false); setHasAccess(false); return; }
+    if (!user?.id) { setAccessChecked(false); setHasAccess(false); setIsAdmin(false); return; }
     import('./lib/auth-fetch').then(({ authFetch }) => {
       authFetch('/api/access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'check' }) })
         .then(r => r.json())
-        .then(d => { setHasAccess(d.hasAccess === true); setAccessChecked(true); })
+        .then(d => { setHasAccess(d.hasAccess === true); setIsAdmin(d.isAdmin === true); setAccessChecked(true); })
         .catch(() => { setHasAccess(false); setAccessChecked(true); });
     });
   }, [user?.id]);
@@ -483,7 +484,7 @@ export default function TradePulsePlatform() {
                 inputBg:"#f3f4f6", cardBg:"rgba(0,0,0,0.02)",
                 headerBg:"rgba(255,255,255,0.9)", headerBorder:"rgba(0,0,0,0.08)",
                 activeBg:"rgba(99,102,241,0.08)", selectOptionBg:"#ffffff"
-              }} prefs={prefs} setPrefs={setPrefs}/>
+              }} prefs={prefs} setPrefs={setPrefs} isAdmin={isAdmin}/>
             </div>
           )}
 

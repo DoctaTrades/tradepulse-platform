@@ -8799,7 +8799,142 @@ function BackupsSection({ user, theme }) {
   );
 }
 
-function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances }) {
+
+// ─── ACCESS CODE ADMIN (admin only) ──────────────────────────────────────────
+function AccessCodeAdmin({ user, theme }) {
+  const [codes, setCodes] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newCode, setNewCode] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [newMaxUses, setNewMaxUses] = useState("");
+  const [error, setError] = useState("");
+
+  const adminFetch = async (action, extra = {}) => {
+    const { authFetch } = await import("@/app/lib/auth-fetch");
+    const res = await authFetch("/api/access", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
+    return res.json();
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [codesRes, usersRes] = await Promise.all([adminFetch("admin_list_codes"), adminFetch("admin_list_users")]);
+      setCodes(codesRes.codes || []);
+      setUsers(usersRes.users || []);
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const createCode = async () => {
+    if (!newCode.trim()) return;
+    setError("");
+    const res = await adminFetch("admin_create_code", { code: newCode, label: newLabel, maxUses: parseInt(newMaxUses) || 0 });
+    if (res.error) { setError(res.error); return; }
+    setNewCode(""); setNewLabel(""); setNewMaxUses("");
+    loadData();
+  };
+
+  const toggleCode = async (codeId, active) => {
+    await adminFetch("admin_toggle_code", { codeId, active });
+    loadData();
+  };
+
+  const deleteCode = async (codeId) => {
+    if (!confirm("Delete this access code?")) return;
+    await adminFetch("admin_delete_code", { codeId });
+    loadData();
+  };
+
+  const revokeUser = async (userId) => {
+    if (!confirm("Revoke this user's access? They will need to enter a new code to get back in.")) return;
+    await adminFetch("admin_revoke_user", { userId });
+    loadData();
+  };
+
+  if (loading) return <div style={{ textAlign:"center", padding:40, color:theme.textFaint }}>Loading admin data...</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize:18, fontWeight:600, color:theme.text, marginBottom:4 }}>Access Code Management</div>
+      <div style={{ fontSize:13, color:theme.textFaint, marginBottom:24 }}>Manage beta access codes and view who has access to TradePulse</div>
+
+      {error && <div style={{ padding:"10px 14px", background:"rgba(248,113,113,0.08)", border:"1px solid rgba(248,113,113,0.2)", borderRadius:8, color:"#f87171", fontSize:12, marginBottom:16 }}>{error}</div>}
+
+      {/* Create new code */}
+      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:12 }}>Create Access Code</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px auto", gap:10, alignItems:"end" }}>
+          <div>
+            <div style={{ fontSize:10, color:theme.textFaint, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Code</div>
+            <input value={newCode} onChange={e=>setNewCode(e.target.value.toUpperCase())} placeholder="BETA-26" style={{ width:"100%", padding:"9px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace", letterSpacing:2, boxSizing:"border-box" }}/>
+          </div>
+          <div>
+            <div style={{ fontSize:10, color:theme.textFaint, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Label</div>
+            <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Beta testers" style={{ width:"100%", padding:"9px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
+          </div>
+          <div>
+            <div style={{ fontSize:10, color:theme.textFaint, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Max uses</div>
+            <input type="number" value={newMaxUses} onChange={e=>setNewMaxUses(e.target.value)} placeholder="0" style={{ width:"100%", padding:"9px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:13, outline:"none", textAlign:"center", boxSizing:"border-box" }}/>
+          </div>
+          <button onClick={createCode} style={{ padding:"9px 20px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}>Create</button>
+        </div>
+        <div style={{ fontSize:10, color:theme.textFaintest, marginTop:8 }}>Max uses of 0 = unlimited</div>
+      </div>
+
+      {/* Active codes */}
+      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:12 }}>Access Codes ({codes.length})</div>
+        {codes.length === 0 ? (
+          <div style={{ fontSize:12, color:theme.textFaint, textAlign:"center", padding:20 }}>No access codes created yet</div>
+        ) : (
+          <div style={{ display:"grid", gap:6 }}>
+            {codes.map(c => (
+              <div key={c.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", background:theme.cardBg, borderRadius:8, border:`1px solid ${theme.borderLight}`, opacity: c.active ? 1 : 0.5 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <span style={{ fontSize:14, fontWeight:700, fontFamily:"'JetBrains Mono', monospace", color: c.active ? "#a5b4fc" : theme.textFaint, letterSpacing:2 }}>{c.code}</span>
+                  {c.label && <span style={{ fontSize:11, color:theme.textFaint }}>{c.label}</span>}
+                  <span style={{ fontSize:10, padding:"2px 6px", borderRadius:4, background: c.active ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", color: c.active ? "#4ade80" : "#f87171", fontWeight:600 }}>{c.active ? "Active" : "Disabled"}</span>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontSize:11, color:theme.textFaint, fontFamily:"'JetBrains Mono', monospace" }}>{c.use_count}/{c.max_uses || "∞"} used</span>
+                  <button onClick={()=>toggleCode(c.id, !c.active)} style={{ padding:"4px 10px", borderRadius:4, border:`1px solid ${theme.borderLight}`, background:"transparent", color: c.active ? "#eab308" : "#4ade80", cursor:"pointer", fontSize:10, fontWeight:600 }}>{c.active ? "Disable" : "Enable"}</button>
+                  <button onClick={()=>deleteCode(c.id)} style={{ padding:"4px 10px", borderRadius:4, border:"none", background:"transparent", color:theme.textFaintest, cursor:"pointer", fontSize:10 }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color=theme.textFaintest}>Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Users with access */}
+      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px" }}>
+        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:12 }}>Users with Access ({users.length})</div>
+        {users.length === 0 ? (
+          <div style={{ fontSize:12, color:theme.textFaint, textAlign:"center", padding:20 }}>No users yet</div>
+        ) : (
+          <div style={{ display:"grid", gap:4 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 140px 80px", gap:8, padding:"6px 14px", fontSize:9, color:theme.textFaintest, fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>
+              <span>Email</span><span>Code</span><span>Activated</span><span></span>
+            </div>
+            {users.map(u => (
+              <div key={u.user_id} style={{ display:"grid", gridTemplateColumns:"1fr 120px 140px 80px", gap:8, padding:"8px 14px", background:theme.cardBg, borderRadius:6, alignItems:"center", fontSize:12 }}>
+                <span style={{ color:theme.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.email || u.user_id.slice(0,8)}</span>
+                <span style={{ fontFamily:"'JetBrains Mono', monospace", fontSize:10, color: u.access_code === "GRANDFATHERED" ? "#4ade80" : "#a5b4fc" }}>{u.access_code}</span>
+                <span style={{ fontSize:10, color:theme.textFaint }}>{u.activated_at ? new Date(u.activated_at).toLocaleDateString() : ""}</span>
+                <button onClick={()=>revokeUser(u.user_id)} style={{ padding:"3px 8px", borderRadius:4, border:`1px solid ${theme.borderLight}`, background:"transparent", color:theme.textFaintest, cursor:"pointer", fontSize:10 }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color=theme.textFaintest}>Revoke</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances, isAdmin }) {
   const [section, setSection] = useState("accounts"); // accounts | appearance | futures | custom | importexport | ai
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPreset, setEditingPreset] = useState(null);
@@ -8829,6 +8964,7 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
         <button onClick={()=>setSection("ai")} style={{ padding:"8px 16px", border:"none", background:section==="ai"?"rgba(99,102,241,0.15)":"transparent", color:section==="ai"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="ai"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>AI Integration</button>
         <button onClick={()=>setSection("schwab")} style={{ padding:"8px 16px", border:"none", background:section==="schwab"?"rgba(99,102,241,0.15)":"transparent", color:section==="schwab"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="schwab"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Schwab API</button>
         <button onClick={()=>setSection("backups")} style={{ padding:"8px 16px", border:"none", background:section==="backups"?"rgba(99,102,241,0.15)":"transparent", color:section==="backups"?"#a5b4fc":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="backups"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Backups</button>
+        {isAdmin && <button onClick={()=>setSection("admin")} style={{ padding:"8px 16px", border:"none", background:section==="admin"?"rgba(99,102,241,0.15)":"transparent", color:section==="admin"?"#f87171":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="admin"?"2px solid #f87171":"none", whiteSpace:"nowrap", flexShrink:0 }}>Admin</button>}
       </div>
 
       {section === "accounts" && <AccountBalancesManager accountBalances={accountBalances} onSave={onSaveAccountBalances} customFields={customFields} trades={trades} prefs={prefs} onSavePrefs={onSavePrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={onSaveCashTransactions} hideBalances={hideBalances}/>}
@@ -11443,7 +11579,7 @@ function FuturesPresetModal({ onSave, onClose, editPreset }) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-export default function JournalModule({ user, tab, setTab, theme, prefs: shellPrefs, setPrefs: setShellPrefs }) {
+export default function JournalModule({ user, tab, setTab, theme, prefs: shellPrefs, setPrefs: setShellPrefs, isAdmin }) {
   const [trades, setTrades] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
   const [wheelTrades, setWheelTrades] = useState([]);
@@ -11671,7 +11807,7 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
       {tab==="watchlist" && <Watchlist watchlists={watchlists} onSave={setWatchlists} onPromoteTrade={promoteTrade} theme={theme}/>}
       {tab==="log" && <TradeLog trades={trades} onEdit={t=>{setEditingTrade(t);setShowTradeModal(true);}} onDelete={handleTradeDelete} theme={theme} prefs={prefs}/>}
       {tab==="reports" && <ReportsTab trades={trades} wheelTrades={wheelTrades} accountBalances={accountBalances} customFields={customFields} theme={theme} prefs={prefs}/>}
-      {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances}/>}
+      {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances} isAdmin={isAdmin}/>}
       {showTradeModal && <TradeModal onSave={handleTradeSave} onClose={()=>{setShowTradeModal(false);setEditingTrade(null);}} editTrade={editingTrade} futuresSettings={futuresSettings} customFields={customFields} playbooks={playbooks} theme={theme} accountBalances={accountBalances} onAssign={handleAssignment}/>}
       {showMigration && <MigrationPrompt onMigrate={handleMigrate} onSkip={()=>setShowMigration(false)}/>}
     </>
