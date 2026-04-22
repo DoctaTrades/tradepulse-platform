@@ -275,12 +275,12 @@ export default function ScreenerModule({ user }: { user?: any }) {
   // ─── STRATEGY FILTERS (adjustable per tab) ─────────────
   const [stratFilters, setStratFilters] = useState({
     csp: { minIVR: 20, minBid: 0.10, minRoR: 1, maxPrice: 500, trendReq: 'above50' as string },
-    credit: { minIVR: 35, minOI: 300, minVol: 200000, direction: 'any' as string },
+    credit: { minIVR: 35, minOI: 300, minVol: 200000, direction: 'any' as string, minWidth: 0, maxWidth: 20 },
     pmcc: { minRSI: 45, maxLeapCost: 7000, trendReq: 'above_both' as string, minVol: 200000 },
     diag: { minIVR: 25, minVol: 200000, direction: 'any' as string },
     ic: { minIVR: 35, maxRSIDev: 15, maxATR: 4, minOI: 300, minVol: 300000 },
     uoa: { minRatio: 2, minOptVol: 500 },
-    calPress: { maxCostRatio: 25, minWeeklyROI: 1, maxPrice: 500, minIVR: 15, maxCapital: 5000, shortDelta: 0.30 },
+    calPress: { maxCostRatio: 3, minWeeklyROI: 1, maxPrice: 500, minIVR: 15, maxCapital: 3000, shortDelta: 0.30, maxBB: 60, maxSlope: 8, maxWidth: 15 },
   });
 
   const updateStratFilter = (strat: string, key: string, value: string | number) => {
@@ -306,7 +306,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
           return true;
         });
       case 'credit':
-        // Credit Spreads: High IVR, good OI for multi-strike liquidity, directional bias
+        // Credit Spreads: High IVR, good OI, directional bias, width filter
         return results.filter(r => {
           if (!r.creditSpread && !r.bearCallSpread) return false;
           if (!r.passesMainFilters) return false;
@@ -315,6 +315,11 @@ export default function ScreenerModule({ user }: { user?: any }) {
           if (r.vol < sf.credit.minVol) return false;
           if (sf.credit.direction === 'bull' && r.rsi < 35) return false;
           if (sf.credit.direction === 'bear' && r.rsi > 65) return false;
+          if (sf.credit.minWidth > 0 || sf.credit.maxWidth < 20) {
+            const bullOK = r.creditSpread?.allWidths?.some(w => w.width >= sf.credit.minWidth && w.width <= sf.credit.maxWidth);
+            const bearOK = r.bearCallSpread?.allWidths?.some(w => w.width >= sf.credit.minWidth && w.width <= sf.credit.maxWidth);
+            if (!bullOK && !bearOK) return false;
+          }
           return true;
         });
       case 'pmcc':
@@ -365,7 +370,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
       case 'uoa':
         return results.filter(r => r.passesMainFilters && r.uoaRatio >= sf.uoa.minRatio && r.optVol >= sf.uoa.minOptVol);
       case 'calPress':
-        // Calendar Press: bearish diagonal put — needs calendarPress data, affordable, good weekly ROI
+        // Calendar Press: neutral-to-mildly-bullish — BB position, slope, cost ratio, width
         return results.filter(r => {
           if (!r.calendarPress) return false;
           if (r.price > sf.calPress.maxPrice) return false;
@@ -373,6 +378,9 @@ export default function ScreenerModule({ user }: { user?: any }) {
           if (r.calendarPress.costRatio > sf.calPress.maxCostRatio) return false;
           if (r.calendarPress.weeklyROI < sf.calPress.minWeeklyROI) return false;
           if (r.calendarPress.capitalRequired > sf.calPress.maxCapital) return false;
+          if (sf.calPress.maxWidth > 0 && r.calendarPress.spreadWidth > sf.calPress.maxWidth) return false;
+          if (r.bb && sf.calPress.maxBB < 100 && r.bb.position > sf.calPress.maxBB) return false;
+          if (sf.calPress.maxSlope < 100 && (r.smaSlope || 0) > sf.calPress.maxSlope) return false;
           return true;
         });
       default:
@@ -808,6 +816,8 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 <FilterField label="Min Volume" value={stratFilters.credit.minVol} onChange={v => updateStratFilter('credit','minVol',+v)} type="number" />
                 <SelectField label="Direction" value={stratFilters.credit.direction} onChange={v => updateStratFilter('credit','direction',v)}
                   options={[['any','Either'],['bull','Bull Put (bullish)'],['bear','Bear Call (bearish)']]} />
+                <FilterField label="Min Width ($)" value={stratFilters.credit.minWidth} onChange={v => updateStratFilter('credit','minWidth',+v)} type="number" step="0.5" />
+                <FilterField label="Max Width ($)" value={stratFilters.credit.maxWidth} onChange={v => updateStratFilter('credit','maxWidth',+v)} type="number" step="0.5" />
               </div>
             </Panel>
             <ResultsTable results={getStrategyResults('credit')} onSelect={setSelectedTicker} title={`Credit Spread Candidates (${getStrategyResults('credit').length})`} />
@@ -862,6 +872,9 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 <FilterField label="Max Price ($)" value={stratFilters.calPress.maxPrice} onChange={v => updateStratFilter('calPress','maxPrice',+v)} type="number" />
                 <FilterField label="Max Capital ($)" value={stratFilters.calPress.maxCapital} onChange={v => updateStratFilter('calPress','maxCapital',+v)} type="number" />
                 <FilterField label="Min IVR (%)" value={stratFilters.calPress.minIVR} onChange={v => updateStratFilter('calPress','minIVR',+v)} type="number" />
+                <FilterField label="Max BB Position (%)" value={stratFilters.calPress.maxBB} onChange={v => updateStratFilter('calPress','maxBB',+v)} type="number" step="5" />
+                <FilterField label="Max Width ($)" value={stratFilters.calPress.maxWidth} onChange={v => updateStratFilter('calPress','maxWidth',+v)} type="number" step="1" />
+                <FilterField label="Max Slope (%)" value={stratFilters.calPress.maxSlope} onChange={v => updateStratFilter('calPress','maxSlope',+v)} type="number" step="1" />
               </div>
             </Panel>
             <ResultsTable results={getStrategyResults('calPress')} onSelect={setSelectedTicker} title={`Calendar Press Candidates (${getStrategyResults('calPress').length})`} />
@@ -1928,6 +1941,21 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Net Credit" value={`$${r.creditSpread.netCredit.toFixed(2)} ($${(r.creditSpread.netCredit * 100).toFixed(0)}/contract)`} color="var(--green)" />
               <DetailRow label="Max Loss" value={`$${r.creditSpread.maxLoss.toFixed(2)} ($${(r.creditSpread.maxLoss * 100).toFixed(0)}/contract)`} color="var(--red)" />
               <DetailRow label="Width" value={`$${r.creditSpread.width}`} />
+              {r.creditSpread.allWidths?.length > 1 && (
+                <details style={{ marginTop: 6, background: 'rgba(99,102,241,0.04)', borderRadius: 6, fontSize: 10 }}>
+                  <summary style={{ padding: '6px 8px', color: 'var(--text-dim)', fontWeight: 600, cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 8 }}>&#9656;</span> All widths ({r.creditSpread.allWidths.length})
+                  </summary>
+                  <div style={{ padding: '4px 8px 6px' }}>
+                    {r.creditSpread.allWidths.sort((a,b) => a.width - b.width).map((w, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: w.width === r.creditSpread.width ? 'var(--purple)' : 'var(--text-dim)', fontWeight: w.width === r.creditSpread.width ? 600 : 400, fontFamily: 'var(--font-mono)' }}>
+                        <span>${w.width} wide (long ${w.longStrike})</span>
+                        <span>${w.netCredit} cr &middot; ${w.maxLoss} loss &middot; {w.rorSpread}% RoR</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               <DetailRow label="Return on Risk" value={`${r.creditSpread.rorSpread}%`} color={r.creditSpread.rorSpread >= 30 ? 'var(--green)' : 'var(--gold)'} />
               <DetailRow label="Prob. of Profit" value={`~${r.creditSpread.pop}%`} />
               <DetailRow label="Manage At" value="50% of credit or 21 DTE" />
@@ -2151,6 +2179,24 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Long Put Exp" value={`${r.calendarPress.longLeg.expDate} (${r.calendarPress.longLeg.dte} DTE)`} />
               <DetailRow label="Spread Width" value={`$${r.calendarPress.spreadWidth} ($${r.calendarPress.shortLeg.strike} – $${r.calendarPress.longLeg.strike})`} />
               <DetailRow label="Capital Required" value={`$${r.calendarPress.capitalRequired.toLocaleString()} (width × 100)`} color="var(--blue3)" />
+              {r.bb && <DetailRow label="BB Position" value={`${r.bb.position}%`} color={r.bb.position <= 20 ? "var(--green)" : r.bb.position <= 60 ? "var(--text-dim)" : "var(--red)"} />}
+              {r.smaSlope !== undefined && <DetailRow label="SMA Slope (20d)" value={`${r.smaSlope > 0 ? "+" : ""}${r.smaSlope}%`} color={r.smaSlope >= 0 && r.smaSlope <= 8 ? "var(--green)" : "var(--gold)"} />}
+              {r.calendarPress.supportProximity?.length > 0 && <DetailRow label="Near Support" value={r.calendarPress.supportProximity.map(s => `${s.level} ($${s.value})`).join(', ')} color="var(--blue3)" />}
+              {r.calendarPress.allWidths?.length > 1 && (
+                <details style={{ marginTop: 6, background: 'rgba(99,102,241,0.04)', borderRadius: 6, fontSize: 10 }}>
+                  <summary style={{ padding: '6px 8px', color: 'var(--text-dim)', fontWeight: 600, cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 8 }}>&#9656;</span> All setups ({r.calendarPress.allWidths.length})
+                  </summary>
+                  <div style={{ padding: '4px 8px 6px' }}>
+                    {r.calendarPress.allWidths.sort((a,b) => (b.score||0) - (a.score||0)).map((w, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: w.width === r.calendarPress.spreadWidth ? 'var(--purple)' : 'var(--text-dim)', fontWeight: w.width === r.calendarPress.spreadWidth ? 600 : 400, fontFamily: 'var(--font-mono)' }}>
+                        <span>${w.longStrike} ({w.longDTE}d) &middot; ${w.width}w</span>
+                        <span style={{ color: w.costRatio <= 2 ? 'var(--green)' : w.costRatio <= 3 ? 'var(--text-dim)' : 'var(--gold)' }}>{w.costRatio}x &middot; {w.weeklyROC}% ROC &middot; ${w.capitalRequired} cap &middot; ~{w.weeksToBreakeven}wks</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               <DetailRow label="Long Put Cost" value={`$${r.calendarPress.longCost.toFixed(2)} ($${(r.calendarPress.longCost * 100).toFixed(0)}/contract)`} color="var(--red)" />
               <DetailRow label="Weekly Credit" value={`$${r.calendarPress.weeklyCredit.toFixed(2)} ($${(r.calendarPress.weeklyCredit * 100).toFixed(0)}/contract)`} color="var(--green)" />
               <DetailRow label="Cost Ratio" value={`${r.calendarPress.costRatio}x (${r.calendarPress.weeksToBreakeven} weeks to pay off long put)`} color={r.calendarPress.costRatio <= 2.5 ? 'var(--green)' : r.calendarPress.costRatio <= 3 ? 'var(--gold)' : 'var(--text-mid)'} />

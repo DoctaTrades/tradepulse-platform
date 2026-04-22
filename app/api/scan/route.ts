@@ -153,6 +153,8 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
     let ema20 = null, ema50 = null, ema200 = null, rsi = 50, hv = 20, atrPct = 2;
     let bb: { upper: number; middle: number; lower: number; position: number } | null = null;
     let emaCross: 'golden' | 'death' | 'none' = 'none';
+    let smaSlope: number = 0;
+    let swingLow: number = 0;
     try {
       const hist = await getPriceHistory(ticker, {
         periodType: 'year', period: 1, frequencyType: 'daily', frequency: 1,
@@ -170,6 +172,14 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
         atrPct = Math.round((atr / price) * 100 * 10) / 10;
         bb = calcBollingerBands(closes, 20, 2);
         emaCross = calcEMACross(closes, 20, 50);
+        // SMA slope: % change of 20-day SMA over last 20 bars
+        if (closes.length >= 40) {
+          const sma20Now = closes.slice(-20).reduce((s: number, v: number) => s + v, 0) / 20;
+          const sma20Prev = closes.slice(-40, -20).reduce((s: number, v: number) => s + v, 0) / 20;
+          smaSlope = sma20Prev > 0 ? Math.round(((sma20Now - sma20Prev) / sma20Prev) * 100 * 10) / 10 : 0;
+        }
+        // Recent swing low (lowest close in last 20 bars)
+        swingLow = Math.min(...closes.slice(-20));
       }
     } catch (e) {
       logs.push(`  ⚠ ${ticker} · Price history unavailable, using defaults`);
@@ -405,7 +415,7 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
       ema20: ema20 ? Math.round(ema20 * 100) / 100 : null,
       ema50: ema50 ? Math.round(ema50 * 100) / 100 : null,
       ema200: ema200 ? Math.round(ema200 * 100) / 100 : null,
-      bb, emaCross,
+      bb, emaCross, smaSlope, swingLow,
       maxOI, optVol, optBid, ror, uoaRatio,
       isUOA: uoaRatio >= 2 && optVol >= 500,
       mktCap, putCallRatio, bidAskSpreadPct,
@@ -506,69 +516,70 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
     result.putOIWalls = putOIWalls;
     result.callOIWalls = callOIWalls;
 
-    // ── CREDIT SPREAD (Bull Put) ──
+    // ── CREDIT SPREAD (Bull Put) — try all standard widths, keep all valid ──
     const shortPut = findContractInRange(allPuts, deltaMin, deltaMax, targetDTE);
     if (shortPut) {
-      const width = price > 100 ? 10 : 5;
-      // Try exact width first, then try tighter widths if no credit
-      let bestPutSpread: any = null;
-      for (const w of [width, width * 0.5, width * 1.5]) {
+      const allPutSpreads: any[] = [];
+      for (const w of [1, 2.5, 5, 7.5, 10, 15, 20]) {
         const longPut = findWing(allPuts, shortPut.strike, -w, shortPut.expDate);
         if (longPut && longPut.strike < shortPut.strike && (longPut.ask || 0) > 0) {
           const nc = Math.round(((shortPut.bid || 0) - (longPut.ask || 0)) * 100) / 100;
-          if (nc > 0 && (!bestPutSpread || nc > bestPutSpread.netCredit)) {
-            bestPutSpread = { longPut, netCredit: nc, width: Math.abs(shortPut.strike - longPut.strike) };
+          const actualWidth = Math.abs(shortPut.strike - longPut.strike);
+          if (nc > 0) {
+            const ml = Math.round((actualWidth - nc) * 100) / 100;
+            allPutSpreads.push({
+              longPut, netCredit: nc, width: actualWidth, maxLoss: ml,
+              rorSpread: ml > 0 ? Math.round((nc / ml) * 100 * 100) / 100 : 0,
+            });
           }
         }
       }
-      if (bestPutSpread) {
-        const { longPut, netCredit, width: spreadWidth } = bestPutSpread;
-        const maxLoss = Math.round((spreadWidth - netCredit) * 100) / 100;
+      if (allPutSpreads.length > 0) {
+        const bestPS = allPutSpreads.reduce((a, b) => a.rorSpread > b.rorSpread ? a : b);
         result.creditSpread = {
           type: 'BULL PUT',
           shortLeg: { strike: shortPut.strike, bid: shortPut.bid, ask: shortPut.ask, delta: shortPut.delta, dte: shortPut.daysToExpiration, expDate: shortPut.expDate?.split(':')[0] },
-          longLeg: { strike: longPut.strike, bid: longPut.bid, ask: longPut.ask, delta: longPut.delta },
-          netCredit,
-          maxLoss,
-          width: spreadWidth,
-          rorSpread: maxLoss > 0 ? Math.round((netCredit / maxLoss) * 100 * 100) / 100 : 0,
+          longLeg: { strike: bestPS.longPut.strike, bid: bestPS.longPut.bid, ask: bestPS.longPut.ask, delta: bestPS.longPut.delta },
+          netCredit: bestPS.netCredit, maxLoss: bestPS.maxLoss, width: bestPS.width,
+          rorSpread: bestPS.rorSpread,
           pop: shortPut.delta ? Math.round((1 - Math.abs(shortPut.delta)) * 100) : 70,
-          // OI wall proximity
-          nearestPutWall: putOIWalls.length > 0 ? putOIWalls.reduce((best, w) => Math.abs(w.strike - shortPut.strike) < Math.abs(best.strike - shortPut.strike) ? w : best) : null,
+          nearestPutWall: putOIWalls.length > 0 ? putOIWalls.reduce((closest, w) => Math.abs(w.strike - shortPut.strike) < Math.abs(closest.strike - shortPut.strike) ? w : closest) : null,
           atWall: putOIWalls.some(w => w.strike === shortPut.strike),
+          allWidths: allPutSpreads.map(sp => ({ width: sp.width, netCredit: sp.netCredit, maxLoss: sp.maxLoss, rorSpread: sp.rorSpread, longStrike: sp.longPut.strike, longBid: sp.longPut.bid, longAsk: sp.longPut.ask })),
         };
       }
     }
 
-    // ── CREDIT SPREAD (Bear Call) ──
+    // ── CREDIT SPREAD (Bear Call) — try all standard widths, keep all valid ──
     const shortCall = findContractInRange(allCalls, deltaMin, deltaMax, targetDTE);
     if (shortCall) {
-      const width = price > 100 ? 10 : 5;
-      let bestCallSpread: any = null;
-      for (const w of [width, width * 0.5, width * 1.5]) {
+      const allCallSpreads: any[] = [];
+      for (const w of [1, 2.5, 5, 7.5, 10, 15, 20]) {
         const longCall = findWing(allCalls, shortCall.strike, w, shortCall.expDate);
         if (longCall && longCall.strike > shortCall.strike && (longCall.ask || 0) > 0) {
           const nc = Math.round(((shortCall.bid || 0) - (longCall.ask || 0)) * 100) / 100;
-          if (nc > 0 && (!bestCallSpread || nc > bestCallSpread.netCredit)) {
-            bestCallSpread = { longCall, netCredit: nc, width: Math.abs(longCall.strike - shortCall.strike) };
+          const actualWidth = Math.abs(longCall.strike - shortCall.strike);
+          if (nc > 0) {
+            const ml = Math.round((actualWidth - nc) * 100) / 100;
+            allCallSpreads.push({
+              longCall, netCredit: nc, width: actualWidth, maxLoss: ml,
+              rorSpread: ml > 0 ? Math.round((nc / ml) * 100 * 100) / 100 : 0,
+            });
           }
         }
       }
-      if (bestCallSpread) {
-        const { longCall, netCredit, width: spreadWidth } = bestCallSpread;
-        const maxLoss = Math.round((spreadWidth - netCredit) * 100) / 100;
+      if (allCallSpreads.length > 0) {
+        const bestCS = allCallSpreads.reduce((a, b) => a.rorSpread > b.rorSpread ? a : b);
         result.bearCallSpread = {
           type: 'BEAR CALL',
           shortLeg: { strike: shortCall.strike, bid: shortCall.bid, ask: shortCall.ask, delta: shortCall.delta, dte: shortCall.daysToExpiration, expDate: shortCall.expDate?.split(':')[0] },
-          longLeg: { strike: longCall.strike, bid: longCall.bid, ask: longCall.ask, delta: longCall.delta },
-          netCredit,
-          maxLoss,
-          width: spreadWidth,
-          rorSpread: maxLoss > 0 ? Math.round((netCredit / maxLoss) * 100 * 100) / 100 : 0,
+          longLeg: { strike: bestCS.longCall.strike, bid: bestCS.longCall.bid, ask: bestCS.longCall.ask, delta: bestCS.longCall.delta },
+          netCredit: bestCS.netCredit, maxLoss: bestCS.maxLoss, width: bestCS.width,
+          rorSpread: bestCS.rorSpread,
           pop: shortCall.delta ? Math.round((1 - Math.abs(shortCall.delta)) * 100) : 70,
-          // OI wall proximity
-          nearestCallWall: callOIWalls.length > 0 ? callOIWalls.reduce((best, w) => Math.abs(w.strike - shortCall.strike) < Math.abs(best.strike - shortCall.strike) ? w : best) : null,
+          nearestCallWall: callOIWalls.length > 0 ? callOIWalls.reduce((closest, w) => Math.abs(w.strike - shortCall.strike) < Math.abs(closest.strike - shortCall.strike) ? w : closest) : null,
           atWall: callOIWalls.some(w => w.strike === shortCall.strike),
+          allWidths: allCallSpreads.map(sp => ({ width: sp.width, netCredit: sp.netCredit, maxLoss: sp.maxLoss, rorSpread: sp.rorSpread, longStrike: sp.longCall.strike, longBid: sp.longCall.bid, longAsk: sp.longCall.ask })),
         };
       }
     }
@@ -625,57 +636,104 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
       };
     }
 
-    // ── CALENDAR PRESS (put diagonal / collateralized weekly put selling) ──
-    // ── CALENDAR PRESS (neutral-to-bullish put diagonal) ──
-    // SELL weekly OTM put (3-21 DTE) — closer to the money, income generator
-    // BUY longer-dated OTM put (60-150 DTE) — further from money, collateral/protection
-    // Both strikes BELOW current price (both OTM)
-    // Short strike > Long strike (short is closer to the money)
-    // Capital required = spread width (short strike - long strike) × 100
-    const cpShortDelta = (deltaMin + deltaMax) / 2; // midpoint for calendar press targeting
-    const shortPutCP = findContractInRange(allPuts, deltaMin, deltaMax, [3, 21]);
+    // ── CALENDAR PRESS (neutral-to-mildly-bullish put diagonal) ──
+    // SELL weekly OTM put (5-14 DTE, prefer ~7 DTE) — at or below support, income generator
+    // BUY longer-dated OTM put (60-180 DTE, prefer 90-120 DTE) — collateral + downside hedge
+    // Cost ratio driven: find long puts where cost is 1.5-3x the weekly credit
+    // Composite score: weeklyROC / costRatio — rewards high ROC + fast payback
+    const shortPutCP = findContractInRange(allPuts, deltaMin, deltaMax, [5, 14]);
     if (shortPutCP && (shortPutCP.bid || 0) > 0 && shortPutCP.strike < price) {
       const weeklyCredit = shortPutCP.bid || 0;
       const shortStrike = shortPutCP.strike;
 
-      // Long put: further OTM, 60-150 DTE, strike below the short put
-      // Try widths starting tight ($5) — prefer tightest spread that still has liquidity
-      let bestLP: any = null;
-      let bestSetup: any = null;
+      // Scan ALL long puts in 60-180 DTE range below the short strike
+      const longPutCandidates = allPuts.filter((p: any) => {
+        const dte = p.daysToExpiration || 0;
+        return dte >= 60 && dte <= 180
+          && p.strike < shortStrike
+          && p.strike > 0
+          && (shortStrike - p.strike) <= 30
+          && (p.ask || 0) >= 0.10
+          && p.expDate !== shortPutCP.expDate;
+      });
 
-      for (const width of [5, 10, 15, 20, 25]) {
-        const targetStrike = shortStrike - width;
-        if (targetStrike <= 0) continue;
+      // Deduplicate by strike — prefer 90-120 DTE sweet spot
+      const byStrike: Record<number, any> = {};
+      longPutCandidates.forEach((p: any) => {
+        const s = p.strike;
+        const inSweetSpot = p.daysToExpiration >= 90 && p.daysToExpiration <= 120;
+        const existingInSweetSpot = byStrike[s] && byStrike[s].daysToExpiration >= 90 && byStrike[s].daysToExpiration <= 120;
+        if (!byStrike[s]) { byStrike[s] = p; }
+        else if (inSweetSpot && !existingInSweetSpot) { byStrike[s] = p; }
+        else if (inSweetSpot === existingInSweetSpot && Math.abs(p.daysToExpiration - 105) < Math.abs(byStrike[s].daysToExpiration - 105)) { byStrike[s] = p; }
+      });
 
-        // Find long puts near this strike in 60-150 DTE range
-        const candidates = allPuts.filter((p: any) => {
-          const dte = p.daysToExpiration || 0;
-          return dte >= 60 && dte <= 150
-            && Math.abs(p.strike - targetStrike) <= 3
-            && p.strike < shortStrike  // MUST be below short strike
-            && (p.ask || 0) > 0;
-        });
-        if (!candidates.length) continue;
-
-        candidates.sort((a: any, b: any) => Math.abs(a.strike - targetStrike) - Math.abs(b.strike - targetStrike));
-        const longPut = candidates[0];
-        if (longPut.expDate === shortPutCP.expDate) continue;
-
+      const allCPSetups: any[] = [];
+      Object.values(byStrike).forEach((longPut: any) => {
         const longCost = longPut.ask || 0;
         const actualWidth = shortStrike - longPut.strike;
-        if (actualWidth <= 0) continue;
-
+        if (actualWidth <= 0) return;
         const capitalRequired = actualWidth * 100;
         const costRatio = weeklyCredit > 0 ? longCost / weeklyCredit : 99;
         const weeksToBreakeven = weeklyCredit > 0 ? Math.ceil(longCost / weeklyCredit) : 99;
         const weeklyROC = capitalRequired > 0 ? (weeklyCredit * 100 / capitalRequired) * 100 : 0;
+        const weeklyROI = longCost > 0 ? Math.round((weeklyCredit / longCost) * 100 * 100) / 100 : 0;
+        const score = costRatio > 0 ? weeklyROC / costRatio : 0;
 
-        // Pick TIGHTEST spread first (least capital), only go wider if no liquidity
-        if (!bestSetup) {
-          bestLP = longPut;
-          bestSetup = { longCost, actualWidth, capitalRequired, costRatio, weeksToBreakeven, weeklyROC };
-        }
+        allCPSetups.push({
+          longPut, longCost, actualWidth, capitalRequired,
+          costRatio: Math.round(costRatio * 10) / 10,
+          weeksToBreakeven, weeklyROC: Math.round(weeklyROC * 100) / 100,
+          weeklyROI, score: Math.round(score * 100) / 100,
+        });
+      });
+
+      // Filter extreme outliers, sort by composite score
+      const validSetups = allCPSetups.filter(sp => sp.costRatio <= 10).sort((a, b) => b.score - a.score);
+
+      if (validSetups.length > 0) {
+        const best = validSetups[0];
+
+        // Support proximity: check if short strike is near key support levels
+        const supportProximity: any[] = [];
+        if (bb && Math.abs(shortStrike - bb.lower) / price < 0.03) supportProximity.push({ level: 'BB Lower', value: bb.lower });
+        if (ema20 && Math.abs(shortStrike - ema20) / price < 0.03) supportProximity.push({ level: '20 EMA', value: Math.round(ema20 * 100) / 100 });
+        if (ema50 && Math.abs(shortStrike - ema50) / price < 0.03) supportProximity.push({ level: '50 EMA', value: Math.round(ema50 * 100) / 100 });
+        if (swingLow > 0 && Math.abs(shortStrike - swingLow) / price < 0.03) supportProximity.push({ level: 'Swing Low', value: swingLow });
+
+        result.calendarPress = {
+          longLeg: {
+            strike: best.longPut.strike, bid: best.longPut.bid, ask: best.longPut.ask,
+            delta: best.longPut.delta, dte: best.longPut.daysToExpiration,
+            expDate: best.longPut.expDate?.split(':')[0],
+            intrinsicValue: 0,
+          },
+          shortLeg: {
+            strike: shortPutCP.strike, bid: shortPutCP.bid, ask: shortPutCP.ask,
+            delta: shortPutCP.delta, dte: shortPutCP.daysToExpiration,
+            expDate: shortPutCP.expDate?.split(':')[0],
+          },
+          longCost: best.longCost,
+          weeklyCredit,
+          netDebit: Math.round((best.longCost - weeklyCredit) * 100) / 100,
+          spreadWidth: best.actualWidth,
+          capitalRequired: best.capitalRequired,
+          weeksToBreakeven: best.weeksToBreakeven,
+          costRatio: best.costRatio,
+          weeklyROI: best.weeklyROI,
+          weeklyROC: best.weeklyROC,
+          score: best.score,
+          maxProfitIfBearish: Math.round((shortStrike - best.longPut.strike) * 100) / 100,
+          supportProximity,
+          allWidths: validSetups.map(sp => ({
+            width: sp.actualWidth, capitalRequired: sp.capitalRequired, costRatio: sp.costRatio,
+            weeksToBreakeven: sp.weeksToBreakeven, weeklyROC: sp.weeklyROC, weeklyROI: sp.weeklyROI,
+            longCost: sp.longCost, longStrike: sp.longPut.strike, longDTE: sp.longPut.daysToExpiration,
+            score: sp.score,
+          })),
+        };
       }
+    }
 
       if (bestLP && bestSetup) {
         const costRatio = Math.round(bestSetup.costRatio * 10) / 10;
