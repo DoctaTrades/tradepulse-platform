@@ -678,7 +678,11 @@ async function scanWithSchwab(tickers: string[], filters: any, userId?: string) 
         const weeksToBreakeven = weeklyCredit > 0 ? Math.ceil(longCost / weeklyCredit) : 99;
         const weeklyROC = capitalRequired > 0 ? (weeklyCredit * 100 / capitalRequired) * 100 : 0;
         const weeklyROI = longCost > 0 ? Math.round((weeklyCredit / longCost) * 100 * 100) / 100 : 0;
-        const score = costRatio > 0 ? weeklyROC / costRatio : 0;
+        // Composite score: rewards setups closest to 2x cost ratio AND high ROC
+        // ratioScore: 1.0 at exactly 2x, drops off in both directions
+        // e.g. 1.5x = 0.75, 2.0x = 1.0, 2.5x = 0.75, 3.0x = 0.50
+        const ratioScore = costRatio > 0 ? Math.max(0, 1 - Math.abs(costRatio - 2) * 0.5) : 0;
+        const score = ratioScore * weeklyROC;
 
         allCPSetups.push({
           longPut, longCost, actualWidth, capitalRequired,
