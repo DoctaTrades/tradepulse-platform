@@ -629,10 +629,37 @@ function calcPnL(trade) {
   }
 
   // Stock
-  if (!trade.entryPrice || !trade.exitPrice || !trade.quantity) return null;
-  const entry = parseFloat(trade.entryPrice), exit = parseFloat(trade.exitPrice), qty = parseFloat(trade.quantity);
-  if (isNaN(entry) || isNaN(exit) || isNaN(qty)) return null;
-  return parseFloat(((trade.direction === "Long" ? (exit - entry) : (entry - exit)) * qty - fees).toFixed(2));
+  const entry = parseFloat(trade.entryPrice);
+  const qty = parseFloat(trade.quantity);
+  if (isNaN(entry) || isNaN(qty) || qty <= 0) return null;
+  const dir = trade.direction === "Long" ? 1 : -1;
+  const scaleOuts = trade.stockScaleOuts || [];
+
+  if (scaleOuts.length > 0) {
+    let total = 0; let closedQty = 0;
+    scaleOuts.forEach(so => {
+      const soQty = parseFloat(so.qty) || 0;
+      const soExit = parseFloat(so.exitPrice);
+      if (!isNaN(soExit) && soQty > 0) {
+        total += dir * (soExit - entry) * soQty;
+        closedQty += soQty;
+      }
+    });
+    const remaining = qty - closedQty;
+    const mainExit = parseFloat(trade.exitPrice);
+    if (remaining > 0 && !isNaN(mainExit)) {
+      total += dir * (mainExit - entry) * remaining;
+    } else if (remaining > 0) {
+      return null; // still open
+    }
+    return parseFloat((total - fees).toFixed(2));
+  }
+
+  // No scale-outs: original single-exit logic
+  if (!trade.exitPrice) return null;
+  const exit = parseFloat(trade.exitPrice);
+  if (isNaN(exit)) return null;
+  return parseFloat((dir * (exit - entry) * qty - fees).toFixed(2));
 }
 
 // ─── RISK/REWARD ENGINE ───────────────────────────────────────────────────────
@@ -720,6 +747,7 @@ const emptyTrade = (prefill = {}) => ({
   stopLoss: "", takeProfit: "",
   optionsStrategyType: "Single Leg", legs: [emptyLeg("Buy","Call")],
   futuresContract: "", tickSize: "", tickValue: "", futuresScaleOuts: [],
+  stockScaleOuts: [],
   // New customizable fields
   emotions: [], account: "", timeframe: "", tradeStrategy: "",
   screenshots: [], playbook: "",
@@ -1234,6 +1262,39 @@ function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields,
               <Input label="Stop Loss" value={trade.stopLoss} onChange={set("stopLoss")} type="number" placeholder="e.g. 145.00"/>
               <Input label="Take Profit" value={trade.takeProfit} onChange={set("takeProfit")} type="number" placeholder="e.g. 165.00"/>
             </div>
+            {/* Stock Scale-Out Section */}
+            {(parseInt(trade.quantity)||0) > 1 && (
+              <div style={{ background:"rgba(99,102,241,0.05)", borderRadius:10, padding:"12px 14px", marginBottom:12, border:"1px solid rgba(99,102,241,0.12)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:"#a5b4fc", textTransform:"uppercase", letterSpacing:0.8 }}>
+                    Scale-Out Exits
+                    {(trade.stockScaleOuts||[]).length > 0 && <span style={{ fontSize:10, color:"var(--tp-faint)" }}> ({(trade.stockScaleOuts||[]).reduce((s,so)=>s+(parseInt(so.qty)||0),0)} of {trade.quantity} shares)</span>}
+                  </div>
+                  <button onClick={()=>setTrade(p=>({...p, stockScaleOuts:[...(p.stockScaleOuts||[]),{id:Date.now()+Math.random(), qty:"", exitPrice:"", date:new Date().toISOString().split("T")[0]}]}))} style={{ padding:"3px 8px", borderRadius:4, border:"1px solid rgba(99,102,241,0.3)", background:"rgba(99,102,241,0.1)", color:"#a5b4fc", cursor:"pointer", fontSize:10, fontWeight:500 }}>+ Add Exit</button>
+                </div>
+                {(trade.stockScaleOuts||[]).length > 0 && (
+                  <div style={{ display:"grid", gap:4 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"80px 60px 1fr 80px 24px", gap:6, fontSize:9, color:"var(--tp-faintest)", fontWeight:600, textTransform:"uppercase", letterSpacing:0.5, paddingLeft:4 }}>
+                      <span>Date</span><span>Shares</span><span>Exit Price</span><span>P&L</span><span></span>
+                    </div>
+                    {(trade.stockScaleOuts||[]).map((so, idx) => {
+                      const soP = (parseFloat(so.exitPrice)||0) > 0 && (parseFloat(trade.entryPrice)||0) > 0 ? ((trade.direction === "Long" ? 1 : -1) * ((parseFloat(so.exitPrice)||0) - (parseFloat(trade.entryPrice)||0)) * (parseInt(so.qty)||0)) : null;
+                      return (
+                        <div key={so.id} style={{ display:"grid", gridTemplateColumns:"80px 60px 1fr 80px 24px", gap:6, alignItems:"center" }}>
+                          <input type="date" value={so.date||""} onChange={e=>setTrade(p=>({...p,stockScaleOuts:p.stockScaleOuts.map((s,i)=>i===idx?{...s,date:e.target.value}:s)}))} style={{ padding:"5px 4px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:10, outline:"none", boxSizing:"border-box" }}/>
+                          <input type="number" value={so.qty} onChange={e=>setTrade(p=>({...p,stockScaleOuts:p.stockScaleOuts.map((s,i)=>i===idx?{...s,qty:e.target.value}:s)}))} placeholder="50" min="1" style={{ padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", textAlign:"center" }}/>
+                          <input type="number" value={so.exitPrice} onChange={e=>setTrade(p=>({...p,stockScaleOuts:p.stockScaleOuts.map((s,i)=>i===idx?{...s,exitPrice:e.target.value}:s)}))} placeholder="Exit $" step="any" style={{ padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/>
+                          <div style={{ fontSize:11, fontFamily:"'JetBrains Mono', monospace", color: soP > 0 ? "#4ade80" : soP < 0 ? "#f87171" : "var(--tp-faintest)", textAlign:"right" }}>{soP !== null ? `${soP > 0 ? "+" : ""}$${soP.toFixed(2)}` : "—"}</div>
+                          <button onClick={()=>setTrade(p=>({...p,stockScaleOuts:p.stockScaleOuts.filter((_,i)=>i!==idx)}))} style={{ background:"none", border:"none", color:"var(--tp-faint)", cursor:"pointer", padding:2 }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color="var(--tp-faint)"}><X size={12}/></button>
+                        </div>
+                      );
+                    })}
+                    {(() => { const closedQty = (trade.stockScaleOuts||[]).reduce((s,so)=>s+(parseInt(so.qty)||0),0); const remaining = (parseInt(trade.quantity)||0) - closedQty; return remaining > 0 ? <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:4 }}>{remaining} shares remaining — use main Exit Price for runners</div> : null; })()}
+                  </div>
+                )}
+                {(trade.stockScaleOuts||[]).length === 0 && <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>Add exits to log partial closes at different prices. Remaining shares use the main Exit Price.</div>}
+              </div>
+            )}
           </>
         )}
 
