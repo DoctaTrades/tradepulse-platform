@@ -514,7 +514,10 @@ function formatWeekLabel(ws) { const d = new Date(ws + "T12:00:00"); const e = n
 
 // ─── LEG HELPERS ──────────────────────────────────────────────────────────────
 const emptyLeg = (action = "Buy", type = "Call") => ({ id: Date.now() + Math.random(), action, type, strike: "", expiration: "", contracts: "1", entryPremium: "", exitPremium: "", partialCloses: [], rolls: [] });
-const emptyRoll = () => ({ id: Date.now() + Math.random(), date: currentLocalDateString(), sellPremium: "", buybackPremium: "", contracts: "", fee: "" });
+const emptyRoll = () => ({ id: Date.now() + Math.random(), date: currentLocalDateString(), sellPremium: "", buybackPremium: "", contracts: "", fee: "", newStrike: "", newExpiration: "", netAmount: "" });
+// Helper: get the net credit/debit per contract for a roll. netAmount takes priority over sell-buyback.
+const rollNetPer = (r) => (r.netAmount !== undefined && r.netAmount !== "") ? (parseFloat(r.netAmount) || 0) : ((parseFloat(r.sellPremium) || 0) - (parseFloat(r.buybackPremium) || 0));
+const rollTotal = (r, fallbackQty) => { const q = parseInt(r.contracts) || parseInt(fallbackQty) || 1; return rollNetPer(r) * q * 100 - (parseFloat(r.fee) || 0); };
 
 function defaultLegs(strategyType) {
   switch (strategyType) {
@@ -573,12 +576,8 @@ function calcPnL(trade) {
       if (leg.action === "Sell" && leg.rolls && leg.rolls.length > 0) {
         hasData = true;
         leg.rolls.forEach(roll => {
-          const sell = parseFloat(roll.sellPremium) || 0;
-          const buyback = parseFloat(roll.buybackPremium) || 0;
-          const rollFee = parseFloat(roll.fee) || 0;
-          // Rolls apply per-contract for remaining open contracts at time of roll
           const rollQty = parseInt(roll.contracts) || contracts;
-          total += (sell - buyback) * rollQty * 100 - rollFee;
+          total += rollTotal(roll, rollQty);
         });
       }
     }
@@ -814,12 +813,7 @@ function LegRow({ leg, index, onChange, onRemove, showRemove, locked, showRolls 
     onChange(index, { ...leg, rolls });
   };
   
-  const totalRollCredits = (leg.rolls || []).reduce((sum, roll) => {
-    const sell = parseFloat(roll.sellPremium) || 0;
-    const buyback = parseFloat(roll.buybackPremium) || 0;
-    const rqty = parseInt(roll.contracts) || parseInt(leg.contracts) || 1;
-    return sum + (sell - buyback) * rqty * 100;
-  }, 0);
+  const totalRollCredits = (leg.rolls || []).reduce((sum, roll) => sum + rollTotal(roll, leg.contracts), 0);
 
   // Partial close helpers
   const partials = leg.partialCloses || [];
@@ -995,22 +989,29 @@ function LegRow({ leg, index, onChange, onRemove, showRemove, locked, showRolls 
 function RollRow({ roll, index, onChange, onRemove, legContracts }) {
   const set = k => v => onChange({ ...roll, [k]: v });
   const qty = parseInt(roll.contracts) || parseInt(legContracts) || 1;
-  const netCredit = (parseFloat(roll.sellPremium) || 0) - (parseFloat(roll.buybackPremium) || 0);
+  const hasNet = roll.netAmount !== undefined && roll.netAmount !== "";
+  const netFromParts = (parseFloat(roll.sellPremium) || 0) - (parseFloat(roll.buybackPremium) || 0);
+  const netPerContract = hasNet ? parseFloat(roll.netAmount) || 0 : netFromParts;
   const fee = parseFloat(roll.fee) || 0;
-  const totalCredit = netCredit * qty * 100 - fee;
+  const totalCredit = netPerContract * qty * 100 - fee;
   
   return (
     <div style={{ background:"rgba(0,0,0,0.2)", borderRadius:6, padding:"8px 10px" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 1fr 60px 70px 24px", gap:8, alignItems:"center" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 60px 70px 24px", gap:8, alignItems:"center" }}>
         <input type="date" value={roll.date} onChange={e=>set("date")(e.target.value)} style={{ padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/>
         <div><input type="number" value={roll.contracts || ""} onChange={e=>set("contracts")(e.target.value)} placeholder={String(legContracts || 1)} min="1" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", textAlign:"center" }}/></div>
-        <div><input type="number" value={roll.buybackPremium} onChange={e=>set("buybackPremium")(e.target.value)} placeholder="Buyback $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
-        <div><input type="number" value={roll.sellPremium} onChange={e=>set("sellPremium")(e.target.value)} placeholder="Sell $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
+        <div><input type="number" value={roll.netAmount ?? ""} onChange={e=>set("netAmount")(e.target.value)} placeholder="Net credit/debit $" step="0.01" style={{ width:"100%", padding:"5px 6px", background: hasNet ? "rgba(99,102,241,0.08)" : "var(--tp-input)", border:`1px solid ${hasNet ? "rgba(99,102,241,0.25)" : "var(--tp-border-l)"}`, borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div><input type="number" value={roll.fee || ""} onChange={e=>set("fee")(e.target.value)} placeholder="Fee $" step="0.01" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div style={{ fontSize:11, fontFamily:"'JetBrains Mono', monospace", color: totalCredit > 0 ? "#4ade80" : totalCredit < 0 ? "#f87171" : "var(--tp-faintest)", textAlign:"right" }}>
           {totalCredit !== 0 ? `${totalCredit > 0 ? "+" : ""}$${totalCredit.toFixed(0)}` : "—"}
         </div>
         <button onClick={onRemove} style={{ background:"none", border:"none", color:"var(--tp-faint)", cursor:"pointer", padding:2 }} onMouseEnter={e=>e.currentTarget.style.color="#f87171"} onMouseLeave={e=>e.currentTarget.style.color="#5c6070"}><X size={12}/></button>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginTop:6 }}>
+        <div><input type="number" value={roll.newStrike || ""} onChange={e=>set("newStrike")(e.target.value)} placeholder="New strike $" step="0.5" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
+        <div><input type="date" value={roll.newExpiration || ""} onChange={e=>set("newExpiration")(e.target.value)} style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
+        <div><input type="number" value={roll.buybackPremium} onChange={e=>set("buybackPremium")(e.target.value)} placeholder="Buyback $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", opacity: hasNet ? 0.4 : 1 }}/></div>
+        <div><input type="number" value={roll.sellPremium} onChange={e=>set("sellPremium")(e.target.value)} placeholder="Sell $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", opacity: hasNet ? 0.4 : 1 }}/></div>
       </div>
     </div>
   );
@@ -1037,12 +1038,7 @@ function CalendarLegRow({ leg, index, onChange, showRolls }) {
     onChange(index, { ...leg, rolls });
   };
   
-  const totalRollCredits = (leg.rolls || []).reduce((sum, roll) => {
-    const sell = parseFloat(roll.sellPremium) || 0;
-    const buyback = parseFloat(roll.buybackPremium) || 0;
-    const rqty = parseInt(roll.contracts) || parseInt(leg.contracts) || 1;
-    return sum + (sell - buyback) * rqty * 100;
-  }, 0);
+  const totalRollCredits = (leg.rolls || []).reduce((sum, roll) => sum + rollTotal(roll, leg.contracts), 0);
   
   return (
     <div style={{ marginBottom:6 }}>
@@ -2259,6 +2255,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
       (wheelTrades || []).filter(wt => wt.account === name && (!resetDate || wt.date >= resetDate)).forEach(wt => {
         if (wt.type === "CSP" || wt.type === "CC") {
           wheelPremium += ((parseFloat(wt.openPremium)||0) - (parseFloat(wt.closePremium)||0)) * (parseInt(wt.contracts)||0) * 100 - (parseFloat(wt.fees)||0);
+          (wt.rolls||[]).forEach(r => { wheelPremium += rollTotal(r, wt.contracts); });
         }
       });
       wheelPremium = Math.round(wheelPremium * 100) / 100;
@@ -3323,12 +3320,11 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
         }
         if (leg.action === "Sell" && leg.rolls?.length) {
           leg.rolls.forEach(roll => {
-            const sell = parseFloat(roll.sellPremium) || 0;
-            const buyback = parseFloat(roll.buybackPremium) || 0;
-            const rollFee = parseFloat(roll.fee) || 0;
             const rqty = parseInt(roll.contracts) || contracts;
-            collected += sell * rqty * 100;
-            kept += (sell - buyback) * rqty * 100 - rollFee;
+            const netPer = rollNetPer(roll);
+            const rollFee = parseFloat(roll.fee) || 0;
+            collected += (netPer > 0 ? netPer : 0) * rqty * 100;
+            kept += netPer * rqty * 100 - rollFee;
           });
         }
       });
@@ -3573,9 +3569,11 @@ function DiagonalPositionTracker({ trades, accountFilter, strategyType, label, d
             if (partials.length > 0) partials.forEach(pc => totalPremKept += (entry - (parseFloat(pc.exitPremium)||0)) * (parseInt(pc.qty)||1) * 100);
             else { const exit = parseFloat(leg.exitPremium); totalPremKept += !isNaN(exit) ? (entry-exit)*contracts*100 : entry*contracts*100; }
             if (leg.rolls?.length) leg.rolls.forEach(roll => {
-              const sell=parseFloat(roll.sellPremium)||0, buyback=parseFloat(roll.buybackPremium)||0, rqty=parseInt(roll.contracts)||contracts;
+              const rqty = parseInt(roll.contracts) || contracts;
+              const netPer = rollNetPer(roll);
               const rollFee = parseFloat(roll.fee) || 0;
-              totalPremCollected += sell*rqty*100; totalPremKept += (sell-buyback)*rqty*100 - rollFee;
+              totalPremCollected += (netPer > 0 ? netPer : 0) * rqty * 100;
+              totalPremKept += netPer * rqty * 100 - rollFee;
             });
           }
         });
@@ -3640,7 +3638,7 @@ function DiagonalPositionTracker({ trades, accountFilter, strategyType, label, d
                       const partials = leg.partialCloses || [];
                       if (partials.length > 0) partials.forEach(pc => income += (entry - (parseFloat(pc.exitPremium)||0)) * (parseInt(pc.qty)||1) * 100);
                       else { const exit = parseFloat(leg.exitPremium); income += !isNaN(exit) ? (entry - exit) * contracts * 100 : entry * contracts * 100; }
-                      if (leg.rolls?.length) leg.rolls.forEach(r => { income += ((parseFloat(r.sellPremium)||0) - (parseFloat(r.buybackPremium)||0)) * (parseInt(r.contracts)||contracts) * 100 - (parseFloat(r.fee)||0); });
+                      if (leg.rolls?.length) leg.rolls.forEach(r => { income += rollTotal(r, contracts); });
                     }
                   });
                   tradePnL = income - cost - (parseFloat(t.fees)||0);
@@ -4062,8 +4060,9 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
     totalFees += fees;
     if (trade.type === "CSP") {
       const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - fees;
-      totalPremium += net;
-      cspPremium += net;
+      const rollNet = (trade.rolls||[]).reduce((sum, r) => sum + rollTotal(r, trade.contracts), 0);
+      totalPremium += net + rollNet;
+      cspPremium += net + rollNet;
       cspCount++;
       if (trade.assigned) {
         hadAssignment = true;
@@ -4074,8 +4073,9 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
       }
     } else if (trade.type === "CC") {
       const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - fees;
-      totalPremium += net;
-      ccPremium += net;
+      const rollNet = (trade.rolls||[]).reduce((sum, r) => sum + rollTotal(r, trade.contracts), 0);
+      totalPremium += net + rollNet;
+      ccPremium += net + rollNet;
       ccCount++;
       if (trade.calledAway) {
         const called = parseInt(trade.sharesCalledAway) || ((parseInt(trade.contracts)||1)*100);
@@ -4197,7 +4197,7 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
               const isLast = i === arr.length - 1;
               const dotColor = trade.type === "CSP" ? (trade.assigned ? "#7F77DD" : "#60a5fa") : trade.type === "CC" ? "#BA7517" : "#6366f1";
               const dotGlow = isLast && !isCompleted;
-              const net = trade.type !== "Shares" ? ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0) : 0;
+              const net = trade.type !== "Shares" ? ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0) + (trade.rolls||[]).reduce((s,r)=> s + rollTotal(r, trade.contracts), 0) : 0;
               let label = "";
               if (trade.type === "CSP" && trade.assigned) label = `Assigned ${(parseInt(trade.contracts)||1)*100} shares @ $${trade.strike}`;
               else if (trade.type === "CSP") label = `${trade.contracts} contracts @ $${trade.strike} \u2192 +$${net.toFixed(0)}`;
@@ -4296,11 +4296,12 @@ function NewPositionModal({ onSave, onClose, accounts, prefillTicker, prefillAcc
 }
 
 function WheelTradeModal({ ticker, onSave, onClose, editTrade, accounts, defaultAccount }) {
-  const [t, setT] = useState(editTrade || { id:Date.now(), ticker, type:"CSP", date:new Date().toISOString().split("T")[0], contracts:"", strike:"", openPremium:"", closePremium:"", expiry:"", assigned:false, calledAway:false, sharesCalledAway:"", shares:"", avgPrice:"", notes:"", account: defaultAccount || "", fees:"" });
+  const [t, setT] = useState(editTrade || { id:Date.now(), ticker, type:"CSP", date:new Date().toISOString().split("T")[0], contracts:"", strike:"", openPremium:"", closePremium:"", expiry:"", assigned:false, calledAway:false, sharesCalledAway:"", shares:"", avgPrice:"", notes:"", account: defaultAccount || "", fees:"", rolls:[] });
   const set = k => v => setT(p=>({...p,[k]:v}));
   
   const fees = parseFloat(t.fees) || 0;
-  const netPremium = t.type==="CSP" || t.type==="CC" ? ((parseFloat(t.openPremium)||0) - (parseFloat(t.closePremium)||0)) * (parseInt(t.contracts)||0) * 100 - fees : 0;
+  const rollCredit = (t.rolls||[]).reduce((sum, r) => sum + rollTotal(r, t.contracts), 0);
+  const netPremium = t.type==="CSP" || t.type==="CC" ? ((parseFloat(t.openPremium)||0) - (parseFloat(t.closePremium)||0)) * (parseInt(t.contracts)||0) * 100 - fees + rollCredit : 0;
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, backdropFilter:"blur(3px)" }}>
@@ -4326,7 +4327,21 @@ function WheelTradeModal({ ticker, onSave, onClose, editTrade, accounts, default
               <Input label="Close Premium (if closed)" value={t.closePremium} onChange={set("closePremium")} type="number" placeholder="0.10"/>
               <Input label="Fees / Commissions" value={t.fees} onChange={set("fees")} type="number" placeholder="0.00"/>
             </div>
-            {netPremium !== 0 && <div style={{ fontSize:12, color: netPremium > 0 ? "#4ade80" : "#f87171", fontWeight:600 }}>Net Premium: ${netPremium.toFixed(2)}{fees > 0 ? ` (after $${fees.toFixed(2)} fees)` : ""}</div>}
+            {netPremium !== 0 && <div style={{ fontSize:12, color: netPremium > 0 ? "#4ade80" : "#f87171", fontWeight:600 }}>Net Premium: ${netPremium.toFixed(2)}{fees > 0 ? ` (after $${fees.toFixed(2)} fees)` : ""}{rollCredit !== 0 ? ` (incl ${rollCredit > 0 ? "+" : ""}$${rollCredit.toFixed(0)} from rolls)` : ""}</div>}
+            {/* Roll History */}
+            <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid var(--tp-border)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                <span style={{ fontSize:11, color:"var(--tp-faint)", fontWeight:600, textTransform:"uppercase", letterSpacing:0.8 }}>Rolls ({(t.rolls||[]).length})</span>
+                <button onClick={()=>setT(p=>({...p, rolls:[...(p.rolls||[]), emptyRoll()]}))} style={{ padding:"3px 10px", borderRadius:4, border:"1px solid rgba(99,102,241,0.3)", background:"rgba(99,102,241,0.08)", color:"#a5b4fc", cursor:"pointer", fontSize:10, fontWeight:600 }}>+ Roll</button>
+              </div>
+              {(t.rolls||[]).length > 0 && (
+                <div style={{ display:"grid", gap:6 }}>
+                  {(t.rolls||[]).map((roll, ri) => (
+                    <RollRow key={roll.id} roll={roll} index={ri} onChange={(updated)=>{ const r=[...(t.rolls||[])]; r[ri]=updated; setT(p=>({...p,rolls:r})); }} onRemove={()=>{ const r=[...(t.rolls||[])]; r.splice(ri,1); setT(p=>({...p,rolls:r})); }} legContracts={parseInt(t.contracts)||1}/>
+                  ))}
+                </div>
+              )}
+            </div>
             {t.type==="CSP" && (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:10, paddingTop:10, borderTop:"1px solid var(--tp-border)" }}>
                 <input type="checkbox" checked={t.assigned} onChange={e=>set("assigned")(e.target.checked)} style={{ width:16, height:16, cursor:"pointer" }}/>
