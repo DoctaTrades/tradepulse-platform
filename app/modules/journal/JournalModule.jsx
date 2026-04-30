@@ -4522,7 +4522,7 @@ function DailyLogRow({ row, dailyLog, onUpdatePnL, onToggleHit, onUpdateNote, on
 }
 
 function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBalances }) {
-  const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {}, weeklyGoalOverride: null, monthlyGoalOverride: null, weeklyLossLimit: null, withdrawals: [] };
+  const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {}, weeklyGoalOverride: null, monthlyGoalOverride: null, weeklyLossLimit: null, cashFlows: [] };
 
   // Migrate old flat structure → per-account structure
   const goalsData = useMemo(() => {
@@ -4557,8 +4557,15 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBal
   const [weeklyGoalOverride, setWeeklyGoalOverride] = useState(g.weeklyGoalOverride || null);
   const [monthlyGoalOverride, setMonthlyGoalOverride] = useState(g.monthlyGoalOverride || null);
   const [weeklyLossLimit, setWeeklyLossLimit] = useState(g.weeklyLossLimit || null);
-  const [withdrawals, setWithdrawals] = useState(g.withdrawals || []);
-  const [showWithdrawalForm, setShowWithdrawalForm] = useState(false);
+  const [cashFlows, setCashFlows] = useState(() => {
+    if (Array.isArray(g.cashFlows) && g.cashFlows.length) return g.cashFlows;
+    if (Array.isArray(g.withdrawals) && g.withdrawals.length) {
+      return g.withdrawals.map(w => ({ ...w, type: 'withdrawal' }));
+    }
+    return [];
+  });
+  const [showCashFlowForm, setShowCashFlowForm] = useState(false);
+  const [cashFlowType, setCashFlowType] = useState("withdrawal");
 
   // Sync when account changes
   useEffect(() => {
@@ -4571,7 +4578,13 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBal
       setWeeklyGoalOverride(acctGoal.weeklyGoalOverride || null);
       setMonthlyGoalOverride(acctGoal.monthlyGoalOverride || null);
       setWeeklyLossLimit(acctGoal.weeklyLossLimit || null);
-      setWithdrawals(acctGoal.withdrawals || []);
+      setCashFlows(() => {
+        if (Array.isArray(acctGoal.cashFlows) && acctGoal.cashFlows.length) return acctGoal.cashFlows;
+        if (Array.isArray(acctGoal.withdrawals) && acctGoal.withdrawals.length) {
+          return acctGoal.withdrawals.map(w => ({ ...w, type: 'withdrawal' }));
+        }
+        return [];
+      });
     } else {
       let prefillBalance = 200;
       if (selectedAccount !== "All" && accountBalances && accountBalances[selectedAccount]) {
@@ -4587,23 +4600,28 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBal
       setWeeklyGoalOverride(null);
       setMonthlyGoalOverride(null);
       setWeeklyLossLimit(null);
-      setWithdrawals([]);
+      setCashFlows([]);
     }
   }, [selectedAccount, goalsData, accountBalances]);
 
   // Save per-account
   const saveGoals = useCallback((overrides = {}) => {
-    const acctData = { startingBalance, profitPct, stopPct, dailyLog, weeklyGoalOverride, monthlyGoalOverride, weeklyLossLimit, withdrawals, ...overrides };
+    const acctData = { startingBalance, profitPct, stopPct, dailyLog, weeklyGoalOverride, monthlyGoalOverride, weeklyLossLimit, cashFlows, ...overrides };
     const updated = {
       ...goalsData,
       selectedAccount,
       accounts: { ...(goalsData.accounts || {}), [selectedAccount]: acctData }
     };
     onSave(updated);
-  }, [startingBalance, profitPct, stopPct, dailyLog, onSave, selectedAccount, goalsData]);
+  }, [startingBalance, profitPct, stopPct, dailyLog, cashFlows, onSave, selectedAccount, goalsData]);
 
   // Compute running balance from daily log
   const sortedDays = useMemo(() => Object.keys(dailyLog).sort(), [dailyLog]);
+  // Net cash flow: deposits add, withdrawals subtract. Excluded from P&L %.
+  const netCashFlow = useMemo(
+    () => cashFlows.reduce((s, cf) => s + (cf.type === 'deposit' ? (cf.amount || 0) : -(cf.amount || 0)), 0),
+    [cashFlows]
+  );
   const runningBalances = useMemo(() => {
     const bals = [];
     let bal = startingBalance;
@@ -4618,9 +4636,10 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBal
     return bals;
   }, [sortedDays, dailyLog, startingBalance]);
 
-  const currentBalance = runningBalances.length > 0 ? runningBalances[runningBalances.length - 1].balance : startingBalance;
-  const totalPnL = currentBalance - startingBalance;
-  const totalPct = startingBalance > 0 ? ((currentBalance - startingBalance) / startingBalance) * 100 : 0;
+  const balanceFromTrading = runningBalances.length > 0 ? runningBalances[runningBalances.length - 1].balance : startingBalance;
+  const currentBalance = balanceFromTrading + netCashFlow;
+  const totalPnL = balanceFromTrading - startingBalance;
+  const totalPct = startingBalance > 0 ? (totalPnL / startingBalance) * 100 : 0;
   const daysTraded = sortedDays.length;
   const daysHit = sortedDays.filter(d => dailyLog[d].hit === true).length;
   const daysMissed = sortedDays.filter(d => dailyLog[d].hit === false).length;
@@ -4661,18 +4680,20 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBal
 
   const monthProgress = monthlyGoalDollar > 0 ? (monthPnL / monthlyGoalDollar) * 100 : 0;
 
-  // Withdrawal helpers
-  const totalWithdrawn = withdrawals.reduce((s, w) => s + (w.amount || 0), 0);
-  const monthWithdrawn = withdrawals.filter(w => w.date?.startsWith(todayStr.slice(0, 7))).reduce((s, w) => s + (w.amount || 0), 0);
-  const addWithdrawal = (amount, date, note) => {
-    const updated = [...withdrawals, { id: Date.now(), amount, date, note }];
-    setWithdrawals(updated);
-    saveGoals({ withdrawals: updated });
+  // Cash flow helpers (deposits + withdrawals)
+  const totalDeposited = cashFlows.filter(cf => cf.type === 'deposit').reduce((s, cf) => s + (cf.amount || 0), 0);
+  const totalWithdrawn = cashFlows.filter(cf => cf.type !== 'deposit').reduce((s, cf) => s + (cf.amount || 0), 0);
+  const monthWithdrawn = cashFlows.filter(cf => cf.type !== 'deposit' && cf.date?.startsWith(todayStr.slice(0, 7))).reduce((s, cf) => s + (cf.amount || 0), 0);
+  const monthDeposited = cashFlows.filter(cf => cf.type === 'deposit' && cf.date?.startsWith(todayStr.slice(0, 7))).reduce((s, cf) => s + (cf.amount || 0), 0);
+  const addCashFlow = (type, amount, date, note) => {
+    const updated = [...cashFlows, { id: Date.now(), type, amount, date, note }];
+    setCashFlows(updated);
+    saveGoals({ cashFlows: updated });
   };
-  const removeWithdrawal = (id) => {
-    const updated = withdrawals.filter(w => w.id !== id);
-    setWithdrawals(updated);
-    saveGoals({ withdrawals: updated });
+  const removeCashFlow = (id) => {
+    const updated = cashFlows.filter(cf => cf.id !== id);
+    setCashFlows(updated);
+    saveGoals({ cashFlows: updated });
   };
 
   // Auto-pull trades for a specific date (filtered by account + reset date)
@@ -4975,22 +4996,30 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBal
         </div>
       </div>
 
-      {/* Withdrawal / Payout Tracker */}
+      {/* Cash Flow Tracker — deposits + withdrawals */}
       <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:14, padding:"20px 22px", marginBottom:16 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-          <div style={{ fontSize:12, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8 }}>💰 Withdrawals / Pay Yourself</div>
-          <button onClick={()=>setShowWithdrawalForm(!showWithdrawalForm)} style={{ padding:"4px 12px", borderRadius:6, border:"1px solid rgba(99,102,241,0.2)", background:"rgba(99,102,241,0.06)", color:"#a5b4fc", cursor:"pointer", fontSize:10, fontWeight:600 }}>{showWithdrawalForm ? "Cancel" : "+ Log Withdrawal"}</button>
+          <div style={{ fontSize:12, fontWeight:600, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8 }}>💰 Cash Flow — Deposits & Withdrawals</div>
+          <div style={{ display:"flex", gap:6 }}>
+            <button onClick={()=>{setCashFlowType("deposit");setShowCashFlowForm(showCashFlowForm && cashFlowType==="deposit" ? false : true);}} style={{ padding:"4px 12px", borderRadius:6, border:"1px solid rgba(74,222,128,0.25)", background: showCashFlowForm && cashFlowType==="deposit" ? "rgba(74,222,128,0.15)" : "rgba(74,222,128,0.06)", color:"#4ade80", cursor:"pointer", fontSize:10, fontWeight:600 }}>{showCashFlowForm && cashFlowType==="deposit" ? "Cancel" : "+ Deposit"}</button>
+            <button onClick={()=>{setCashFlowType("withdrawal");setShowCashFlowForm(showCashFlowForm && cashFlowType==="withdrawal" ? false : true);}} style={{ padding:"4px 12px", borderRadius:6, border:"1px solid rgba(99,102,241,0.2)", background: showCashFlowForm && cashFlowType==="withdrawal" ? "rgba(99,102,241,0.15)" : "rgba(99,102,241,0.06)", color:"#a5b4fc", cursor:"pointer", fontSize:10, fontWeight:600 }}>{showCashFlowForm && cashFlowType==="withdrawal" ? "Cancel" : "+ Withdrawal"}</button>
+          </div>
         </div>
 
         {/* Summary */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginBottom:14 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:10, marginBottom:14 }}>
+          <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Total deposited</div>
+            <div style={{ fontSize:18, fontWeight:700, color:"#4ade80", fontFamily:"'JetBrains Mono', monospace" }}>${totalDeposited.toFixed(0)}</div>
+          </div>
           <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
             <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Total withdrawn</div>
             <div style={{ fontSize:18, fontWeight:700, color:"#a5b4fc", fontFamily:"'JetBrains Mono', monospace" }}>${totalWithdrawn.toFixed(0)}</div>
           </div>
           <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
             <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>This month</div>
-            <div style={{ fontSize:18, fontWeight:700, color:"#a5b4fc", fontFamily:"'JetBrains Mono', monospace" }}>${monthWithdrawn.toFixed(0)}</div>
+            <div style={{ fontSize:11, color:"var(--tp-faintest)", fontFamily:"'JetBrains Mono', monospace" }}>+${monthDeposited.toFixed(0)} / -${monthWithdrawn.toFixed(0)}</div>
+            <div style={{ fontSize:14, fontWeight:700, color:(monthDeposited-monthWithdrawn)>=0?"#4ade80":"#a5b4fc", fontFamily:"'JetBrains Mono', monospace", marginTop:2 }}>${(monthDeposited-monthWithdrawn).toFixed(0)}</div>
           </div>
           <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"10px 12px", textAlign:"center" }}>
             <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Net earned (after payouts)</div>
@@ -4998,38 +5027,42 @@ function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBal
           </div>
         </div>
 
-        {/* Add withdrawal form */}
-        {showWithdrawalForm && (
+        {/* Add cash flow form */}
+        {showCashFlowForm && (
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:8, marginBottom:12, alignItems:"end" }}>
             <div>
-              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Amount</div>
-              <input id="withdrawal-amount" type="number" step="0.01" placeholder="500" style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px" }}/>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>{cashFlowType === "deposit" ? "Deposit amount" : "Withdrawal amount"}</div>
+              <input id="cashflow-amount" type="number" step="0.01" placeholder="500" style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px" }}/>
             </div>
             <div>
               <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Date</div>
-              <input id="withdrawal-date" type="date" defaultValue={todayStr} style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px" }}/>
+              <input id="cashflow-date" type="date" defaultValue={todayStr} style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px" }}/>
             </div>
             <div>
               <div style={{ fontSize:9, color:"var(--tp-faintest)", marginBottom:3 }}>Note</div>
-              <input id="withdrawal-note" type="text" placeholder="Payout, transfer..." style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px", fontFamily:"inherit" }}/>
+              <input id="cashflow-note" type="text" placeholder={cashFlowType === "deposit" ? "Funded account, transfer in..." : "Payout, transfer out..."} style={{ ...inputStyle, width:"100%", textAlign:"left", padding:"7px 8px", fontFamily:"inherit" }}/>
             </div>
-            <button onClick={()=>{const amt=parseFloat(document.getElementById("withdrawal-amount")?.value)||0;const dt=document.getElementById("withdrawal-date")?.value||todayStr;const note=document.getElementById("withdrawal-note")?.value||"";if(amt>0){addWithdrawal(amt,dt,note);setShowWithdrawalForm(false);}}} style={{ padding:"7px 16px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }}>Save</button>
+            <button onClick={()=>{const amt=parseFloat(document.getElementById("cashflow-amount")?.value)||0;const dt=document.getElementById("cashflow-date")?.value||todayStr;const note=document.getElementById("cashflow-note")?.value||"";if(amt>0){addCashFlow(cashFlowType,amt,dt,note);setShowCashFlowForm(false);}}} style={{ padding:"7px 16px", borderRadius:8, border:"none", background: cashFlowType === "deposit" ? "linear-gradient(135deg,#059669,#34d399)" : "linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }}>Save {cashFlowType === "deposit" ? "Deposit" : "Withdrawal"}</button>
           </div>
         )}
 
-        {/* Withdrawal history */}
-        {withdrawals.length > 0 && (
+        {/* Cash flow history */}
+        {cashFlows.length > 0 && (
           <div>
-            {[...withdrawals].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(w => (
-              <div key={w.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"var(--tp-card)", borderRadius:6, marginBottom:3, fontSize:11 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ color:"var(--tp-faintest)", fontFamily:"'JetBrains Mono', monospace" }}>{w.date}</span>
-                  <span style={{ color:"#a5b4fc", fontWeight:600, fontFamily:"'JetBrains Mono', monospace" }}>-${w.amount.toFixed(2)}</span>
-                  {w.note && <span style={{ color:"var(--tp-faint)" }}>{w.note}</span>}
+            {[...cashFlows].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(cf => {
+              const isDeposit = cf.type === 'deposit';
+              return (
+                <div key={cf.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"var(--tp-card)", borderRadius:6, marginBottom:3, fontSize:11 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ color:"var(--tp-faintest)", fontFamily:"'JetBrains Mono', monospace" }}>{cf.date}</span>
+                    <span style={{ fontSize:9, padding:"1px 6px", borderRadius:3, background: isDeposit ? "rgba(74,222,128,0.12)" : "rgba(99,102,241,0.12)", color: isDeposit ? "#4ade80" : "#a5b4fc", textTransform:"uppercase", letterSpacing:0.5, fontWeight:600 }}>{isDeposit ? "Deposit" : "Withdrawal"}</span>
+                    <span style={{ color: isDeposit ? "#4ade80" : "#a5b4fc", fontWeight:600, fontFamily:"'JetBrains Mono', monospace" }}>{isDeposit ? "+" : "-"}${(cf.amount||0).toFixed(2)}</span>
+                    {cf.note && <span style={{ color:"var(--tp-faint)" }}>{cf.note}</span>}
+                  </div>
+                  <button onClick={()=>removeCashFlow(cf.id)} style={{ background:"none", border:"none", color:"var(--tp-faintest)", cursor:"pointer", padding:0 }}><Trash2 size={11}/></button>
                 </div>
-                <button onClick={()=>removeWithdrawal(w.id)} style={{ background:"none", border:"none", color:"var(--tp-faintest)", cursor:"pointer", padding:0 }}><Trash2 size={11}/></button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
