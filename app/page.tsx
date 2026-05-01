@@ -471,7 +471,7 @@ export default function TradePulsePlatform() {
               <JournalModule user={user} tab={tab} setTab={setTab} theme={isDark ? {
                 bg:"#0d0f14", bgSecondary:"#12141a", bgTertiary:"#161922",
                 panelBg:"#161922", panelBorder:"rgba(255,255,255,0.07)",
-                text:"#e2e4ea", textSecondary:"#c8cad0", textMuted:"#8a8f9e", textFaint:"#5c6070", textFaintest:"#3d4150",
+                text:"#e2e4ea", textSecondary:"#c8cad0", textMuted:"#a8acb8", textFaint:"#8f93a3", textFaintest:"#6c7081",
                 border:"rgba(255,255,255,0.06)", borderLight:"rgba(255,255,255,0.1)",
                 inputBg:"#1e2028", cardBg:"rgba(255,255,255,0.02)",
                 headerBg:"rgba(13,15,20,0.85)", headerBorder:"rgba(255,255,255,0.06)",
@@ -479,7 +479,7 @@ export default function TradePulsePlatform() {
               } : {
                 bg:"#f5f6fa", bgSecondary:"#ffffff", bgTertiary:"#eef0f5",
                 panelBg:"#ffffff", panelBorder:"rgba(0,0,0,0.08)",
-                text:"#1a1a2e", textSecondary:"#374151", textMuted:"#6b7280", textFaint:"#9ca3af", textFaintest:"#d1d5db",
+                text:"#1a1a2e", textSecondary:"#374151", textMuted:"#525866", textFaint:"#6b7280", textFaintest:"#9ca3af",
                 border:"rgba(0,0,0,0.08)", borderLight:"rgba(0,0,0,0.12)",
                 inputBg:"#f3f4f6", cardBg:"rgba(0,0,0,0.02)",
                 headerBg:"rgba(255,255,255,0.9)", headerBorder:"rgba(0,0,0,0.08)",
