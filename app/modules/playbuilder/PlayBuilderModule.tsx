@@ -1964,33 +1964,33 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
 
   // ─── STYLES ──
   const panel: React.CSSProperties = {
-    background: 'var(--panel-bg, #161922)',
-    border: '1px solid var(--border, rgba(255,255,255,0.07))',
+    background: 'var(--shell-panel)',
+    border: '1px solid var(--border)',
     borderRadius: 12,
     padding: 18,
   };
   const label: React.CSSProperties = {
-    fontSize: 10, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)',
+    fontSize: 10, fontWeight: 700, color: 'var(--text-dim)',
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6,
   };
   const inputStyle: React.CSSProperties = {
-    background: 'var(--input-bg, #1e2028)',
-    border: '1px solid var(--border, rgba(255,255,255,0.08))',
-    color: 'var(--text, #e2e4ea)',
+    background: 'var(--shell-input)',
+    border: '1px solid var(--border)',
+    color: 'var(--text)',
     borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', minWidth: 0,
   };
 
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto', color: 'var(--text, #e2e4ea)', fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ maxWidth: 1400, margin: '0 auto', color: 'var(--text)', fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* HEADER */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: -0.3 }}>Play Builder</h1>
-          <div style={{ fontSize: 12, color: 'var(--text-dim, #8a8f9e)', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
             Design strategies live — pick a ticker, choose a strategy, fine-tune the legs.
           </div>
         </div>
-        <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)', padding: '4px 10px', borderRadius: 6, background: 'rgba(var(--tp-accent-rgb), 0.08)', border: '1px solid rgba(var(--tp-accent-rgb), 0.2)' }}>
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', padding: '4px 10px', borderRadius: 6, background: 'rgba(var(--tp-accent-rgb), 0.08)', border: '1px solid rgba(var(--tp-accent-rgb), 0.2)' }}>
           SESSION 1 BUILD
         </div>
       </div>
@@ -2065,9 +2065,9 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 style={{
                   padding: '8px 14px',
                   borderRadius: 8,
-                  border: active ? '1px solid rgba(var(--tp-accent-rgb), 0.6)' : '1px solid var(--border, rgba(255,255,255,0.08))',
-                  background: active ? 'rgba(var(--tp-accent-rgb), 0.15)' : 'var(--input-bg, rgba(255,255,255,0.03))',
-                  color: active ? 'var(--tp-accent-light)' : (s.enabled ? 'var(--text, #e2e4ea)' : 'var(--text-dim, #8a8f9e)'),
+                  border: active ? '1px solid rgba(var(--tp-accent-rgb), 0.6)' : '1px solid var(--border)',
+                  background: active ? 'rgba(var(--tp-accent-rgb), 0.15)' : 'var(--shell-input)',
+                  color: active ? 'var(--tp-accent-light)' : (s.enabled ? 'var(--text)' : 'var(--text-dim)'),
                   cursor: 'pointer',
                   fontSize: 12,
                   fontWeight: 600,
@@ -2098,8 +2098,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 onClick={addBlankLeg}
                 disabled={!contracts.length}
                 style={{
-                  padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border, rgba(255,255,255,0.08))',
-                  background: 'transparent', color: 'var(--text-dim, #8a8f9e)', cursor: contracts.length ? 'pointer' : 'not-allowed',
+                  padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)',
+                  background: 'transparent', color: 'var(--text-dim)', cursor: contracts.length ? 'pointer' : 'not-allowed',
                   fontSize: 11, fontWeight: 600, opacity: contracts.length ? 1 : 0.5,
                 }}
               >
@@ -2109,8 +2109,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 onClick={() => setLegs([])}
                 disabled={!legs.length}
                 style={{
-                  padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border, rgba(255,255,255,0.08))',
-                  background: 'transparent', color: 'var(--text-dim, #8a8f9e)', cursor: legs.length ? 'pointer' : 'not-allowed',
+                  padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)',
+                  background: 'transparent', color: 'var(--text-dim)', cursor: legs.length ? 'pointer' : 'not-allowed',
                   fontSize: 11, fontWeight: 600, opacity: legs.length ? 1 : 0.5,
                 }}
               >
@@ -2120,14 +2120,14 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
           </div>
 
           {!legs.length ? (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim, #8a8f9e)', fontSize: 12 }}>
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', fontSize: 12 }}>
               {ticker ? 'Pick a strategy template above, or add a blank leg.' : 'Load a ticker to begin.'}
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ color: 'var(--text-dim, #8a8f9e)', textTransform: 'uppercase', fontSize: 9, letterSpacing: 1 }}>
+                  <tr style={{ color: 'var(--text-dim)', textTransform: 'uppercase', fontSize: 9, letterSpacing: 1 }}>
                     <th style={thStyle}>Side</th>
                     <th style={thStyle}>Type</th>
                     <th style={thStyle}>Expiry</th>
@@ -2148,7 +2148,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                     const strikeOptions = strikesForExp(contracts, leg.expiration, leg.type);
                     const midPrice = mid(leg.bid, leg.ask);
                     return (
-                      <tr key={leg.id} style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
+                      <tr key={leg.id} style={{ borderTop: '1px solid var(--border)' }}>
                         <td style={tdStyle}>
                           <select
                             value={leg.side}
@@ -2238,7 +2238,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             {legs.length > 0 && <RiskBadge profile={riskProfile} />}
           </div>
           {!legs.length ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim, #8a8f9e)', fontSize: 12 }}>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-dim)', fontSize: 12 }}>
               No legs yet.
             </div>
           ) : (
@@ -2257,7 +2257,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 value={fmtMoney(metrics.capitalRequired, 0)} />
               <MetricRow label="Return on Risk"
                 value={fmtPct(metrics.ror)}
-                color={metrics.ror > 0 ? 'var(--tp-accent-light)' : 'var(--text-dim, #8a8f9e)'} />
+                color={metrics.ror > 0 ? 'var(--tp-accent-light)' : 'var(--text-dim)'} />
               <MetricRow label="Probability of Profit"
                 value={fmtPct(metrics.pop)} />
               <MetricRow label="Breakevens"
@@ -2265,7 +2265,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                   ? metrics.breakevens.map(b => `$${b.toFixed(2)}`).join(', ')
                   : '—'} />
 
-              <div style={{ height: 1, background: 'var(--border, rgba(255,255,255,0.06))', margin: '6px 0' }}/>
+              <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }}/>
               <div style={{ ...label, marginBottom: 2 }}>Net Greeks</div>
               <MetricRow label="Δ Delta" value={fmtNum(metrics.netDelta, 3)} />
               <MetricRow label="Γ Gamma" value={fmtNum(metrics.netGamma, 4)} />
@@ -2281,7 +2281,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         <div style={{ ...panel, marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
             <div style={label}>Payoff at Expiration</div>
-            <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim)', alignItems: 'center', flexWrap: 'wrap' }}>
               <LegendDot color="var(--tp-accent-light)" label="At expiration" />
               <LegendDot color="#c4b5fd" label="If held to today" dashed />
               <LegendDot color="#ffffff" label="Current price" />
@@ -2310,10 +2310,10 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         <div style={{ ...panel, marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
             <div style={label}>P&amp;L Heat Map (price × days forward)</div>
-            <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim)', alignItems: 'center', flexWrap: 'wrap' }}>
               <LegendDot color="rgba(var(--tp-success-rgb), 0.7)" label="Profit" />
               <LegendDot color="rgba(var(--tp-danger-rgb), 0.7)" label="Loss" />
-              <span style={{ color: 'var(--text-dim, #8a8f9e)' }}>Intensity = magnitude · Black-Scholes valued</span>
+              <span style={{ color: 'var(--text-dim)' }}>Intensity = magnitude · Black-Scholes valued</span>
             </div>
           </div>
           <HeatMap
@@ -2368,7 +2368,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
       <div style={{ ...panel }}>
         {saveStage === 'idle' ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-dim, #8a8f9e)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
               Click Save to Journal to review fills and send this play to your Trade Log.
             </div>
             <button
@@ -2376,8 +2376,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
               disabled={!legs.length}
               style={{
                 padding: '10px 20px', borderRadius: 8, border: 'none',
-                background: legs.length ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'var(--input-bg, #1e2028)',
-                color: legs.length ? '#fff' : 'var(--text-dim, #8a8f9e)',
+                background: legs.length ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : 'var(--shell-input)',
+                color: legs.length ? '#fff' : 'var(--text-dim)',
                 cursor: legs.length ? 'pointer' : 'not-allowed',
                 fontSize: 12, fontWeight: 600,
                 opacity: legs.length ? 1 : 0.5,
@@ -2390,28 +2390,28 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <div style={label}>Review Fills</div>
-              <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>
                 Step 2 of 2 — confirm prices then send
               </div>
             </div>
 
             {/* Mid vs Actual radio toggle */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: useMidPrices ? 'var(--tp-accent-light)' : 'var(--text-dim, #8a8f9e)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: useMidPrices ? 'var(--tp-accent-light)' : 'var(--text-dim)' }}>
                 <input type="radio" checked={useMidPrices} onChange={() => setUseMidPrices(true)} />
                 Use mid prices (theoretical)
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: !useMidPrices ? 'var(--tp-accent-light)' : 'var(--text-dim, #8a8f9e)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: !useMidPrices ? 'var(--tp-accent-light)' : 'var(--text-dim)' }}>
                 <input type="radio" checked={!useMidPrices} onChange={() => setUseMidPrices(false)} />
                 Enter actual fills (per leg)
               </label>
             </div>
 
             {/* Per-leg fills table */}
-            <div style={{ background: 'var(--input-bg, rgba(255,255,255,0.02))', borderRadius: 8, padding: '10px 12px', marginBottom: 14, border: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
+            <div style={{ background: 'var(--shell-input)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, border: '1px solid var(--border)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                 <thead>
-                  <tr style={{ color: 'var(--text-dim, #8a8f9e)', textTransform: 'uppercase', fontSize: 9, letterSpacing: 1 }}>
+                  <tr style={{ color: 'var(--text-dim)', textTransform: 'uppercase', fontSize: 9, letterSpacing: 1 }}>
                     <th style={{ padding: '6px 4px', textAlign: 'left' }}>Side</th>
                     <th style={{ padding: '6px 4px', textAlign: 'left' }}>Type</th>
                     <th style={{ padding: '6px 4px', textAlign: 'left' }}>Strike</th>
@@ -2425,13 +2425,13 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                   {legs.map(leg => {
                     const m = mid(leg.bid, leg.ask);
                     return (
-                      <tr key={leg.id} style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.04))' }}>
+                      <tr key={leg.id} style={{ borderTop: '1px solid var(--border)' }}>
                         <td style={{ padding: '6px 4px', color: leg.side === 'SELL' ? 'var(--tp-success)' : 'var(--tp-danger)', fontWeight: 700 }}>{leg.side}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.type}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.strike.toFixed(2)}</td>
                         <td style={{ padding: '6px 4px' }}>{fmtExpiry(leg.expiration)}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.qty}</td>
-                        <td style={{ padding: '6px 4px', color: 'var(--text-dim, #8a8f9e)' }}>${m.toFixed(2)}</td>
+                        <td style={{ padding: '6px 4px', color: 'var(--text-dim)' }}>${m.toFixed(2)}</td>
                         <td style={{ padding: '6px 4px' }}>
                           <input
                             type="number"
@@ -2441,9 +2441,9 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                             onChange={e => setFillOverrides(prev => ({ ...prev, [leg.id]: e.target.value }))}
                             style={{
                               width: 70,
-                              background: useMidPrices ? 'transparent' : 'var(--input-bg, #1e2028)',
-                              border: '1px solid var(--border, rgba(255,255,255,0.08))',
-                              color: useMidPrices ? 'var(--text-dim, #8a8f9e)' : 'var(--text, #e2e4ea)',
+                              background: useMidPrices ? 'transparent' : 'var(--shell-input)',
+                              border: '1px solid var(--border)',
+                              color: useMidPrices ? 'var(--text-dim)' : 'var(--text)',
                               borderRadius: 4, padding: '4px 6px', fontSize: 11, outline: 'none',
                             }}
                           />
@@ -2465,9 +2465,9 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 placeholder="e.g. Earnings play, IV crush thesis"
                 style={{
                   width: '100%',
-                  background: 'var(--input-bg, #1e2028)',
-                  border: '1px solid var(--border, rgba(255,255,255,0.08))',
-                  color: 'var(--text, #e2e4ea)',
+                  background: 'var(--shell-input)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
                   borderRadius: 6, padding: '8px 10px', fontSize: 12, outline: 'none',
                   boxSizing: 'border-box',
                 }}
@@ -2480,8 +2480,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 onClick={cancelSave}
                 style={{
                   padding: '9px 18px', borderRadius: 8,
-                  border: '1px solid var(--border, rgba(255,255,255,0.12))',
-                  background: 'transparent', color: 'var(--text-dim, #8a8f9e)',
+                  border: '1px solid var(--border)',
+                  background: 'transparent', color: 'var(--text-dim)',
                   cursor: 'pointer', fontSize: 12, fontWeight: 600,
                 }}
               >
@@ -2524,17 +2524,17 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
 const thStyle: React.CSSProperties = { padding: '8px 6px', textAlign: 'left', fontWeight: 700 };
 const tdStyle: React.CSSProperties = { padding: '8px 6px', verticalAlign: 'middle' };
 const selectStyle: React.CSSProperties = {
-  background: 'var(--input-bg, #1e2028)',
-  border: '1px solid var(--border, rgba(255,255,255,0.08))',
-  color: 'var(--text, #e2e4ea)',
+  background: 'var(--shell-input)',
+  border: '1px solid var(--border)',
+  color: 'var(--text)',
   borderRadius: 6, padding: '4px 6px', fontSize: 11, outline: 'none',
 };
 
 function MetricRow({ label, value, color, bold }: { label: string; value: string; color?: string; bold?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-      <span style={{ fontSize: 11, color: 'var(--text-dim, #8a8f9e)' }}>{label}</span>
-      <span style={{ fontSize: bold ? 15 : 13, fontWeight: bold ? 700 : 600, color: color || 'var(--text, #e2e4ea)', textAlign: 'right' }}>
+      <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{label}</span>
+      <span style={{ fontSize: bold ? 15 : 13, fontWeight: bold ? 700 : 600, color: color || 'var(--text)', textAlign: 'right' }}>
         {value}
       </span>
     </div>
@@ -2577,17 +2577,17 @@ function CostRatioBadge({ grade, ratio }: { grade: 'ideal' | 'acceptable' | 'too
 function CalPressStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div style={{
-      background: 'var(--input-bg, rgba(255,255,255,0.02))',
-      border: '1px solid var(--border, rgba(255,255,255,0.06))',
+      background: 'var(--shell-input)',
+      border: '1px solid var(--border)',
       borderRadius: 8, padding: '12px 14px',
     }}>
-      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>
         {label}
       </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text, #e2e4ea)', marginBottom: sub ? 3 : 0 }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: sub ? 3 : 0 }}>
         {value}
       </div>
-      {sub && <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>{sub}</div>}
     </div>
   );
 }
@@ -2720,17 +2720,17 @@ function StrikeComparison({
 
   // ─── Styles ──
   const labelStyle: React.CSSProperties = {
-    fontSize: 10, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)',
+    fontSize: 10, fontWeight: 700, color: 'var(--text-dim)',
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6,
   };
   const sliderRow: React.CSSProperties = {
     display: 'grid', gridTemplateColumns: '120px 1fr 110px', gap: 12, alignItems: 'center', marginBottom: 10,
   };
   const sliderLabel: React.CSSProperties = {
-    fontSize: 11, color: 'var(--text-dim, #8a8f9e)', fontWeight: 600,
+    fontSize: 11, color: 'var(--text-dim)', fontWeight: 600,
   };
   const sliderValue: React.CSSProperties = {
-    fontSize: 12, color: scenarioActive ? '#c4b5fd' : 'var(--text, #e2e4ea)', fontWeight: 700,
+    fontSize: 12, color: scenarioActive ? '#c4b5fd' : 'var(--text)', fontWeight: 700,
     fontFamily: "'JetBrains Mono', monospace", textAlign: 'right',
   };
 
@@ -2762,15 +2762,15 @@ function StrikeComparison({
           if (!card.available) {
             return (
               <div key={card.strike} style={{
-                background: 'var(--input-bg, rgba(255,255,255,0.02))',
-                border: '1px dashed var(--border, rgba(255,255,255,0.08))',
+                background: 'var(--shell-input)',
+                border: '1px dashed var(--border)',
                 borderRadius: 10, padding: '14px 12px',
                 opacity: 0.45, textAlign: 'center',
               }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)', marginBottom: 8 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-dim)', marginBottom: 8 }}>
                   ${card.strike.toFixed(2)}
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)' }}>No contract</div>
+                <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>No contract</div>
               </div>
             );
           }
@@ -2779,8 +2779,8 @@ function StrikeComparison({
               key={card.strike}
               onClick={() => onPickStrike(card.strike)}
               style={{
-                background: card.isCurrent ? 'rgba(var(--tp-accent-rgb), 0.10)' : 'var(--input-bg, rgba(255,255,255,0.02))',
-                border: card.isCurrent ? '1.5px solid rgba(var(--tp-accent-rgb), 0.6)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+                background: card.isCurrent ? 'rgba(var(--tp-accent-rgb), 0.10)' : 'var(--shell-input)',
+                border: card.isCurrent ? '1.5px solid rgba(var(--tp-accent-rgb), 0.6)' : '1px solid var(--border)',
                 borderRadius: 10, padding: '14px 12px',
                 cursor: card.isCurrent ? 'default' : 'pointer',
                 textAlign: 'left',
@@ -2796,7 +2796,7 @@ function StrikeComparison({
               }}
               onMouseLeave={(e) => {
                 if (!card.isCurrent) {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border, rgba(255,255,255,0.08))';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
                 }
               }}
             >
@@ -2813,7 +2813,7 @@ function StrikeComparison({
               {/* Strike */}
               <div style={{
                 fontSize: 17, fontWeight: 700,
-                color: card.isCurrent ? 'var(--tp-accent-light)' : 'var(--text, #e2e4ea)',
+                color: card.isCurrent ? 'var(--tp-accent-light)' : 'var(--text)',
                 marginBottom: 10,
                 fontFamily: "'JetBrains Mono', monospace",
               }}>
@@ -2823,7 +2823,7 @@ function StrikeComparison({
               <div style={{ marginBottom: 10 }}>
                 {scenarioActive ? (
                   <div>
-                    <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-dim, #8a8f9e)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Theo</div>
+                    <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Theo</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', fontFamily: "'JetBrains Mono', monospace" }}>
                       ${card.theo.toFixed(2)}
                     </div>
@@ -2837,7 +2837,7 @@ function StrikeComparison({
                 )}
               </div>
               {/* Greeks block */}
-              <div style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.06))', paddingTop: 8 }}>
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                 <CardLine label="Δ" value={card.delta.toFixed(3)} />
                 <CardLine label="Θ" value={card.theta.toFixed(3)} />
                 <CardLine label="IV" value={`${(card.iv * 100).toFixed(1)}%`} />
@@ -2850,8 +2850,8 @@ function StrikeComparison({
 
       {/* Sliders */}
       <div style={{
-        background: 'var(--input-bg, rgba(255,255,255,0.02))',
-        border: '1px solid var(--border, rgba(255,255,255,0.06))',
+        background: 'var(--shell-input)',
+        border: '1px solid var(--border)',
         borderRadius: 10, padding: '14px 16px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -2863,8 +2863,8 @@ function StrikeComparison({
               onClick={resetScenario}
               style={{
                 padding: '5px 12px', borderRadius: 6,
-                border: '1px solid var(--border, rgba(255,255,255,0.12))',
-                background: 'transparent', color: 'var(--text-dim, #8a8f9e)',
+                border: '1px solid var(--border)',
+                background: 'transparent', color: 'var(--text-dim)',
                 cursor: 'pointer', fontSize: 10, fontWeight: 600,
               }}
             >
@@ -2926,7 +2926,7 @@ function StrikeComparison({
         </div>
 
         {/* Helper text */}
-        <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', lineHeight: 1.5 }}>
+        <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text-dim)', lineHeight: 1.5 }}>
           Defaults: live price · 0% IV shift · 0 days forward.
           Cards switch to Black-Scholes projections when any slider is off default.
           Sliders affect <em>cards only</em>; chart, heat map, and metrics stay anchored to the real position.
@@ -2939,9 +2939,9 @@ function StrikeComparison({
 function CardLine({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
-      <span style={{ color: 'var(--text-dim, #8a8f9e)' }}>{label}</span>
+      <span style={{ color: 'var(--text-dim)' }}>{label}</span>
       <span style={{
-        color: accent ? 'var(--tp-accent-light)' : 'var(--text, #e2e4ea)',
+        color: accent ? 'var(--tp-accent-light)' : 'var(--text)',
         fontWeight: accent ? 700 : 600,
         fontFamily: "'JetBrains Mono', monospace",
       }}>
@@ -3030,8 +3030,8 @@ function EntryPriceInput({
           }
         }}
         style={{
-          background: hasOverride ? 'rgba(var(--tp-warning-rgb), 0.06)' : 'var(--input-bg, #1e2028)',
-          border: hasOverride ? '1px solid rgba(var(--tp-warning-rgb), 0.35)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+          background: hasOverride ? 'rgba(var(--tp-warning-rgb), 0.06)' : 'var(--shell-input)',
+          border: hasOverride ? '1px solid rgba(var(--tp-warning-rgb), 0.35)' : '1px solid var(--border)',
           color: hasOverride ? 'var(--tp-warning)' : 'var(--tp-accent-light)',
           borderRadius: 6, padding: '4px 6px', fontSize: 11,
           fontWeight: 700, outline: 'none', width: 62, textAlign: 'right',
