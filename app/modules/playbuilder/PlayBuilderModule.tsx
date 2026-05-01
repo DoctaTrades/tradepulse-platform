@@ -1012,6 +1012,27 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
 
+    // Theme-aware colors for canvas (CSS vars don't work in fillStyle/strokeStyle)
+    const cs = getComputedStyle(document.documentElement);
+    const isDark = (document.documentElement.dataset.theme || 'dark') !== 'light';
+    const successRgb = (cs.getPropertyValue('--tp-success-rgb') || '74,222,128').trim();
+    const dangerRgb  = (cs.getPropertyValue('--tp-danger-rgb')  || '248,113,113').trim();
+    const accentRgb  = (cs.getPropertyValue('--tp-accent-rgb')  || '99,102,241').trim();
+    const successHex = (cs.getPropertyValue('--tp-success')     || '#4ade80').trim();
+    const dangerHex  = (cs.getPropertyValue('--tp-danger')      || '#f87171').trim();
+    const warningHex = (cs.getPropertyValue('--tp-warning')     || '#eab308').trim();
+    const accentLightHex = (cs.getPropertyValue('--tp-accent-light') || '#a5b4fc').trim();
+    const textHex    = (cs.getPropertyValue('--tp-text')        || '#e2e4ea').trim();
+    const mutedHex   = (cs.getPropertyValue('--tp-muted')       || '#a8acb8').trim();
+    // Theme-aware tooltip + gridline colors
+    const tooltipBg     = isDark ? 'rgba(20,22,30,0.95)' : 'rgba(255,255,255,0.97)';
+    const tooltipBorder = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
+    const gridlineFaint = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
+    const crosshairLine = isDark ? 'rgba(255,255,255,0.3)'  : 'rgba(0,0,0,0.25)';
+    const hoverBoxLine  = isDark ? 'rgba(255,255,255,0.4)'  : 'rgba(0,0,0,0.3)';
+    const currentPriceLine = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
+    const payoffStrokeFaint = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)';
+
     // Padding for axes
     const padL = 56, padR = 16, padT = 14, padB = 28;
     const W = width - padL - padR;
@@ -1047,7 +1068,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       const x1 = Math.max(padL, xFor(lo2));
       const x2 = Math.min(padL + W, xFor(hi2));
       if (x2 > x1) {
-        ctx.fillStyle = 'rgba(var(--tp-accent-rgb), 0.05)';
+        ctx.fillStyle = `rgba(${accentRgb}, 0.05)`;
         ctx.fillRect(x1, padT, x2 - x1, H);
       }
       // 1σ band (slightly more visible)
@@ -1056,11 +1077,11 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       const x3 = Math.max(padL, xFor(lo1));
       const x4 = Math.min(padL + W, xFor(hi1));
       if (x4 > x3) {
-        ctx.fillStyle = 'rgba(var(--tp-accent-rgb), 0.08)';
+        ctx.fillStyle = `rgba(${accentRgb}, 0.08)`;
         ctx.fillRect(x3, padT, x4 - x3, H);
       }
       // Sigma boundary lines (subtle)
-      ctx.strokeStyle = 'rgba(var(--tp-accent-rgb), 0.35)';
+      ctx.strokeStyle = `rgba(${accentRgb}, 0.35)`;
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       [lo2, lo1, hi1, hi2].forEach(s => {
@@ -1077,7 +1098,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
 
     // ─── Zero line ──
     const yZero = yFor(0);
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.strokeStyle = payoffStrokeFaint;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(padL, yZero);
@@ -1098,8 +1119,8 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       ctx.closePath();
       ctx.fill();
     };
-    drawFill(true,  'rgba(var(--tp-success-rgb), 0.18)');   // profit (green)
-    drawFill(false, 'rgba(var(--tp-danger-rgb), 0.18)');  // loss (red)
+    drawFill(true,  `rgba(${successRgb}, 0.18)`);   // profit (green)
+    drawFill(false, `rgba(${dangerRgb}, 0.18)`);  // loss (red)
 
     // ─── "Held to today" curve (theta decay overlay) — purple dotted ──
     if (todaySamples && todaySamples.length) {
@@ -1117,7 +1138,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     }
 
     // ─── Payoff curve (at expiration) ──
-    ctx.strokeStyle = 'var(--tp-accent-light)';
+    ctx.strokeStyle = accentLightHex;
     ctx.lineWidth = 2;
     ctx.beginPath();
     samples.forEach((s, i) => {
@@ -1131,7 +1152,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     legs.forEach(leg => {
       const x = xFor(leg.strike);
       if (x < padL || x > padL + W) return;
-      ctx.strokeStyle = leg.side === 'SELL' ? 'rgba(var(--tp-success-rgb), 0.5)' : 'rgba(var(--tp-danger-rgb), 0.5)';
+      ctx.strokeStyle = leg.side === 'SELL' ? `rgba(${successRgb}, 0.5)` : `rgba(${dangerRgb}, 0.5)`;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
       ctx.beginPath();
@@ -1145,7 +1166,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     breakevens.forEach(be => {
       const x = xFor(be);
       if (x < padL || x > padL + W) return;
-      ctx.strokeStyle = 'var(--tp-warning)';
+      ctx.strokeStyle = warningHex;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
@@ -1154,7 +1175,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       ctx.stroke();
       ctx.setLineDash([]);
       // Label
-      ctx.fillStyle = 'var(--tp-warning)';
+      ctx.fillStyle = warningHex;
       ctx.font = '10px Inter, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`BE $${be.toFixed(2)}`, x, padT - 4);
@@ -1163,20 +1184,20 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     // ─── Current price marker ──
     const xCur = xFor(underlying);
     if (xCur >= padL && xCur <= padL + W) {
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = textHex;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(xCur, padT);
       ctx.lineTo(xCur, padT + H);
       ctx.stroke();
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = textHex;
       ctx.font = 'bold 10px Inter, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`$${underlying.toFixed(2)}`, xCur, padT + H + 16);
     }
 
     // ─── Y-axis labels (P/L) ──
-    ctx.fillStyle = 'var(--tp-muted)';
+    ctx.fillStyle = mutedHex;
     ctx.font = '10px Inter, system-ui, sans-serif';
     ctx.textAlign = 'right';
     const yTicks = 5;
@@ -1185,7 +1206,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       const y = yFor(v);
       ctx.fillText(`$${v >= 0 ? '' : '-'}${Math.abs(Math.round(v))}`, padL - 6, y + 3);
       // Faint horizontal gridline
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.strokeStyle = gridlineFaint;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(padL + W, y);
@@ -1203,7 +1224,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
 
     // ─── Hover crosshair + tooltip ──
     if (hover) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.strokeStyle = crosshairLine;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
       ctx.beginPath();
@@ -1219,17 +1240,17 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       const tw = Math.max(ctx.measureText(txt1).width, ctx.measureText(txt2).width) + 16;
       const tx = Math.min(padL + W - tw, Math.max(padL, hover.x - tw / 2));
       const ty = padT + 6;
-      ctx.fillStyle = 'rgba(20,22,30,0.95)';
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillStyle = tooltipBg;
+      ctx.strokeStyle = tooltipBorder;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.rect(tx, ty, tw, 36);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = 'var(--tp-text)';
+      ctx.fillStyle = textHex;
       ctx.textAlign = 'left';
       ctx.fillText(txt1, tx + 8, ty + 14);
-      ctx.fillStyle = hover.pnl >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
+      ctx.fillStyle = hover.pnl >= 0 ? successHex : dangerHex;
       ctx.fillText(txt2, tx + 8, ty + 28);
     }
   }, [samples, todaySamples, width, height, underlying, breakevens, expectedMove, legs, hover]);
@@ -1336,6 +1357,27 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
 
+    // Theme-aware colors for canvas (CSS vars don't work in fillStyle/strokeStyle)
+    const cs = getComputedStyle(document.documentElement);
+    const isDark = (document.documentElement.dataset.theme || 'dark') !== 'light';
+    const successRgb = (cs.getPropertyValue('--tp-success-rgb') || '74,222,128').trim();
+    const dangerRgb  = (cs.getPropertyValue('--tp-danger-rgb')  || '248,113,113').trim();
+    const accentRgb  = (cs.getPropertyValue('--tp-accent-rgb')  || '99,102,241').trim();
+    const successHex = (cs.getPropertyValue('--tp-success')     || '#4ade80').trim();
+    const dangerHex  = (cs.getPropertyValue('--tp-danger')      || '#f87171').trim();
+    const warningHex = (cs.getPropertyValue('--tp-warning')     || '#eab308').trim();
+    const accentLightHex = (cs.getPropertyValue('--tp-accent-light') || '#a5b4fc').trim();
+    const textHex    = (cs.getPropertyValue('--tp-text')        || '#e2e4ea').trim();
+    const mutedHex   = (cs.getPropertyValue('--tp-muted')       || '#a8acb8').trim();
+    // Theme-aware tooltip + gridline colors
+    const tooltipBg     = isDark ? 'rgba(20,22,30,0.95)' : 'rgba(255,255,255,0.97)';
+    const tooltipBorder = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
+    const gridlineFaint = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
+    const crosshairLine = isDark ? 'rgba(255,255,255,0.3)'  : 'rgba(0,0,0,0.25)';
+    const hoverBoxLine  = isDark ? 'rgba(255,255,255,0.4)'  : 'rgba(0,0,0,0.3)';
+    const currentPriceLine = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
+    const payoffStrokeFaint = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)';
+
     const padL = 56, padR = 16, padT = 14, padB = 28;
     const W = width - padL - padR;
     const H = height - padT - padB;
@@ -1353,16 +1395,16 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
         // Row 0 = today (top), row rows-1 = expiration (bottom)
         const y = padT + r * cellH;
         if (v >= 0) {
-          ctx.fillStyle = `rgba(74,222,128,${intensity})`;
+          ctx.fillStyle = `rgba(${successRgb},${intensity})`;
         } else {
-          ctx.fillStyle = `rgba(248,113,113,${intensity})`;
+          ctx.fillStyle = `rgba(${dangerRgb},${intensity})`;
         }
         ctx.fillRect(x, y, cellW + 0.5, cellH + 0.5);
       }
     }
 
     // Axes
-    ctx.fillStyle = 'var(--tp-muted)';
+    ctx.fillStyle = mutedHex;
     ctx.font = '10px Inter, system-ui, sans-serif';
 
     // Y-axis: days forward labels
@@ -1386,7 +1428,7 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
     // Current-price vertical guide
     const xCur = padL + ((underlying - priceLo) / (priceHi - priceLo)) * W;
     if (xCur >= padL && xCur <= padL + W) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.strokeStyle = currentPriceLine;
       ctx.lineWidth = 1.25;
       ctx.beginPath();
       ctx.moveTo(xCur, padT);
@@ -1395,7 +1437,7 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
     }
 
     // "Today" label on the top edge
-    ctx.fillStyle = 'var(--tp-accent-light)';
+    ctx.fillStyle = accentLightHex;
     ctx.textAlign = 'left';
     ctx.font = '9px Inter, system-ui, sans-serif';
     ctx.fillText('TODAY →', padL + 3, padT - 3);
@@ -1404,7 +1446,7 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
 
     // Hover crosshair + tooltip
     if (hover) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.strokeStyle = hoverBoxLine;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
       ctx.strokeRect(hover.x - cellW / 2, hover.y - cellH / 2, cellW, cellH);
@@ -1416,17 +1458,17 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
       const tw = Math.max(ctx.measureText(t1).width, ctx.measureText(t2).width) + 16;
       const tx = Math.min(padL + W - tw, Math.max(padL, hover.x - tw / 2));
       const ty = Math.max(padT, hover.y - 44);
-      ctx.fillStyle = 'rgba(20,22,30,0.95)';
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillStyle = tooltipBg;
+      ctx.strokeStyle = tooltipBorder;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.rect(tx, ty, tw, 36);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = 'var(--tp-text)';
+      ctx.fillStyle = textHex;
       ctx.textAlign = 'left';
       ctx.fillText(t1, tx + 8, ty + 14);
-      ctx.fillStyle = hover.pnl >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
+      ctx.fillStyle = hover.pnl >= 0 ? successHex : dangerHex;
       ctx.fillText(t2, tx + 8, ty + 28);
     }
   }, [grid, width, height, priceLo, priceHi, underlying, hover]);
