@@ -1176,7 +1176,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     }
 
     // ─── Y-axis labels (P/L) ──
-    ctx.fillStyle = '#8a8f9e';
+    ctx.fillStyle = 'var(--tp-muted)';
     ctx.font = '10px Inter, system-ui, sans-serif';
     ctx.textAlign = 'right';
     const yTicks = 5;
@@ -1226,7 +1226,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       ctx.rect(tx, ty, tw, 36);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#e2e4ea';
+      ctx.fillStyle = 'var(--tp-text)';
       ctx.textAlign = 'left';
       ctx.fillText(txt1, tx + 8, ty + 14);
       ctx.fillStyle = hover.pnl >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
@@ -1362,7 +1362,7 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
     }
 
     // Axes
-    ctx.fillStyle = '#8a8f9e';
+    ctx.fillStyle = 'var(--tp-muted)';
     ctx.font = '10px Inter, system-ui, sans-serif';
 
     // Y-axis: days forward labels
@@ -1423,7 +1423,7 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
       ctx.rect(tx, ty, tw, 36);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#e2e4ea';
+      ctx.fillStyle = 'var(--tp-text)';
       ctx.textAlign = 'left';
       ctx.fillText(t1, tx + 8, ty + 14);
       ctx.fillStyle = hover.pnl >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
