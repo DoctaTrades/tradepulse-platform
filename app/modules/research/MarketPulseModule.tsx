@@ -38,7 +38,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
 
   const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
   const fmtPrice = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const pctColor = (n: number) => n >= 0 ? '#4ade80' : '#f87171';
+  const pctColor = (n: number) => n >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
 
   const trendLabels: Record<string, string> = {
     strong_uptrend: '🟢 Strong Uptrend',
@@ -49,9 +49,9 @@ export default function MarketPulseModule({ user }: { user?: any }) {
   };
 
   const regimeColors: Record<string, string> = {
-    complacency: '#4ade80',
+    complacency: 'var(--tp-success)',
     calm: '#86efac',
-    elevated: '#eab308',
+    elevated: 'var(--tp-warning)',
     fear: '#fb923c',
     panic: '#ef4444',
   };
@@ -70,7 +70,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
             style={{ padding: '12px 32px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #1e4fd8, #2563eb)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'Rajdhani', sans-serif", letterSpacing: 1, textTransform: 'uppercase', boxShadow: '0 4px 20px rgba(30,79,216,0.35)' }}>
             {loading ? '⏳ Loading...' : '⚡ Load Market Pulse'}
           </button>
-          {error && <div style={{ marginTop: 16, color: '#f87171', fontSize: 12 }}>{error}</div>}
+          {error && <div style={{ marginTop: 16, color: 'var(--tp-danger)', fontSize: 12 }}>{error}</div>}
         </div>
       </div>
     );
@@ -113,7 +113,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
             {data.fearGreed.components.map(c => (
               <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-dim)', marginBottom: 3 }}>
                 <span>{c.name}</span>
-                <span style={{ color: c.value >= 60 ? '#4ade80' : c.value >= 40 ? '#eab308' : '#f87171', fontFamily: 'monospace' }}>{c.value}</span>
+                <span style={{ color: c.value >= 60 ? 'var(--tp-success)' : c.value >= 40 ? 'var(--tp-warning)' : 'var(--tp-danger)', fontFamily: 'monospace' }}>{c.value}</span>
               </div>
             ))}
           </div>
@@ -125,7 +125,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
             <div>
               <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>VIX — Fear Index</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
-                <span style={{ fontSize: 36, fontWeight: 800, fontFamily: "'Rajdhani', sans-serif", color: regimeColors[data.vix.regime] || '#eab308' }}>{data.vix.price.toFixed(2)}</span>
+                <span style={{ fontSize: 36, fontWeight: 800, fontFamily: "'Rajdhani', sans-serif", color: regimeColors[data.vix.regime] || 'var(--tp-warning)' }}>{data.vix.price.toFixed(2)}</span>
                 <span style={{ fontSize: 14, fontWeight: 600, color: pctColor(data.vix.change) }}>{fmtPct(data.vix.change)}</span>
               </div>
             </div>
@@ -175,7 +175,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
               <div key={ema.label} style={{ background: 'var(--navy3)', borderRadius: 8, padding: '8px 10px' }}>
                 <div style={{ fontSize: 9, color: 'var(--text-dim)', marginBottom: 2 }}>{ema.label}</div>
                 <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text)' }}>{ema.value ? fmtPrice(ema.value) : '—'}</div>
-                <div style={{ fontSize: 9, color: ema.above ? '#4ade80' : '#f87171', fontWeight: 600 }}>{ema.above ? '▲ Above' : '▼ Below'}</div>
+                <div style={{ fontSize: 9, color: ema.above ? 'var(--tp-success)' : 'var(--tp-danger)', fontWeight: 600 }}>{ema.above ? '▲ Above' : '▼ Below'}</div>
               </div>
             ))}
           </div>
@@ -185,7 +185,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
         <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>
           <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700, marginBottom: 12 }}>Market Breadth</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-            <span style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Rajdhani', sans-serif", color: data.breadth.divergence > 0 ? '#4ade80' : data.breadth.divergence < -0.3 ? '#f87171' : '#eab308' }}>
+            <span style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Rajdhani', sans-serif", color: data.breadth.divergence > 0 ? 'var(--tp-success)' : data.breadth.divergence < -0.3 ? 'var(--tp-danger)' : 'var(--tp-warning)' }}>
               {data.breadth.divergence > 0 ? '+' : ''}{data.breadth.divergence.toFixed(2)}%
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-mid)', textTransform: 'uppercase', fontFamily: "'Rajdhani', sans-serif", letterSpacing: 1 }}>

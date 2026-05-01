@@ -92,8 +92,8 @@ function AuthScreen({ onAuth }: { onAuth: (user: any) => void }) {
           <div style={{ fontSize:32, fontWeight:800, background:"linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", marginBottom:6 }}>TradePulse</div>
           <div style={{ fontSize:13, color:"#6b7280" }}>Your trading platform, everywhere</div>
         </div>
-        {error && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, padding:"10px 14px", marginBottom:16, fontSize:13, color:"#f87171" }}>{error}</div>}
-        {message && <div style={{ background:"rgba(74,222,128,0.1)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:8, padding:"10px 14px", marginBottom:16, fontSize:13, color:"#4ade80" }}>{message}</div>}
+        {error && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, padding:"10px 14px", marginBottom:16, fontSize:13, color:"var(--tp-danger)" }}>{error}</div>}
+        {message && <div style={{ background:"rgba(var(--tp-success-rgb), 0.1)", border:"1px solid rgba(var(--tp-success-rgb), 0.2)", borderRadius:8, padding:"10px 14px", marginBottom:16, fontSize:13, color:"var(--tp-success)" }}>{message}</div>}
         <form onSubmit={mode === "login" ? handleLogin : mode === "signup" ? handleSignup : handleForgot}>
           <div style={{ marginBottom:12 }}><label style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} style={iStyle} placeholder="you@example.com" required/></div>
           {mode !== "forgot" && <div style={{ marginBottom:12 }}><label style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:6 }}>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} style={iStyle} placeholder="••••••••" required/></div>}
@@ -292,7 +292,7 @@ export default function TradePulsePlatform() {
             placeholder="BETA-XX"
             style={{ width:"100%", padding:"14px 16px", background:"var(--input-bg)", border:"1px solid var(--border)", borderRadius:10, color:"var(--text)", fontSize:18, fontWeight:600, textAlign:"center", letterSpacing:4, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}
           />
-          {accessError && <div style={{ marginTop:12, fontSize:12, color:"#f87171" }}>{accessError}</div>}
+          {accessError && <div style={{ marginTop:12, fontSize:12, color:"var(--tp-danger)" }}>{accessError}</div>}
           <button
             onClick={async () => {
               if (!accessCode.trim() || accessLoading) return;
@@ -306,7 +306,7 @@ export default function TradePulsePlatform() {
               setAccessLoading(false);
             }}
             disabled={accessLoading || !accessCode.trim()}
-            style={{ width:"100%", marginTop:16, padding:"12px", borderRadius:10, border:"none", background: accessLoading ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", fontSize:14, fontWeight:600, cursor: accessLoading ? "wait" : "pointer", boxShadow:"0 4px 14px rgba(99,102,241,0.3)" }}
+            style={{ width:"100%", marginTop:16, padding:"12px", borderRadius:10, border:"none", background: accessLoading ? "rgba(var(--tp-accent-rgb), 0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", fontSize:14, fontWeight:600, cursor: accessLoading ? "wait" : "pointer", boxShadow:"0 4px 14px rgba(var(--tp-accent-rgb), 0.3)" }}
           >
             {accessLoading ? "Verifying..." : "Enter Beta"}
           </button>
@@ -348,13 +348,13 @@ export default function TradePulsePlatform() {
                   padding: collapsed ? "9px 0" : "8px 14px", justifyContent: collapsed ? "center" : "flex-start",
                   borderRadius:8, border:"none", cursor: item.soon?"default":"pointer", fontSize:13,
                   fontWeight: tab===item.id?600:500, transition:"all 0.15s",
-                  background: tab===item.id?"rgba(99,102,241,0.12)":"transparent",
-                  color: item.soon?"#2a2e3a":tab===item.id?"#a5b4fc":"#5c6070",
+                  background: tab===item.id?"rgba(var(--tp-accent-rgb), 0.12)":"transparent",
+                  color: item.soon?"#2a2e3a":tab===item.id?"var(--tp-accent-light)":"#5c6070",
                   opacity: item.soon?0.5:1, position:"relative"
                 }}>
                   <SidebarIcon icon={item.icon}/>
                   {!collapsed && <span style={{ whiteSpace:"nowrap" }}>{item.name}</span>}
-                  {!collapsed && item.soon && <span style={{ marginLeft:"auto", fontSize:7, fontWeight:700, background:"rgba(234,179,8,0.15)", color:"#eab308", padding:"2px 5px", borderRadius:6 }}>SOON</span>}
+                  {!collapsed && item.soon && <span style={{ marginLeft:"auto", fontSize:7, fontWeight:700, background:"rgba(var(--tp-warning-rgb), 0.15)", color:"var(--tp-warning)", padding:"2px 5px", borderRadius:6 }}>SOON</span>}
                 </button>
               ))}
             </div>
@@ -365,8 +365,8 @@ export default function TradePulsePlatform() {
             display:"flex", alignItems:"center", gap:10, width:"calc(100% - 8px)", margin:"1px 4px",
             padding: collapsed?"9px 0":"8px 14px", justifyContent: collapsed?"center":"flex-start",
             borderRadius:8, border:"none", cursor:"pointer", fontSize:12,
-            fontWeight: tab==="settings"?600:500, background: tab==="settings"?"rgba(99,102,241,0.12)":"transparent",
-            color: tab==="settings"?"#a5b4fc":"#5c6070"
+            fontWeight: tab==="settings"?600:500, background: tab==="settings"?"rgba(var(--tp-accent-rgb), 0.12)":"transparent",
+            color: tab==="settings"?"var(--tp-accent-light)":"#5c6070"
           }}><SidebarIcon icon="settings"/>{!collapsed && <span>Settings</span>}</button>
           {!collapsed && <div style={{ padding:"8px 14px 4px" }}>
             <div style={{ fontSize:10, color:"var(--text-dim)", marginBottom:6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</div>
@@ -388,7 +388,7 @@ export default function TradePulsePlatform() {
               <div key={section.label}>
                 <div style={{ padding:"12px 14px 4px", fontSize:9, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:1.2, fontWeight:700 }}>{section.label}</div>
                 {section.items.filter(i=>!i.soon).map(item => (
-                  <button key={item.id} onClick={()=>{setTab(item.id);setMobileOpen(false);}} style={{ display:"flex", alignItems:"center", gap:12, width:"100%", padding:"10px 14px", borderRadius:10, border:"none", background:tab===item.id?"rgba(99,102,241,0.12)":"transparent", color:tab===item.id?"#a5b4fc":"#8a8f9e", cursor:"pointer", fontSize:14, fontWeight:tab===item.id?600:500, marginBottom:2 }}>
+                  <button key={item.id} onClick={()=>{setTab(item.id);setMobileOpen(false);}} style={{ display:"flex", alignItems:"center", gap:12, width:"100%", padding:"10px 14px", borderRadius:10, border:"none", background:tab===item.id?"rgba(var(--tp-accent-rgb), 0.12)":"transparent", color:tab===item.id?"var(--tp-accent-light)":"#8a8f9e", cursor:"pointer", fontSize:14, fontWeight:tab===item.id?600:500, marginBottom:2 }}>
                     <SidebarIcon icon={item.icon}/> {item.name}
                   </button>
                 ))}
@@ -417,11 +417,11 @@ export default function TradePulsePlatform() {
         <div className="tp-content" style={{ flex:1, overflowY:"auto", padding: tab === "screener" || tab === "discovery" ? "0" : "24px 28px" }}>
           {/* Schwab reconnect banner */}
           {schwabDisconnected && (
-            <div style={{ margin: tab === "screener" || tab === "discovery" ? "12px 16px" : "0 0 16px 0", padding:"12px 18px", borderRadius:10, background:"rgba(234,179,8,0.08)", border:"1px solid rgba(234,179,8,0.2)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+            <div style={{ margin: tab === "screener" || tab === "discovery" ? "12px 16px" : "0 0 16px 0", padding:"12px 18px", borderRadius:10, background:"rgba(var(--tp-warning-rgb), 0.08)", border:"1px solid rgba(var(--tp-warning-rgb), 0.2)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <span style={{ fontSize:16 }}>⚠️</span>
                 <div>
-                  <div style={{ fontSize:13, fontWeight:600, color:"#eab308" }}>Schwab connection expired</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--tp-warning)" }}>Schwab connection expired</div>
                   <div style={{ fontSize:11, color:"#a3870d", marginTop:2 }}>Market data, screener, and live quotes require an active Schwab connection.</div>
                 </div>
               </div>
@@ -435,14 +435,14 @@ export default function TradePulsePlatform() {
                 } catch (e: any) {
                   alert(`Failed to start Schwab auth: ${e?.message || e}`);
                 }
-              }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
+              }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(var(--tp-accent-rgb), 0.25)" }}>
                 🔐 Reconnect Schwab
               </button>
             </div>
           )}
           {/* Schwab session expiring soon banner */}
           {schwabExpiringSoon && !schwabDisconnected && (
-            <div style={{ margin: tab === "screener" || tab === "discovery" ? "12px 16px" : "0 0 16px 0", padding:"12px 18px", borderRadius:10, background:"rgba(234,179,8,0.05)", border:"1px solid rgba(234,179,8,0.15)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+            <div style={{ margin: tab === "screener" || tab === "discovery" ? "12px 16px" : "0 0 16px 0", padding:"12px 18px", borderRadius:10, background:"rgba(var(--tp-warning-rgb), 0.05)", border:"1px solid rgba(var(--tp-warning-rgb), 0.15)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <span style={{ fontSize:16 }}>{String.fromCodePoint(0x1F514)}</span>
                 <div>
@@ -460,7 +460,7 @@ export default function TradePulsePlatform() {
                 } catch (e: any) {
                   alert(`Failed to start Schwab auth: ${e?.message || e}`);
                 }
-              }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(99,102,241,0.25)" }}>
+              }} style={{ padding:"8px 18px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:600, whiteSpace:"nowrap", boxShadow:"0 2px 10px rgba(var(--tp-accent-rgb), 0.25)" }}>
                 {String.fromCodePoint(0x1F510)} Reconnect Now
               </button>
             </div>
@@ -475,7 +475,7 @@ export default function TradePulsePlatform() {
                 border:"rgba(255,255,255,0.06)", borderLight:"rgba(255,255,255,0.1)",
                 inputBg:"#1e2028", cardBg:"rgba(255,255,255,0.02)",
                 headerBg:"rgba(13,15,20,0.85)", headerBorder:"rgba(255,255,255,0.06)",
-                activeBg:"rgba(99,102,241,0.12)", selectOptionBg:"#1e2028"
+                activeBg:"rgba(var(--tp-accent-rgb), 0.12)", selectOptionBg:"#1e2028"
               } : {
                 bg:"#f5f6fa", bgSecondary:"#ffffff", bgTertiary:"#eef0f5",
                 panelBg:"#ffffff", panelBorder:"rgba(0,0,0,0.08)",
@@ -483,7 +483,7 @@ export default function TradePulsePlatform() {
                 border:"rgba(0,0,0,0.08)", borderLight:"rgba(0,0,0,0.12)",
                 inputBg:"#f3f4f6", cardBg:"rgba(0,0,0,0.02)",
                 headerBg:"rgba(255,255,255,0.9)", headerBorder:"rgba(0,0,0,0.08)",
-                activeBg:"rgba(99,102,241,0.08)", selectOptionBg:"#ffffff"
+                activeBg:"rgba(var(--tp-accent-rgb), 0.08)", selectOptionBg:"#ffffff"
               }} prefs={prefs} setPrefs={setPrefs} isAdmin={isAdmin}/>
             </div>
           )}

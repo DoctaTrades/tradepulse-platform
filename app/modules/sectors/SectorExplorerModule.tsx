@@ -22,16 +22,16 @@ const PERF_MODES = [
 ] as const;
 
 function stratColor(s: string) {
-  if (s === '2U') return '#4ade80';
-  if (s === '2D') return '#f87171';
+  if (s === '2U') return 'var(--tp-success)';
+  if (s === '2D') return 'var(--tp-danger)';
   if (s === '3') return '#facc15';
   if (s === '1') return '#94a3b8';
   return '#64748b';
 }
 
 function stratBg(s: string) {
-  if (s === '2U') return 'rgba(74,222,128,0.12)';
-  if (s === '2D') return 'rgba(248,113,113,0.12)';
+  if (s === '2U') return 'rgba(var(--tp-success-rgb), 0.12)';
+  if (s === '2D') return 'rgba(var(--tp-danger-rgb), 0.12)';
   if (s === '3') return 'rgba(250,204,21,0.12)';
   if (s === '1') return 'rgba(148,163,184,0.08)';
   return 'rgba(100,116,139,0.08)';
@@ -39,10 +39,10 @@ function stratBg(s: string) {
 
 function perfColor(val: number) {
   if (val > 2) return '#22c55e';
-  if (val > 0.5) return '#4ade80';
+  if (val > 0.5) return 'var(--tp-success)';
   if (val > 0) return '#86efac';
   if (val > -0.5) return '#fca5a5';
-  if (val > -2) return '#f87171';
+  if (val > -2) return 'var(--tp-danger)';
   return '#ef4444';
 }
 
@@ -57,7 +57,7 @@ function rsiColor(rsi: number) {
   if (rsi >= 70) return '#ef4444';
   if (rsi >= 60) return '#f59e0b';
   if (rsi <= 30) return '#22c55e';
-  if (rsi <= 40) return '#4ade80';
+  if (rsi <= 40) return 'var(--tp-success)';
   return 'var(--text-mid)';
 }
 
@@ -203,7 +203,7 @@ export default function SectorExplorerModule({ user }: { user?: any }) {
       </div>
 
       {error && (
-        <div className="font-mono text-[10px] p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+        <div className="font-mono text-[10px] p-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--tp-danger)', border: '1px solid rgba(239,68,68,0.2)' }}>
           {error}
         </div>
       )}
@@ -327,7 +327,7 @@ export default function SectorExplorerModule({ user }: { user?: any }) {
                       <td className="px-3 py-2 border-b font-mono text-[10px]" style={{ borderColor: 'rgba(255,255,255,0.035)', color: 'var(--text-dim)' }}>
                         {formatMktCap(h.mktCap)}
                       </td>
-                      <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)', color: h.fromHigh > -5 ? '#4ade80' : h.fromHigh > -15 ? 'var(--text-mid)' : '#f87171' }}>
+                      <td className="px-3 py-2 border-b font-mono text-xs" style={{ borderColor: 'rgba(255,255,255,0.035)', color: h.fromHigh > -5 ? 'var(--tp-success)' : h.fromHigh > -15 ? 'var(--text-mid)' : 'var(--tp-danger)' }}>
                         {h.fromHigh?.toFixed(1)}%
                       </td>
                     </tr>

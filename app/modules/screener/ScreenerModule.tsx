@@ -579,14 +579,14 @@ export default function ScreenerModule({ user }: { user?: any }) {
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full ${schwabStatus.connected ? 'bg-green-500 shadow-[0_0_8px_#10b981]' : 'bg-gray-500'}`} />
-                  <span className="font-mono text-xs" style={{ color: schwabStatus.connected ? '#4ade80' : 'var(--text-dim)' }}>
+                  <span className="font-mono text-xs" style={{ color: schwabStatus.connected ? 'var(--tp-success)' : 'var(--text-dim)' }}>
                     {schwabStatus.connected ? 'Schwab Connected · Real-Time Data · 120 calls/min' : 'No API Connected'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {schwabStatus.connected ? (
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>● LIVE</span>
+                      <span className="font-mono text-[9px] px-2 py-1 rounded" style={{ background: 'rgba(var(--tp-success-rgb), 0.1)', color: 'var(--tp-success)', border: '1px solid rgba(var(--tp-success-rgb), 0.2)' }}>● LIVE</span>
                       <button onClick={async () => {
                         try {
                           const res = await authFetch('/api/schwab/auth', { method: 'POST' });
@@ -596,7 +596,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                         } catch (e: any) {
                           alert(`Failed to start Schwab auth: ${e?.message || e}`);
                         }
-                      }} className="font-mono text-[9px] px-2 py-1 rounded cursor-pointer" style={{ background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '1px solid rgba(234,179,8,0.2)' }}>
+                      }} className="font-mono text-[9px] px-2 py-1 rounded cursor-pointer" style={{ background: 'rgba(var(--tp-warning-rgb), 0.1)', color: 'var(--tp-warning)', border: '1px solid rgba(var(--tp-warning-rgb), 0.2)' }}>
                         ↻ Reconnect
                       </button>
                     </div>
@@ -1816,7 +1816,7 @@ function BuildInPlayBuilderButton({ ticker, legs }: { ticker: string; legs: Scre
           border: 'none',
           letterSpacing: 0.5,
           cursor: 'pointer',
-          boxShadow: '0 2px 10px rgba(99,102,241,0.25)',
+          boxShadow: '0 2px 10px rgba(var(--tp-accent-rgb), 0.25)',
         }}
         title="Open this play in Play Builder for full analysis"
       >
@@ -1942,7 +1942,7 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               <DetailRow label="Max Loss" value={`$${r.creditSpread.maxLoss.toFixed(2)} ($${(r.creditSpread.maxLoss * 100).toFixed(0)}/contract)`} color="var(--red)" />
               <DetailRow label="Width" value={`$${r.creditSpread.width}`} />
               {r.creditSpread.allWidths?.length > 1 && (
-                <details style={{ marginTop: 6, background: 'rgba(99,102,241,0.04)', borderRadius: 6, fontSize: 10 }}>
+                <details style={{ marginTop: 6, background: 'rgba(var(--tp-accent-rgb), 0.04)', borderRadius: 6, fontSize: 10 }}>
                   <summary style={{ padding: '6px 8px', color: 'var(--text-dim)', fontWeight: 600, cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ fontSize: 8 }}>&#9656;</span> All widths ({r.creditSpread.allWidths.length})
                   </summary>
@@ -2183,7 +2183,7 @@ function DetailPanel({ result: r, onClose, schwabConnected, activeStrategy }: { 
               {r.smaSlope !== undefined && <DetailRow label="SMA Slope (20d)" value={`${r.smaSlope > 0 ? "+" : ""}${r.smaSlope}%`} color={r.smaSlope >= 0 && r.smaSlope <= 8 ? "var(--green)" : "var(--gold)"} />}
               {r.calendarPress.supportProximity?.length > 0 && <DetailRow label="Near Support" value={r.calendarPress.supportProximity.map(s => `${s.level} ($${s.value})`).join(', ')} color="var(--blue3)" />}
               {r.calendarPress.allWidths?.length > 1 && (
-                <details style={{ marginTop: 6, background: 'rgba(99,102,241,0.04)', borderRadius: 6, fontSize: 10 }}>
+                <details style={{ marginTop: 6, background: 'rgba(var(--tp-accent-rgb), 0.04)', borderRadius: 6, fontSize: 10 }}>
                   <summary style={{ padding: '6px 8px', color: 'var(--text-dim)', fontWeight: 600, cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ fontSize: 8 }}>&#9656;</span> All setups ({r.calendarPress.allWidths.length})
                   </summary>

@@ -86,8 +86,8 @@ export default function DeepDiveModule({ user }: { user?: any }) {
     return `$${n.toLocaleString()}`;
   };
   const fmtPct = (n: number | null) => n !== null && n !== undefined ? `${n >= 0 ? '+' : ''}${n}%` : '—';
-  const pctColor = (n: number) => n >= 0 ? '#4ade80' : '#f87171';
-  const scoreColor = (s: string) => s === 'green' ? '#4ade80' : s === 'yellow' ? '#eab308' : '#f87171';
+  const pctColor = (n: number) => n >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
+  const scoreColor = (s: string) => s === 'green' ? 'var(--tp-success)' : s === 'yellow' ? 'var(--tp-warning)' : 'var(--tp-danger)';
   const scoreIcon = (s: string) => s === 'green' ? '🟢' : s === 'yellow' ? '🟡' : '🔴';
 
   const quickTickers = ['AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'AMD', 'SPY', 'SOFI', 'PLTR', 'COIN'];
@@ -110,7 +110,7 @@ export default function DeepDiveModule({ user }: { user?: any }) {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24 }}>
         {quickTickers.map(t => (
           <button key={t} onClick={() => { setTicker(t); loadData(t); }}
-            style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', background: data?.ticker === t ? 'rgba(99,102,241,0.15)' : 'transparent', color: data?.ticker === t ? 'var(--blue3)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }}>{t}</button>
+            style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', background: data?.ticker === t ? 'rgba(var(--tp-accent-rgb), 0.15)' : 'transparent', color: data?.ticker === t ? 'var(--blue3)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }}>{t}</button>
         ))}
       </div>
 
@@ -188,10 +188,10 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {stratMatrix.summary.bullishSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>▲ {stratMatrix.summary.bullishSetups} Bull</span>}
-                  {stratMatrix.summary.bearishSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>▼ {stratMatrix.summary.bearishSetups} Bear</span>}
-                  {stratMatrix.summary.neutralSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(234,179,8,0.12)', color: '#eab308' }}>● {stratMatrix.summary.neutralSetups} Building</span>}
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: stratMatrix.summary.bias === 'BULLISH' ? 'rgba(74,222,128,0.12)' : stratMatrix.summary.bias === 'BEARISH' ? 'rgba(248,113,113,0.12)' : 'rgba(255,255,255,0.06)', color: stratMatrix.summary.bias === 'BULLISH' ? '#4ade80' : stratMatrix.summary.bias === 'BEARISH' ? '#f87171' : 'var(--text-dim)' }}>Bias: {stratMatrix.summary.bias}</span>
+                  {stratMatrix.summary.bullishSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(var(--tp-success-rgb), 0.12)', color: 'var(--tp-success)' }}>▲ {stratMatrix.summary.bullishSetups} Bull</span>}
+                  {stratMatrix.summary.bearishSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(var(--tp-danger-rgb), 0.12)', color: 'var(--tp-danger)' }}>▼ {stratMatrix.summary.bearishSetups} Bear</span>}
+                  {stratMatrix.summary.neutralSetups > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(var(--tp-warning-rgb), 0.12)', color: 'var(--tp-warning)' }}>● {stratMatrix.summary.neutralSetups} Building</span>}
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: stratMatrix.summary.bias === 'BULLISH' ? 'rgba(var(--tp-success-rgb), 0.12)' : stratMatrix.summary.bias === 'BEARISH' ? 'rgba(var(--tp-danger-rgb), 0.12)' : 'rgba(255,255,255,0.06)', color: stratMatrix.summary.bias === 'BULLISH' ? 'var(--tp-success)' : stratMatrix.summary.bias === 'BEARISH' ? 'var(--tp-danger)' : 'var(--text-dim)' }}>Bias: {stratMatrix.summary.bias}</span>
                 </div>
               </div>
               {!matrixCollapsed && (<>
@@ -211,18 +211,18 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                       const rows = stratMatrix.matrix.filter((m: any) => m.group === group);
                       if (rows.length === 0) return null;
                       return [
-                        <tr key={`h-${group}`} style={{ background: 'rgba(99,102,241,0.03)' }}>
+                        <tr key={`h-${group}`} style={{ background: 'rgba(var(--tp-accent-rgb), 0.03)' }}>
                           <td colSpan={5} style={{ padding: '5px 12px', fontSize: 9, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{group}</td>
                         </tr>,
                         ...rows.map((m: any) => {
-                          const stratColor = m.strat === '2U' ? { bg: 'rgba(74,222,128,0.12)', text: '#4ade80' } :
-                            m.strat === '2D' ? { bg: 'rgba(248,113,113,0.12)', text: '#f87171' } :
-                            m.strat === '1' ? { bg: 'rgba(234,179,8,0.12)', text: '#eab308' } :
-                            m.strat === '3' ? { bg: 'rgba(99,102,241,0.12)', text: '#a5b4fc' } :
+                          const stratColor = m.strat === '2U' ? { bg: 'rgba(var(--tp-success-rgb), 0.12)', text: 'var(--tp-success)' } :
+                            m.strat === '2D' ? { bg: 'rgba(var(--tp-danger-rgb), 0.12)', text: 'var(--tp-danger)' } :
+                            m.strat === '1' ? { bg: 'rgba(var(--tp-warning-rgb), 0.12)', text: 'var(--tp-warning)' } :
+                            m.strat === '3' ? { bg: 'rgba(var(--tp-accent-rgb), 0.12)', text: 'var(--tp-accent-light)' } :
                             { bg: 'rgba(255,255,255,0.05)', text: 'var(--text-dim)' };
                           const hasSetup = m.setups.length > 0;
                           return (
-                            <tr key={m.timeframe} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: hasSetup ? 'rgba(99,102,241,0.02)' : 'transparent' }}>
+                            <tr key={m.timeframe} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: hasSetup ? 'rgba(var(--tp-accent-rgb), 0.02)' : 'transparent' }}>
                               <td style={{ padding: '5px 12px', fontWeight: 600, color: 'var(--text)', fontFamily: 'monospace', fontSize: 11 }}>{m.timeframe}</td>
                               <td style={{ textAlign: 'center', padding: '5px 12px' }}>
                                 <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: stratColor.bg, color: stratColor.text }}>{m.strat}</span>
@@ -231,26 +231,26 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                                 {m.sequence.map((s: string, j: number) => (
                                   <span key={j}>
                                     {j > 0 && <span style={{ color: 'var(--text-dim)', opacity: 0.4 }}> → </span>}
-                                    <span style={{ fontWeight: j === m.sequence.length - 1 ? 700 : 400, color: s === '2U' ? '#4ade80' : s === '2D' ? '#f87171' : s === '1' ? '#eab308' : s === '3' ? '#a5b4fc' : 'var(--text-dim)' }}>{s}</span>
+                                    <span style={{ fontWeight: j === m.sequence.length - 1 ? 700 : 400, color: s === '2U' ? 'var(--tp-success)' : s === '2D' ? 'var(--tp-danger)' : s === '1' ? 'var(--tp-warning)' : s === '3' ? 'var(--tp-accent-light)' : 'var(--text-dim)' }}>{s}</span>
                                   </span>
                                 ))}
                               </td>
                               <td style={{ padding: '5px 12px' }}>
                                 {m.setups.map((s: any, j: number) => (
-                                  <span key={j} style={{ display: 'inline-block', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 3, marginRight: 4, background: s.direction === 'BULLISH' ? 'rgba(74,222,128,0.12)' : s.direction === 'BEARISH' ? 'rgba(248,113,113,0.12)' : 'rgba(99,102,241,0.1)', color: s.direction === 'BULLISH' ? '#4ade80' : s.direction === 'BEARISH' ? '#f87171' : '#a5b4fc' }}>{s.pattern}</span>
+                                  <span key={j} style={{ display: 'inline-block', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 3, marginRight: 4, background: s.direction === 'BULLISH' ? 'rgba(var(--tp-success-rgb), 0.12)' : s.direction === 'BEARISH' ? 'rgba(var(--tp-danger-rgb), 0.12)' : 'rgba(var(--tp-accent-rgb), 0.1)', color: s.direction === 'BULLISH' ? 'var(--tp-success)' : s.direction === 'BEARISH' ? 'var(--tp-danger)' : 'var(--tp-accent-light)' }}>{s.pattern}</span>
                                 ))}
                                 {m.setups.length === 0 && <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>—</span>}
                               </td>
                               <td style={{ textAlign: 'right', padding: '5px 12px', fontFamily: 'monospace', fontSize: 10 }}>
                                 {m.strat === '1' || m.setups.some((s: any) => s.type === 'building' || s.type === 'coiling') ? (
                                   <div>
-                                    <div style={{ color: '#4ade80' }}>↑ ${m.triggerHigh}</div>
-                                    <div style={{ color: '#f87171' }}>↓ ${m.triggerLow}</div>
+                                    <div style={{ color: 'var(--tp-success)' }}>↑ ${m.triggerHigh}</div>
+                                    <div style={{ color: 'var(--tp-danger)' }}>↓ ${m.triggerLow}</div>
                                   </div>
                                 ) : m.setups.some((s: any) => s.direction === 'BULLISH') ? (
-                                  <div style={{ color: '#4ade80' }}>↑ ${m.triggerHigh}</div>
+                                  <div style={{ color: 'var(--tp-success)' }}>↑ ${m.triggerHigh}</div>
                                 ) : m.setups.some((s: any) => s.direction === 'BEARISH') ? (
-                                  <div style={{ color: '#f87171' }}>↓ ${m.triggerLow}</div>
+                                  <div style={{ color: 'var(--tp-danger)' }}>↓ ${m.triggerLow}</div>
                                 ) : (
                                   <span style={{ color: 'var(--text-dim)' }}>—</span>
                                 )}
@@ -264,10 +264,10 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                 </table>
               </div>
               <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 14, fontSize: 9, color: 'var(--text-dim)' }}>
-                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(74,222,128,0.3)', marginRight: 3 }}/>2U</span>
-                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(248,113,113,0.3)', marginRight: 3 }}/>2D</span>
-                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(234,179,8,0.3)', marginRight: 3 }}/>1 (inside)</span>
-                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(99,102,241,0.3)', marginRight: 3 }}/>3 (outside)</span>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(var(--tp-success-rgb), 0.3)', marginRight: 3 }}/>2U</span>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(var(--tp-danger-rgb), 0.3)', marginRight: 3 }}/>2D</span>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(var(--tp-warning-rgb), 0.3)', marginRight: 3 }}/>1 (inside)</span>
+                <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: 'rgba(var(--tp-accent-rgb), 0.3)', marginRight: 3 }}/>3 (outside)</span>
                 <span style={{ marginLeft: 'auto' }}>↑↓ = breakout triggers</span>
               </div>
               </>)}
@@ -295,7 +295,7 @@ export default function DeepDiveModule({ user }: { user?: any }) {
               </div>
               {data.rating && (
                 <div style={{ marginTop: 12, padding: '8px 12px', background: 'var(--navy3)', borderRadius: 8, fontSize: 11, color: 'var(--text-mid)' }}>
-                  Analyst Consensus: <span style={{ color: '#a5b4fc', fontWeight: 700 }}>{data.rating}</span>
+                  Analyst Consensus: <span style={{ color: 'var(--tp-accent-light)', fontWeight: 700 }}>{data.rating}</span>
                 </div>
               )}
             </div>
@@ -325,13 +325,13 @@ export default function DeepDiveModule({ user }: { user?: any }) {
               { label: 'PEG Ratio', value: data.valuation.peg ? `${data.valuation.peg}x` : '—' },
               { label: 'P/B Ratio', value: data.valuation.pb ? `${data.valuation.pb}x` : '—' },
               { label: 'EV/EBITDA', value: data.valuation.evToEbitda ? `${data.valuation.evToEbitda}x` : '—' },
-              { label: 'Rev Growth', value: fmtPct(data.growth.revenueGrowth), color: data.growth.revenueGrowth > 0 ? '#4ade80' : '#f87171' },
-              { label: 'EPS Growth', value: fmtPct(data.growth.epsGrowth), color: data.growth.epsGrowth > 0 ? '#4ade80' : '#f87171' },
+              { label: 'Rev Growth', value: fmtPct(data.growth.revenueGrowth), color: data.growth.revenueGrowth > 0 ? 'var(--tp-success)' : 'var(--tp-danger)' },
+              { label: 'EPS Growth', value: fmtPct(data.growth.epsGrowth), color: data.growth.epsGrowth > 0 ? 'var(--tp-success)' : 'var(--tp-danger)' },
               { label: 'Gross Margin', value: data.margins.gross ? `${data.margins.gross}%` : '—' },
-              { label: 'Net Margin', value: data.margins.net ? `${data.margins.net}%` : '—', color: data.margins.net > 0 ? '#4ade80' : '#f87171' },
+              { label: 'Net Margin', value: data.margins.net ? `${data.margins.net}%` : '—', color: data.margins.net > 0 ? 'var(--tp-success)' : 'var(--tp-danger)' },
               { label: 'Debt/Equity', value: data.debtHealth.debtToEquity !== null ? `${data.debtHealth.debtToEquity}x` : '—' },
               { label: 'Current Ratio', value: data.debtHealth.currentRatio ? `${data.debtHealth.currentRatio}x` : '—' },
-              { label: 'Free Cash Flow', value: fmtB(data.cashFlow.freeCashFlow), color: data.cashFlow.freeCashFlow > 0 ? '#4ade80' : '#f87171' },
+              { label: 'Free Cash Flow', value: fmtB(data.cashFlow.freeCashFlow), color: data.cashFlow.freeCashFlow > 0 ? 'var(--tp-success)' : 'var(--tp-danger)' },
               { label: 'Div Yield', value: data.dividend.yield ? `${data.dividend.yield}%` : 'None' },
             ].map(m => (
               <div key={m.label} style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
@@ -354,7 +354,7 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                       <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                         <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>Est: ${e.estimated?.toFixed(2)}</span>
                         <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>Act: ${e.actual?.toFixed(2)}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: e.beat ? '#4ade80' : '#f87171' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: e.beat ? 'var(--tp-success)' : 'var(--tp-danger)' }}>
                           {e.beat ? '✓ Beat' : '✗ Miss'} {e.surprise !== null ? `($${Math.abs(e.surprise).toFixed(2)})` : ''}
                         </span>
                       </div>
@@ -381,7 +381,7 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                       <tr key={i}>
                         <td style={{ padding: '6px 8px', fontSize: 11, color: 'var(--text-mid)', fontFamily: 'monospace' }}>{r.year}</td>
                         <td style={{ padding: '6px 8px', fontSize: 11, color: 'var(--text)', fontFamily: 'monospace', textAlign: 'right' }}>{fmtB(r.revenue)}</td>
-                        <td style={{ padding: '6px 8px', fontSize: 11, color: r.netIncome > 0 ? '#4ade80' : '#f87171', fontFamily: 'monospace', textAlign: 'right' }}>{fmtB(r.netIncome)}</td>
+                        <td style={{ padding: '6px 8px', fontSize: 11, color: r.netIncome > 0 ? 'var(--tp-success)' : 'var(--tp-danger)', fontFamily: 'monospace', textAlign: 'right' }}>{fmtB(r.netIncome)}</td>
                         <td style={{ padding: '6px 8px', fontSize: 11, color: 'var(--text)', fontFamily: 'monospace', textAlign: 'right' }}>${r.eps?.toFixed(2)}</td>
                       </tr>
                     ))}
@@ -401,8 +401,8 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                   <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>Insider Activity</div>
                   {data.insiderSentiment && (
                     <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
-                      background: data.insiderSentiment === 'net-buyer' ? 'rgba(74,222,128,0.1)' : data.insiderSentiment === 'net-seller' ? 'rgba(248,113,113,0.1)' : 'rgba(234,179,8,0.1)',
-                      color: data.insiderSentiment === 'net-buyer' ? '#4ade80' : data.insiderSentiment === 'net-seller' ? '#f87171' : '#eab308'
+                      background: data.insiderSentiment === 'net-buyer' ? 'rgba(var(--tp-success-rgb), 0.1)' : data.insiderSentiment === 'net-seller' ? 'rgba(var(--tp-danger-rgb), 0.1)' : 'rgba(var(--tp-warning-rgb), 0.1)',
+                      color: data.insiderSentiment === 'net-buyer' ? 'var(--tp-success)' : data.insiderSentiment === 'net-seller' ? 'var(--tp-danger)' : 'var(--tp-warning)'
                     }}>
                       {data.insiderSentiment === 'net-buyer' ? '↑ Net Buying' : data.insiderSentiment === 'net-seller' ? '↓ Net Selling' : '— Neutral'}
                     </span>
@@ -415,7 +415,7 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                       <span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>{t.filingDate}</span>
                     </div>
                     <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
-                      color: t.change > 0 ? '#4ade80' : '#f87171'
+                      color: t.change > 0 ? 'var(--tp-success)' : 'var(--tp-danger)'
                     }}>
                       {t.change > 0 ? '+' : ''}{t.change?.toLocaleString()} shares
                     </span>
@@ -431,8 +431,8 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                   <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 }}>Analyst Consensus</div>
                   {data.analystConsensus && (
                     <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
-                      background: data.analystConsensus === 'Buy' ? 'rgba(74,222,128,0.1)' : data.analystConsensus === 'Sell' ? 'rgba(248,113,113,0.1)' : 'rgba(234,179,8,0.1)',
-                      color: data.analystConsensus === 'Buy' ? '#4ade80' : data.analystConsensus === 'Sell' ? '#f87171' : '#eab308'
+                      background: data.analystConsensus === 'Buy' ? 'rgba(var(--tp-success-rgb), 0.1)' : data.analystConsensus === 'Sell' ? 'rgba(var(--tp-danger-rgb), 0.1)' : 'rgba(var(--tp-warning-rgb), 0.1)',
+                      color: data.analystConsensus === 'Buy' ? 'var(--tp-success)' : data.analystConsensus === 'Sell' ? 'var(--tp-danger)' : 'var(--tp-warning)'
                     }}>
                       {data.analystConsensus} ({data.totalAnalysts} analysts)
                     </span>
@@ -446,15 +446,15 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                       <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 4 }}>{r.period}</div>
                       <div style={{ display: 'flex', height: 16, borderRadius: 4, overflow: 'hidden' }}>
                         {r.strongBuy > 0 && <div style={{ width: `${(r.strongBuy / total) * 100}%`, background: '#059669' }} title={`Strong Buy: ${r.strongBuy}`}/>}
-                        {r.buy > 0 && <div style={{ width: `${(r.buy / total) * 100}%`, background: '#4ade80' }} title={`Buy: ${r.buy}`}/>}
-                        {r.hold > 0 && <div style={{ width: `${(r.hold / total) * 100}%`, background: '#eab308' }} title={`Hold: ${r.hold}`}/>}
-                        {r.sell > 0 && <div style={{ width: `${(r.sell / total) * 100}%`, background: '#f87171' }} title={`Sell: ${r.sell}`}/>}
+                        {r.buy > 0 && <div style={{ width: `${(r.buy / total) * 100}%`, background: 'var(--tp-success)' }} title={`Buy: ${r.buy}`}/>}
+                        {r.hold > 0 && <div style={{ width: `${(r.hold / total) * 100}%`, background: 'var(--tp-warning)' }} title={`Hold: ${r.hold}`}/>}
+                        {r.sell > 0 && <div style={{ width: `${(r.sell / total) * 100}%`, background: 'var(--tp-danger)' }} title={`Sell: ${r.sell}`}/>}
                         {r.strongSell > 0 && <div style={{ width: `${(r.strongSell / total) * 100}%`, background: '#dc2626' }} title={`Strong Sell: ${r.strongSell}`}/>}
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-dim)', marginTop: 2 }}>
-                        <span style={{ color: '#4ade80' }}>Buy {(r.strongBuy || 0) + (r.buy || 0)}</span>
-                        <span style={{ color: '#eab308' }}>Hold {r.hold || 0}</span>
-                        <span style={{ color: '#f87171' }}>Sell {(r.sell || 0) + (r.strongSell || 0)}</span>
+                        <span style={{ color: 'var(--tp-success)' }}>Buy {(r.strongBuy || 0) + (r.buy || 0)}</span>
+                        <span style={{ color: 'var(--tp-warning)' }}>Hold {r.hold || 0}</span>
+                        <span style={{ color: 'var(--tp-danger)' }}>Sell {(r.sell || 0) + (r.strongSell || 0)}</span>
                       </div>
                     </div>
                   );
@@ -467,7 +467,7 @@ export default function DeepDiveModule({ user }: { user?: any }) {
           {(data.peers?.length > 0 || data.nextEarningsDate || data.dataSources?.length > 0) && (
             <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               {data.nextEarningsDate && (
-                <span style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.15)', color: '#eab308', fontWeight: 600 }}>
+                <span style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, background: 'rgba(var(--tp-warning-rgb), 0.08)', border: '1px solid rgba(var(--tp-warning-rgb), 0.15)', color: 'var(--tp-warning)', fontWeight: 600 }}>
                   📅 Next Earnings: {data.nextEarningsDate}
                 </span>
               )}
@@ -475,7 +475,7 @@ export default function DeepDiveModule({ user }: { user?: any }) {
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 9, color: 'var(--text-dim)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Peers:</span>
                   {data.peers.map(p => (
-                    <button key={p} onClick={() => { setTicker(p); loadData(p); }} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(99,102,241,0.2)', background: 'rgba(99,102,241,0.06)', color: '#a5b4fc', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                    <button key={p} onClick={() => { setTicker(p); loadData(p); }} style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(var(--tp-accent-rgb), 0.2)', background: 'rgba(var(--tp-accent-rgb), 0.06)', color: 'var(--tp-accent-light)', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
                       {p}
                     </button>
                   ))}

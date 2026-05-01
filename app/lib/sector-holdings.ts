@@ -43,7 +43,7 @@ export const SECTORS: SectorDef[] = [
     ],
   },
   {
-    etf: 'XLY', label: 'Consumer Disc.', color: '#8b5cf6',
+    etf: 'XLY', label: 'Consumer Disc.', color: 'var(--tp-accent-purple)',
     // Removed: POOL, GPC, KMX (niche retail, low options vol)
     // Added: SHOP, CVNA (high-volume e-commerce/auto)
     tickers: [
@@ -102,7 +102,7 @@ export const SECTORS: SectorDef[] = [
     ],
   },
   {
-    etf: 'XLU', label: 'Utilities', color: '#eab308',
+    etf: 'XLU', label: 'Utilities', color: 'var(--tp-warning)',
     // Removed: OGE, PNW, LNT, NI (small utilities, low options vol)
     tickers: [
       'NEE','SO','DUK','CEG','SRE','AEP','D','EXC','PEG','ED',

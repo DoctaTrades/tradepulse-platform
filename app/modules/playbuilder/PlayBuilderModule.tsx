@@ -1047,7 +1047,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       const x1 = Math.max(padL, xFor(lo2));
       const x2 = Math.min(padL + W, xFor(hi2));
       if (x2 > x1) {
-        ctx.fillStyle = 'rgba(99,102,241,0.05)';
+        ctx.fillStyle = 'rgba(var(--tp-accent-rgb), 0.05)';
         ctx.fillRect(x1, padT, x2 - x1, H);
       }
       // 1σ band (slightly more visible)
@@ -1056,11 +1056,11 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       const x3 = Math.max(padL, xFor(lo1));
       const x4 = Math.min(padL + W, xFor(hi1));
       if (x4 > x3) {
-        ctx.fillStyle = 'rgba(99,102,241,0.08)';
+        ctx.fillStyle = 'rgba(var(--tp-accent-rgb), 0.08)';
         ctx.fillRect(x3, padT, x4 - x3, H);
       }
       // Sigma boundary lines (subtle)
-      ctx.strokeStyle = 'rgba(99,102,241,0.35)';
+      ctx.strokeStyle = 'rgba(var(--tp-accent-rgb), 0.35)';
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       [lo2, lo1, hi1, hi2].forEach(s => {
@@ -1098,8 +1098,8 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       ctx.closePath();
       ctx.fill();
     };
-    drawFill(true,  'rgba(74,222,128,0.18)');   // profit (green)
-    drawFill(false, 'rgba(248,113,113,0.18)');  // loss (red)
+    drawFill(true,  'rgba(var(--tp-success-rgb), 0.18)');   // profit (green)
+    drawFill(false, 'rgba(var(--tp-danger-rgb), 0.18)');  // loss (red)
 
     // ─── "Held to today" curve (theta decay overlay) — purple dotted ──
     if (todaySamples && todaySamples.length) {
@@ -1117,7 +1117,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     }
 
     // ─── Payoff curve (at expiration) ──
-    ctx.strokeStyle = '#a5b4fc';
+    ctx.strokeStyle = 'var(--tp-accent-light)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     samples.forEach((s, i) => {
@@ -1131,7 +1131,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     legs.forEach(leg => {
       const x = xFor(leg.strike);
       if (x < padL || x > padL + W) return;
-      ctx.strokeStyle = leg.side === 'SELL' ? 'rgba(74,222,128,0.5)' : 'rgba(248,113,113,0.5)';
+      ctx.strokeStyle = leg.side === 'SELL' ? 'rgba(var(--tp-success-rgb), 0.5)' : 'rgba(var(--tp-danger-rgb), 0.5)';
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
       ctx.beginPath();
@@ -1145,7 +1145,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
     breakevens.forEach(be => {
       const x = xFor(be);
       if (x < padL || x > padL + W) return;
-      ctx.strokeStyle = '#eab308';
+      ctx.strokeStyle = 'var(--tp-warning)';
       ctx.lineWidth = 1.5;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
@@ -1154,7 +1154,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       ctx.stroke();
       ctx.setLineDash([]);
       // Label
-      ctx.fillStyle = '#eab308';
+      ctx.fillStyle = 'var(--tp-warning)';
       ctx.font = '10px Inter, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`BE $${be.toFixed(2)}`, x, padT - 4);
@@ -1229,7 +1229,7 @@ function PayoffChart({ samples, todaySamples, underlying, breakevens, expectedMo
       ctx.fillStyle = '#e2e4ea';
       ctx.textAlign = 'left';
       ctx.fillText(txt1, tx + 8, ty + 14);
-      ctx.fillStyle = hover.pnl >= 0 ? '#4ade80' : '#f87171';
+      ctx.fillStyle = hover.pnl >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
       ctx.fillText(txt2, tx + 8, ty + 28);
     }
   }, [samples, todaySamples, width, height, underlying, breakevens, expectedMove, legs, hover]);
@@ -1395,7 +1395,7 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
     }
 
     // "Today" label on the top edge
-    ctx.fillStyle = '#a5b4fc';
+    ctx.fillStyle = 'var(--tp-accent-light)';
     ctx.textAlign = 'left';
     ctx.font = '9px Inter, system-ui, sans-serif';
     ctx.fillText('TODAY →', padL + 3, padT - 3);
@@ -1426,7 +1426,7 @@ function HeatMap({ legs, priceLo, priceHi, underlying, height = 240 }: HeatMapPr
       ctx.fillStyle = '#e2e4ea';
       ctx.textAlign = 'left';
       ctx.fillText(t1, tx + 8, ty + 14);
-      ctx.fillStyle = hover.pnl >= 0 ? '#4ade80' : '#f87171';
+      ctx.fillStyle = hover.pnl >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)';
       ctx.fillText(t2, tx + 8, ty + 28);
     }
   }, [grid, width, height, priceLo, priceHi, underlying, hover]);
@@ -1990,7 +1990,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             Design strategies live — pick a ticker, choose a strategy, fine-tune the legs.
           </div>
         </div>
-        <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)', padding: '4px 10px', borderRadius: 6, background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}>
+        <div style={{ fontSize: 10, color: 'var(--text-dim, #8a8f9e)', padding: '4px 10px', borderRadius: 6, background: 'rgba(var(--tp-accent-rgb), 0.08)', border: '1px solid rgba(var(--tp-accent-rgb), 0.2)' }}>
           SESSION 1 BUILD
         </div>
       </div>
@@ -2030,7 +2030,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
               </div>
               <div>
                 <div style={label}>Underlying</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#a5b4fc' }}>{fmtMoney(underlying)}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--tp-accent-light)' }}>{fmtMoney(underlying)}</div>
               </div>
               <div>
                 <div style={label}>Expirations</div>
@@ -2045,7 +2045,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         </div>
 
         {error && (
-          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', fontSize: 12 }}>
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: 'var(--tp-danger)', fontSize: 12 }}>
             {error}
           </div>
         )}
@@ -2065,9 +2065,9 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                 style={{
                   padding: '8px 14px',
                   borderRadius: 8,
-                  border: active ? '1px solid rgba(99,102,241,0.6)' : '1px solid var(--border, rgba(255,255,255,0.08))',
-                  background: active ? 'rgba(99,102,241,0.15)' : 'var(--input-bg, rgba(255,255,255,0.03))',
-                  color: active ? '#a5b4fc' : (s.enabled ? 'var(--text, #e2e4ea)' : 'var(--text-dim, #8a8f9e)'),
+                  border: active ? '1px solid rgba(var(--tp-accent-rgb), 0.6)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+                  background: active ? 'rgba(var(--tp-accent-rgb), 0.15)' : 'var(--input-bg, rgba(255,255,255,0.03))',
+                  color: active ? 'var(--tp-accent-light)' : (s.enabled ? 'var(--text, #e2e4ea)' : 'var(--text-dim, #8a8f9e)'),
                   cursor: 'pointer',
                   fontSize: 12,
                   fontWeight: 600,
@@ -2077,7 +2077,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
               >
                 {s.shortName}
                 {!s.enabled && (
-                  <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 4, background: 'rgba(234,179,8,0.15)', color: '#eab308' }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 4, background: 'rgba(var(--tp-warning-rgb), 0.15)', color: 'var(--tp-warning)' }}>
                     SOON
                   </span>
                 )}
@@ -2153,7 +2153,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                           <select
                             value={leg.side}
                             onChange={e => updateLeg(leg.id, { side: e.target.value as LegSide })}
-                            style={{ ...selectStyle, color: leg.side === 'SELL' ? '#4ade80' : '#f87171', fontWeight: 700 }}
+                            style={{ ...selectStyle, color: leg.side === 'SELL' ? 'var(--tp-success)' : 'var(--tp-danger)', fontWeight: 700 }}
                           >
                             <option value="SELL">SELL</option>
                             <option value="BUY">BUY</option>
@@ -2202,7 +2202,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                         </td>
                         <td style={tdStyle}>{fmtNum(leg.bid)}</td>
                         <td style={tdStyle}>{fmtNum(leg.ask)}</td>
-                        <td style={{ ...tdStyle, fontWeight: 700, color: '#a5b4fc' }}>{fmtNum(midPrice)}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--tp-accent-light)' }}>{fmtNum(midPrice)}</td>
                         <td style={tdStyle}>
                           <EntryPriceInput
                             legId={leg.id}
@@ -2217,7 +2217,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                         <td style={tdStyle}>
                           <button
                             onClick={() => removeLeg(leg.id)}
-                            style={{ padding: '4px 8px', borderRadius: 4, border: 'none', background: 'rgba(239,68,68,0.1)', color: '#f87171', cursor: 'pointer', fontSize: 11 }}
+                            style={{ padding: '4px 8px', borderRadius: 4, border: 'none', background: 'rgba(239,68,68,0.1)', color: 'var(--tp-danger)', cursor: 'pointer', fontSize: 11 }}
                           >
                             ×
                           </button>
@@ -2245,19 +2245,19 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <MetricRow label={metrics.netCredit >= 0 ? 'Credit Received' : 'Debit Paid'}
                 value={fmtMoney(Math.abs(metrics.netCredit))}
-                color={metrics.netCredit >= 0 ? '#4ade80' : '#f87171'}
+                color={metrics.netCredit >= 0 ? 'var(--tp-success)' : 'var(--tp-danger)'}
                 bold />
               <MetricRow label="Max Profit"
                 value={isFinite(metrics.maxProfit) ? fmtMoney(metrics.maxProfit) : 'Unlimited'}
-                color="#4ade80" />
+                color="var(--tp-success)" />
               <MetricRow label="Max Loss"
                 value={isFinite(metrics.maxLoss) ? fmtMoney(-metrics.maxLoss) : 'Unlimited'}
-                color="#f87171" />
+                color="var(--tp-danger)" />
               <MetricRow label="Capital Required"
                 value={fmtMoney(metrics.capitalRequired, 0)} />
               <MetricRow label="Return on Risk"
                 value={fmtPct(metrics.ror)}
-                color={metrics.ror > 0 ? '#a5b4fc' : 'var(--text-dim, #8a8f9e)'} />
+                color={metrics.ror > 0 ? 'var(--tp-accent-light)' : 'var(--text-dim, #8a8f9e)'} />
               <MetricRow label="Probability of Profit"
                 value={fmtPct(metrics.pop)} />
               <MetricRow label="Breakevens"
@@ -2282,14 +2282,14 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
             <div style={label}>Payoff at Expiration</div>
             <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', alignItems: 'center', flexWrap: 'wrap' }}>
-              <LegendDot color="#a5b4fc" label="At expiration" />
+              <LegendDot color="var(--tp-accent-light)" label="At expiration" />
               <LegendDot color="#c4b5fd" label="If held to today" dashed />
               <LegendDot color="#ffffff" label="Current price" />
-              <LegendDot color="#eab308" label="Breakeven" dashed />
-              <LegendDot color="rgba(74,222,128,0.7)" label="Short strike" dashed />
-              <LegendDot color="rgba(248,113,113,0.7)" label="Long strike" dashed />
+              <LegendDot color="var(--tp-warning)" label="Breakeven" dashed />
+              <LegendDot color="rgba(var(--tp-success-rgb), 0.7)" label="Short strike" dashed />
+              <LegendDot color="rgba(var(--tp-danger-rgb), 0.7)" label="Long strike" dashed />
               {expectedMove && (
-                <LegendDot color="rgba(99,102,241,0.5)" label={`Exp. move (1σ/2σ, IV ${(expectedMove.iv * 100).toFixed(0)}%, ${expectedMove.dte}d)`} />
+                <LegendDot color="rgba(var(--tp-accent-rgb), 0.5)" label={`Exp. move (1σ/2σ, IV ${(expectedMove.iv * 100).toFixed(0)}%, ${expectedMove.dte}d)`} />
               )}
             </div>
           </div>
@@ -2311,8 +2311,8 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
             <div style={label}>P&amp;L Heat Map (price × days forward)</div>
             <div style={{ display: 'flex', gap: 14, fontSize: 10, color: 'var(--text-dim, #8a8f9e)', alignItems: 'center', flexWrap: 'wrap' }}>
-              <LegendDot color="rgba(74,222,128,0.7)" label="Profit" />
-              <LegendDot color="rgba(248,113,113,0.7)" label="Loss" />
+              <LegendDot color="rgba(var(--tp-success-rgb), 0.7)" label="Profit" />
+              <LegendDot color="rgba(var(--tp-danger-rgb), 0.7)" label="Loss" />
               <span style={{ color: 'var(--text-dim, #8a8f9e)' }}>Intensity = magnitude · Black-Scholes valued</span>
             </div>
           </div>
@@ -2397,11 +2397,11 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
 
             {/* Mid vs Actual radio toggle */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: useMidPrices ? '#a5b4fc' : 'var(--text-dim, #8a8f9e)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: useMidPrices ? 'var(--tp-accent-light)' : 'var(--text-dim, #8a8f9e)' }}>
                 <input type="radio" checked={useMidPrices} onChange={() => setUseMidPrices(true)} />
                 Use mid prices (theoretical)
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: !useMidPrices ? '#a5b4fc' : 'var(--text-dim, #8a8f9e)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: !useMidPrices ? 'var(--tp-accent-light)' : 'var(--text-dim, #8a8f9e)' }}>
                 <input type="radio" checked={!useMidPrices} onChange={() => setUseMidPrices(false)} />
                 Enter actual fills (per leg)
               </label>
@@ -2426,7 +2426,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                     const m = mid(leg.bid, leg.ask);
                     return (
                       <tr key={leg.id} style={{ borderTop: '1px solid var(--border, rgba(255,255,255,0.04))' }}>
-                        <td style={{ padding: '6px 4px', color: leg.side === 'SELL' ? '#4ade80' : '#f87171', fontWeight: 700 }}>{leg.side}</td>
+                        <td style={{ padding: '6px 4px', color: leg.side === 'SELL' ? 'var(--tp-success)' : 'var(--tp-danger)', fontWeight: 700 }}>{leg.side}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.type}</td>
                         <td style={{ padding: '6px 4px' }}>{leg.strike.toFixed(2)}</td>
                         <td style={{ padding: '6px 4px' }}>{fmtExpiry(leg.expiration)}</td>
@@ -2493,7 +2493,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
                   padding: '9px 22px', borderRadius: 8, border: 'none',
                   background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
                   color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                  boxShadow: '0 4px 14px rgba(99,102,241,0.3)',
+                  boxShadow: '0 4px 14px rgba(var(--tp-accent-rgb), 0.3)',
                 }}
               >
                 Send to Journal
@@ -2508,7 +2508,7 @@ export default function PlayBuilderModule({ user }: { user?: any }) {
         <div style={{
           position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
           padding: '12px 22px', borderRadius: 10,
-          background: 'rgba(99,102,241,0.95)', color: '#fff',
+          background: 'rgba(var(--tp-accent-rgb), 0.95)', color: '#fff',
           fontSize: 12, fontWeight: 600,
           boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
           zIndex: 1000,
@@ -2555,9 +2555,9 @@ function LegendDot({ color, label, dashed }: { color: string; label: string; das
 
 function CostRatioBadge({ grade, ratio }: { grade: 'ideal' | 'acceptable' | 'too-high'; ratio: number }) {
   const config = {
-    'ideal':      { bg: 'rgba(74,222,128,0.15)',  color: '#4ade80', label: 'IDEAL' },
-    'acceptable': { bg: 'rgba(234,179,8,0.15)',   color: '#eab308', label: 'ACCEPTABLE' },
-    'too-high':   { bg: 'rgba(248,113,113,0.15)', color: '#f87171', label: 'TOO HIGH' },
+    'ideal':      { bg: 'rgba(var(--tp-success-rgb), 0.15)',  color: 'var(--tp-success)', label: 'IDEAL' },
+    'acceptable': { bg: 'rgba(var(--tp-warning-rgb), 0.15)',   color: 'var(--tp-warning)', label: 'ACCEPTABLE' },
+    'too-high':   { bg: 'rgba(var(--tp-danger-rgb), 0.15)', color: 'var(--tp-danger)', label: 'TOO HIGH' },
   }[grade];
   return (
     <div style={{
@@ -2595,10 +2595,10 @@ function CalPressStat({ label, value, sub }: { label: string; value: string; sub
 // ─── RISK PROFILE BADGE ──────────────────────────────────────────────────────
 function RiskBadge({ profile }: { profile: RiskProfile }) {
   const config = {
-    'cash-secured':  { bg: 'rgba(74,222,128,0.12)',  color: '#4ade80', label: 'CASH-SECURED' },
-    'share-covered': { bg: 'rgba(96,165,250,0.12)',  color: '#60a5fa', label: 'SHARE-COVERED' },
-    'defined':       { bg: 'rgba(99,102,241,0.12)',  color: '#a5b4fc', label: 'DEFINED RISK' },
-    'undefined':     { bg: 'rgba(248,113,113,0.12)', color: '#f87171', label: 'UNDEFINED RISK' },
+    'cash-secured':  { bg: 'rgba(var(--tp-success-rgb), 0.12)',  color: 'var(--tp-success)', label: 'CASH-SECURED' },
+    'share-covered': { bg: 'rgba(var(--tp-info-rgb), 0.12)',  color: 'var(--tp-info)', label: 'SHARE-COVERED' },
+    'defined':       { bg: 'rgba(var(--tp-accent-rgb), 0.12)',  color: 'var(--tp-accent-light)', label: 'DEFINED RISK' },
+    'undefined':     { bg: 'rgba(var(--tp-danger-rgb), 0.12)', color: 'var(--tp-danger)', label: 'UNDEFINED RISK' },
   }[profile];
   return (
     <span style={{
@@ -2779,8 +2779,8 @@ function StrikeComparison({
               key={card.strike}
               onClick={() => onPickStrike(card.strike)}
               style={{
-                background: card.isCurrent ? 'rgba(99,102,241,0.10)' : 'var(--input-bg, rgba(255,255,255,0.02))',
-                border: card.isCurrent ? '1.5px solid rgba(99,102,241,0.6)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+                background: card.isCurrent ? 'rgba(var(--tp-accent-rgb), 0.10)' : 'var(--input-bg, rgba(255,255,255,0.02))',
+                border: card.isCurrent ? '1.5px solid rgba(var(--tp-accent-rgb), 0.6)' : '1px solid var(--border, rgba(255,255,255,0.08))',
                 borderRadius: 10, padding: '14px 12px',
                 cursor: card.isCurrent ? 'default' : 'pointer',
                 textAlign: 'left',
@@ -2791,7 +2791,7 @@ function StrikeComparison({
               }}
               onMouseEnter={(e) => {
                 if (!card.isCurrent) {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.4)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(var(--tp-accent-rgb), 0.4)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -2803,8 +2803,8 @@ function StrikeComparison({
               {card.isCurrent && (
                 <div style={{
                   position: 'absolute', top: 6, right: 6,
-                  fontSize: 8, fontWeight: 700, color: '#a5b4fc',
-                  background: 'rgba(99,102,241,0.15)',
+                  fontSize: 8, fontWeight: 700, color: 'var(--tp-accent-light)',
+                  background: 'rgba(var(--tp-accent-rgb), 0.15)',
                   padding: '2px 6px', borderRadius: 4, letterSpacing: 0.8,
                 }}>
                   SEL
@@ -2813,7 +2813,7 @@ function StrikeComparison({
               {/* Strike */}
               <div style={{
                 fontSize: 17, fontWeight: 700,
-                color: card.isCurrent ? '#a5b4fc' : 'var(--text, #e2e4ea)',
+                color: card.isCurrent ? 'var(--tp-accent-light)' : 'var(--text, #e2e4ea)',
                 marginBottom: 10,
                 fontFamily: "'JetBrains Mono', monospace",
               }}>
@@ -2890,7 +2890,7 @@ function StrikeComparison({
                 setScenarioPrice(v);
               }
             }}
-            style={{ width: '100%', cursor: 'pointer', accentColor: '#8b5cf6' }}
+            style={{ width: '100%', cursor: 'pointer', accentColor: 'var(--tp-accent-purple)' }}
           />
           <span style={sliderValue}>${effectivePrice.toFixed(2)}</span>
         </div>
@@ -2905,7 +2905,7 @@ function StrikeComparison({
             step={1}
             value={scenarioIvShift}
             onChange={e => setScenarioIvShift(parseInt(e.target.value, 10))}
-            style={{ width: '100%', cursor: 'pointer', accentColor: '#8b5cf6' }}
+            style={{ width: '100%', cursor: 'pointer', accentColor: 'var(--tp-accent-purple)' }}
           />
           <span style={sliderValue}>{scenarioIvShift > 0 ? '+' : ''}{scenarioIvShift}%</span>
         </div>
@@ -2920,7 +2920,7 @@ function StrikeComparison({
             step={1}
             value={scenarioDaysFwd}
             onChange={e => setScenarioDaysFwd(parseInt(e.target.value, 10))}
-            style={{ width: '100%', cursor: 'pointer', accentColor: '#8b5cf6' }}
+            style={{ width: '100%', cursor: 'pointer', accentColor: 'var(--tp-accent-purple)' }}
           />
           <span style={sliderValue}>+{scenarioDaysFwd}d</span>
         </div>
@@ -2941,7 +2941,7 @@ function CardLine({ label, value, accent }: { label: string; value: string; acce
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
       <span style={{ color: 'var(--text-dim, #8a8f9e)' }}>{label}</span>
       <span style={{
-        color: accent ? '#a5b4fc' : 'var(--text, #e2e4ea)',
+        color: accent ? 'var(--tp-accent-light)' : 'var(--text, #e2e4ea)',
         fontWeight: accent ? 700 : 600,
         fontFamily: "'JetBrains Mono', monospace",
       }}>
@@ -3030,9 +3030,9 @@ function EntryPriceInput({
           }
         }}
         style={{
-          background: hasOverride ? 'rgba(234,179,8,0.06)' : 'var(--input-bg, #1e2028)',
-          border: hasOverride ? '1px solid rgba(234,179,8,0.35)' : '1px solid var(--border, rgba(255,255,255,0.08))',
-          color: hasOverride ? '#eab308' : '#a5b4fc',
+          background: hasOverride ? 'rgba(var(--tp-warning-rgb), 0.06)' : 'var(--input-bg, #1e2028)',
+          border: hasOverride ? '1px solid rgba(var(--tp-warning-rgb), 0.35)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+          color: hasOverride ? 'var(--tp-warning)' : 'var(--tp-accent-light)',
           borderRadius: 6, padding: '4px 6px', fontSize: 11,
           fontWeight: 700, outline: 'none', width: 62, textAlign: 'right',
           fontFamily: 'inherit',
@@ -3045,7 +3045,7 @@ function EntryPriceInput({
           title="Reset to mid"
           style={{
             padding: '2px 5px', borderRadius: 4, border: 'none',
-            background: 'rgba(234,179,8,0.12)', color: '#eab308',
+            background: 'rgba(var(--tp-warning-rgb), 0.12)', color: 'var(--tp-warning)',
             cursor: 'pointer', fontSize: 10, lineHeight: 1,
           }}
         >

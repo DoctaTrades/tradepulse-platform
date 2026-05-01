@@ -300,10 +300,10 @@ export async function GET(req: NextRequest) {
     fgScore = Math.round(fgComponents.reduce((sum, c) => sum + c.value * c.weight, 0));
 
     let fgLabel = 'Neutral';
-    let fgColor = '#eab308';
+    let fgColor = 'var(--tp-warning)';
     if (fgScore >= 75) { fgLabel = 'Extreme Greed'; fgColor = '#22c55e'; }
     else if (fgScore >= 60) { fgLabel = 'Greed'; fgColor = '#86efac'; }
-    else if (fgScore >= 45) { fgLabel = 'Neutral'; fgColor = '#eab308'; }
+    else if (fgScore >= 45) { fgLabel = 'Neutral'; fgColor = 'var(--tp-warning)'; }
     else if (fgScore >= 30) { fgLabel = 'Fear'; fgColor = '#fb923c'; }
     else { fgLabel = 'Extreme Fear'; fgColor = '#ef4444'; }
 

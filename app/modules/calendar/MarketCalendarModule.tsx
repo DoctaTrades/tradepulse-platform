@@ -160,17 +160,17 @@ export default function MarketCalendarModule() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setWeek(w => w - 1)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border2)', background: 'transparent', color: 'var(--text-mid)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>← Prev</button>
-          <button onClick={() => setWeek(0)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border2)', background: week === 0 ? 'rgba(99,102,241,0.12)' : 'transparent', color: week === 0 ? '#a5b4fc' : 'var(--text-mid)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>{weekLabel}</button>
+          <button onClick={() => setWeek(0)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border2)', background: week === 0 ? 'rgba(var(--tp-accent-rgb), 0.12)' : 'transparent', color: week === 0 ? 'var(--tp-accent-light)' : 'var(--text-mid)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>{weekLabel}</button>
           <button onClick={() => setWeek(w => w + 1)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border2)', background: 'transparent', color: 'var(--text-mid)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Next →</button>
         </div>
       </div>
 
       {/* View Toggle */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--navy2)', borderRadius: 10, padding: 4, border: '1px solid var(--border)' }}>
-        <button onClick={() => setActiveView('economic')} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: activeView === 'economic' ? 'rgba(99,102,241,0.15)' : 'transparent', color: activeView === 'economic' ? '#a5b4fc' : 'var(--text-dim)', cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all 0.15s' }}>
+        <button onClick={() => setActiveView('economic')} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: activeView === 'economic' ? 'rgba(var(--tp-accent-rgb), 0.15)' : 'transparent', color: activeView === 'economic' ? 'var(--tp-accent-light)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all 0.15s' }}>
           📊 Economic Events ({economic.length})
         </button>
-        <button onClick={() => setActiveView('earnings')} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: activeView === 'earnings' ? 'rgba(99,102,241,0.15)' : 'transparent', color: activeView === 'earnings' ? '#a5b4fc' : 'var(--text-dim)', cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all 0.15s' }}>
+        <button onClick={() => setActiveView('earnings')} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: activeView === 'earnings' ? 'rgba(var(--tp-accent-rgb), 0.15)' : 'transparent', color: activeView === 'earnings' ? 'var(--tp-accent-light)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all 0.15s' }}>
           💰 Earnings ({earnings.length})
         </button>
       </div>
@@ -183,7 +183,7 @@ export default function MarketCalendarModule() {
       )}
 
       {error && (
-        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '14px 18px', marginBottom: 16, fontSize: 13, color: '#f87171' }}>{error}</div>
+        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '14px 18px', marginBottom: 16, fontSize: 13, color: 'var(--tp-danger)' }}>{error}</div>
       )}
 
       {/* ═══ ECONOMIC EVENTS VIEW ═══ */}
@@ -193,9 +193,9 @@ export default function MarketCalendarModule() {
           <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
             {(['all', 'high', 'medium'] as const).map(f => (
               <button key={f} onClick={() => setImpactFilter(f)} style={{
-                padding: '5px 14px', borderRadius: 6, border: `1px solid ${impactFilter === f ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`,
-                background: impactFilter === f ? 'rgba(99,102,241,0.1)' : 'transparent',
-                color: impactFilter === f ? '#a5b4fc' : 'var(--text-dim)', cursor: 'pointer', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+                padding: '5px 14px', borderRadius: 6, border: `1px solid ${impactFilter === f ? 'rgba(var(--tp-accent-rgb), 0.3)' : 'var(--border)'}`,
+                background: impactFilter === f ? 'rgba(var(--tp-accent-rgb), 0.1)' : 'transparent',
+                color: impactFilter === f ? 'var(--tp-accent-light)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
               }}>
                 {f === 'all' ? 'All Events' : f === 'high' ? '🔴 High Only' : '🟡 Med + High'}
               </button>
@@ -222,7 +222,7 @@ export default function MarketCalendarModule() {
                       const hasMonthly = opens.monthly?.length > 0;
                       const hasWeekly = opens.weekly?.length > 0;
                       return (
-                        <div style={{ padding: '6px 6px 8px', marginBottom: 6, borderBottom: '1px solid rgba(99,102,241,0.12)', background: hasMonthly ? 'rgba(168,85,247,0.06)' : hasWeekly ? 'rgba(99,102,241,0.04)' : 'transparent', borderRadius: 6 }}>
+                        <div style={{ padding: '6px 6px 8px', marginBottom: 6, borderBottom: '1px solid rgba(var(--tp-accent-rgb), 0.12)', background: hasMonthly ? 'rgba(168,85,247,0.06)' : hasWeekly ? 'rgba(var(--tp-accent-rgb), 0.04)' : 'transparent', borderRadius: 6 }}>
                           <div style={{ fontSize: 8, fontWeight: 700, color: hasMonthly ? '#c084fc' : '#818cf8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>🕯 New Candles</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                             {opens.monthly?.map((n: number) => (
@@ -232,7 +232,7 @@ export default function MarketCalendarModule() {
                               <span key={`w${n}`} style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: 'rgba(59,130,246,0.2)', color: '#93c5fd' }}>{n}W</span>
                             ))}
                             {opens.daily?.filter((n: number) => n > 1).map((n: number) => (
-                              <span key={`d${n}`} style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: n >= 6 ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.06)', color: n >= 6 ? '#fbbf24' : 'var(--text-dim)' }}>{n}D</span>
+                              <span key={`d${n}`} style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: n >= 6 ? 'rgba(var(--tp-warning-rgb), 0.15)' : 'rgba(255,255,255,0.06)', color: n >= 6 ? '#fbbf24' : 'var(--text-dim)' }}>{n}D</span>
                             ))}
                           </div>
                         </div>
@@ -245,7 +245,7 @@ export default function MarketCalendarModule() {
                       <div key={j} style={{ padding: '8px 6px', borderBottom: j < events.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 8, fontWeight: 800, padding: '2px 5px', borderRadius: 3, background: `${impactColor(e.impact)}20`, color: impactColor(e.impact), letterSpacing: 0.5 }}>{impactLabel(e.impact)}</span>
-                          {e.category && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', letterSpacing: 0.3 }}>{e.category}</span>}
+                          {e.category && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'rgba(var(--tp-accent-rgb), 0.15)', color: 'var(--tp-accent-light)', letterSpacing: 0.3 }}>{e.category}</span>}
                           <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{e.date?.substring(11, 16) || ''} ET</span>
                         </div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, marginBottom: e.notes ? 2 : 4 }}>{e.event}</div>
