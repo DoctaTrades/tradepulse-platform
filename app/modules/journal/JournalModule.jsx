@@ -1798,7 +1798,7 @@ const DEFAULT_DASH_WIDGETS = [
 ];
 
 // ─── PRE-TRADE RISK CALCULATOR ──────────────────────────────────────────────
-function RiskCalculator({ theme, accountBalances, futuresSettings, customFields, accountSummaries }) {
+function RiskCalculator({ accountBalances, futuresSettings, customFields, accountSummaries }) {
   const [selectedAccount, setSelectedAccount] = useState("");
   const [accountSize, setAccountSize] = useState("");
   const [assetType, setAssetType] = useState("Stock"); // Stock | Options | Futures
@@ -1956,15 +1956,15 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
   const fR2Dollar = fRiskTicks * fTickValue * futContracts * 2;
   const fR3Dollar = fRiskTicks * fTickValue * futContracts * 3;
 
-  const inputStyle = { width:"100%", padding:"9px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" };
-  const labelStyle = { fontSize:10, color:theme.textFaint, textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:5 };
+  const inputStyle = { width:"100%", padding:"9px 12px", background:"var(--tp-input)", border:`1px solid var(--tp-border-l)`, borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" };
+  const labelStyle = { fontSize:10, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:5 };
   const selectStyle = { ...inputStyle, appearance:"none", cursor:"pointer" };
 
   const ResultCard = ({ label, value, sub, color, large }) => (
-    <div style={{ background:theme.cardBg, borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
-      <div style={{ fontSize:9, color:theme.textFaintest, textTransform:"uppercase", marginBottom:3 }}>{label}</div>
+    <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
+      <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>{label}</div>
       <div style={{ fontSize:large?20:18, fontWeight:800, color, fontFamily:"'JetBrains Mono', monospace" }}>{value}</div>
-      {sub && <div style={{ fontSize:10, color:theme.textFaintest }}>{sub}</div>}
+      {sub && <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>{sub}</div>}
     </div>
   );
 
@@ -1973,11 +1973,11 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
   const showFutStopWarning = assetType === "Futures" && futMode === "manual" && acct > 0 && fEntry > 0 && fStop > 0 && fManualTicks <= 0;
 
   return (
-    <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"18px 20px", marginBottom:16, order:-1 }}>
+    <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"18px 20px", marginBottom:16, order:-1 }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
         <Calculator size={15} color="var(--tp-accent-light)"/>
-        <span style={{ fontSize:13, fontWeight:600, color:theme.text }}>Pre-Trade Risk Calculator</span>
-        <span style={{ fontSize:10, color:theme.textFaintest }}>Size your position before every trade</span>
+        <span style={{ fontSize:13, fontWeight:600, color:"var(--tp-text)" }}>Pre-Trade Risk Calculator</span>
+        <span style={{ fontSize:10, color:"var(--tp-faintest)" }}>Size your position before every trade</span>
       </div>
 
       {/* Row 1: Account + Asset Type + Direction + Risk % */}
@@ -1986,8 +1986,8 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
           <label style={labelStyle}>Account</label>
           <div style={{ display:"flex", gap:6 }}>
             <select value={selectedAccount} onChange={e=>{setSelectedAccount(e.target.value);}} style={{ ...selectStyle, flex:1 }}>
-              <option value="" style={{ background:theme.selectOptionBg }}>Manual entry...</option>
-              {allAccounts.map(a => { const sum = (accountSummaries||[]).find(s=>s.name===a); const bal = sum ? sum.currentBal : (parseFloat(accountBalances?.[a])||0); return <option key={a} value={a} style={{ background:theme.selectOptionBg }}>{a} {bal ? `($${bal.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})})` : ""}</option>; })}
+              <option value="" style={{ background:"var(--tp-sel-bg)" }}>Manual entry...</option>
+              {allAccounts.map(a => { const sum = (accountSummaries||[]).find(s=>s.name===a); const bal = sum ? sum.currentBal : (parseFloat(accountBalances?.[a])||0); return <option key={a} value={a} style={{ background:"var(--tp-sel-bg)" }}>{a} {bal ? `($${bal.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})})` : ""}</option>; })}
             </select>
             <input type="number" value={accountSize} onChange={e=>{setAccountSize(e.target.value);setSelectedAccount("");}} placeholder="$" style={{ ...inputStyle, width:90 }}/>
           </div>
@@ -1995,23 +1995,23 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
         <div>
           <label style={labelStyle}>Asset Type</label>
           <select value={assetType} onChange={e=>setAssetType(e.target.value)} style={selectStyle}>
-            <option value="Stock" style={{ background:theme.selectOptionBg }}>📈 Stock</option>
-            <option value="Options" style={{ background:theme.selectOptionBg }}>🎯 Options</option>
-            <option value="Futures" style={{ background:theme.selectOptionBg }}>⚡ Futures</option>
+            <option value="Stock" style={{ background:"var(--tp-sel-bg)" }}>📈 Stock</option>
+            <option value="Options" style={{ background:"var(--tp-sel-bg)" }}>🎯 Options</option>
+            <option value="Futures" style={{ background:"var(--tp-sel-bg)" }}>⚡ Futures</option>
           </select>
         </div>
         <div>
           <label style={labelStyle}>Direction</label>
           <select value={direction} onChange={e=>setDirection(e.target.value)} style={selectStyle}>
-            <option value="Long" style={{ background:theme.selectOptionBg }}>Long</option>
-            <option value="Short" style={{ background:theme.selectOptionBg }}>Short</option>
+            <option value="Long" style={{ background:"var(--tp-sel-bg)" }}>Long</option>
+            <option value="Short" style={{ background:"var(--tp-sel-bg)" }}>Short</option>
           </select>
         </div>
         <div>
           <label style={labelStyle}>Risk %</label>
           <div style={{ position:"relative" }}>
             <input type="number" value={riskPct} onChange={e=>setRiskPct(e.target.value)} placeholder="1" step="0.25" min="0.1" max="10" style={{ ...inputStyle, paddingRight:22 }}/>
-            <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:theme.textFaintest, fontSize:13 }}>%</span>
+            <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>%</span>
           </div>
         </div>
       </div>
@@ -2022,14 +2022,14 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
           <div>
             <label style={labelStyle}>Entry Price</label>
             <div style={{ position:"relative" }}>
-              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:theme.textFaintest, fontSize:13 }}>$</span>
+              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>$</span>
               <input type="number" value={entryPrice} onChange={e=>setEntryPrice(e.target.value)} placeholder="150.00" style={{ ...inputStyle, paddingLeft:22 }}/>
             </div>
           </div>
           <div>
             <label style={labelStyle}>Stop Loss</label>
             <div style={{ position:"relative" }}>
-              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:theme.textFaintest, fontSize:13 }}>$</span>
+              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>$</span>
               <input type="number" value={stopLoss} onChange={e=>setStopLoss(e.target.value)} placeholder="147.50" style={{ ...inputStyle, paddingLeft:22 }}/>
             </div>
           </div>
@@ -2041,19 +2041,19 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
           <div>
             <label style={labelStyle}>Entry Premium</label>
             <div style={{ position:"relative" }}>
-              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:theme.textFaintest, fontSize:13 }}>$</span>
+              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>$</span>
               <input type="number" value={optPremium} onChange={e=>setOptPremium(e.target.value)} placeholder="2.50" step="0.05" style={{ ...inputStyle, paddingLeft:22 }}/>
             </div>
           </div>
           <div>
-            <label style={labelStyle}>Stop Premium <span style={{ fontSize:8, color:theme.textFaintest }}>(optional)</span></label>
+            <label style={labelStyle}>Stop Premium <span style={{ fontSize:8, color:"var(--tp-faintest)" }}>(optional)</span></label>
             <div style={{ position:"relative" }}>
-              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:theme.textFaintest, fontSize:13 }}>$</span>
+              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>$</span>
               <input type="number" value={optStopPremium} onChange={e=>setOptStopPremium(e.target.value)} placeholder="1.25" step="0.05" style={{ ...inputStyle, paddingLeft:22 }}/>
             </div>
           </div>
           <div>
-            <label style={labelStyle}>Contracts <span style={{ fontSize:8, color:theme.textFaintest }}>(override)</span></label>
+            <label style={labelStyle}>Contracts <span style={{ fontSize:8, color:"var(--tp-faintest)" }}>(override)</span></label>
             <input type="number" value={optContracts} onChange={e=>setOptContracts(e.target.value)} placeholder="Auto" min="1" style={inputStyle}/>
           </div>
         </div>
@@ -2063,12 +2063,12 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
         <div style={{ marginBottom:14 }}>
           {/* Mode toggle */}
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-            <span style={{ fontSize:10, color:theme.textFaint, textTransform:"uppercase", letterSpacing:0.8 }}>Mode:</span>
-            <div style={{ display:"flex", borderRadius:6, overflow:"hidden", border:`1px solid ${theme.borderLight}` }}>
-              <button onClick={()=>setFutMode("manual")} style={{ padding:"4px 12px", border:"none", background:futMode==="manual"?"rgba(var(--tp-accent-rgb), 0.2)":theme.cardBg, color:futMode==="manual"?"var(--tp-accent-light)":theme.textFaint, cursor:"pointer", fontSize:10, fontWeight:600 }}>Enter Stop</button>
-              <button onClick={()=>setFutMode("auto")} style={{ padding:"4px 12px", border:"none", background:futMode==="auto"?"rgba(var(--tp-accent-rgb), 0.2)":theme.cardBg, color:futMode==="auto"?"var(--tp-accent-light)":theme.textFaint, cursor:"pointer", fontSize:10, fontWeight:600, borderLeft:`1px solid ${theme.borderLight}` }}>Calculate Stop</button>
+            <span style={{ fontSize:10, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8 }}>Mode:</span>
+            <div style={{ display:"flex", borderRadius:6, overflow:"hidden", border:`1px solid var(--tp-border-l)` }}>
+              <button onClick={()=>setFutMode("manual")} style={{ padding:"4px 12px", border:"none", background:futMode==="manual"?"rgba(var(--tp-accent-rgb), 0.2)":"var(--tp-card)", color:futMode==="manual"?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:10, fontWeight:600 }}>Enter Stop</button>
+              <button onClick={()=>setFutMode("auto")} style={{ padding:"4px 12px", border:"none", background:futMode==="auto"?"rgba(var(--tp-accent-rgb), 0.2)":"var(--tp-card)", color:futMode==="auto"?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:10, fontWeight:600, borderLeft:`1px solid var(--tp-border-l)` }}>Calculate Stop</button>
             </div>
-            <span style={{ fontSize:9, color:theme.textFaintest, fontStyle:"italic" }}>
+            <span style={{ fontSize:9, color:"var(--tp-faintest)", fontStyle:"italic" }}>
               {futMode === "manual" ? "You set the stop → we calculate contracts" : "You set contracts → we calculate max stop distance"}
             </span>
           </div>
@@ -2078,9 +2078,9 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
             <div>
               <label style={labelStyle}>Contract</label>
               <select value={futContract} onChange={e=>setFutContract(e.target.value)} style={selectStyle}>
-                <option value="" style={{ background:theme.selectOptionBg }}>Select preset...</option>
-                {(futuresSettings || []).map(f => <option key={f.name} value={f.name} style={{ background:theme.selectOptionBg }}>{f.name} (${f.tickValue}/{f.tickSize})</option>)}
-                <option value="_custom" style={{ background:theme.selectOptionBg }}>Custom...</option>
+                <option value="" style={{ background:"var(--tp-sel-bg)" }}>Select preset...</option>
+                {(futuresSettings || []).map(f => <option key={f.name} value={f.name} style={{ background:"var(--tp-sel-bg)" }}>{f.name} (${f.tickValue}/{f.tickSize})</option>)}
+                <option value="_custom" style={{ background:"var(--tp-sel-bg)" }}>Custom...</option>
               </select>
             </div>
             <div>
@@ -2121,12 +2121,12 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
             <ResultCard label="Dollar Risk" value={`$${dollarRisk.toFixed(2)}`} sub={`${riskPct}% of account`} color="var(--tp-danger)"/>
             <ResultCard label="Risk / Share" value={`$${stockRiskPerShare.toFixed(2)}`} sub={direction==="Long"?"entry − stop":"stop − entry"} color="var(--tp-warning)"/>
             <ResultCard label="Position Value" value={`$${stockPosValue.toLocaleString()}`} sub={`${stockPctOfAcct.toFixed(1)}% of account`} color="var(--tp-info)"/>
-            <div style={{ background:theme.cardBg, borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
-              <div style={{ fontSize:9, color:theme.textFaintest, textTransform:"uppercase", marginBottom:3 }}>R-Targets</div>
+            <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>R-Targets</div>
               <div style={{ fontSize:11, fontFamily:"'JetBrains Mono', monospace", lineHeight:1.7 }}>
-                <div style={{ color:"var(--tp-success)" }}>1R: ${stockR1.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>+${dollarRisk.toFixed(0)}</span></div>
-                <div style={{ color:"#22d3ee" }}>2R: ${stockR2.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>+${(dollarRisk*2).toFixed(0)}</span></div>
-                <div style={{ color:"#a78bfa" }}>3R: ${stockR3.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>+${(dollarRisk*3).toFixed(0)}</span></div>
+                <div style={{ color:"var(--tp-success)" }}>1R: ${stockR1.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>+${dollarRisk.toFixed(0)}</span></div>
+                <div style={{ color:"#22d3ee" }}>2R: ${stockR2.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>+${(dollarRisk*2).toFixed(0)}</span></div>
+                <div style={{ color:"#a78bfa" }}>3R: ${stockR3.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>+${(dollarRisk*3).toFixed(0)}</span></div>
               </div>
             </div>
             {stockPctOfAcct > 20 && <div style={{ gridColumn:"1 / -1", display:"flex", alignItems:"center", gap:6, padding:"8px 12px", background:"rgba(var(--tp-warning-rgb), 0.08)", border:"1px solid rgba(var(--tp-warning-rgb), 0.2)", borderRadius:8, fontSize:11, color:"var(--tp-warning)" }}><AlertTriangle size={14}/> Position is {stockPctOfAcct.toFixed(0)}% of your account — consider reducing size.</div>}
@@ -2138,12 +2138,12 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
             <ResultCard label="Total Cost" value={`$${optTotalCost.toLocaleString()}`} sub={`${optPctOfAcct.toFixed(1)}% of account`} color="var(--tp-info)"/>
             <ResultCard label="Dollar Risk" value={`$${optTotalRisk.toFixed(2)}`} sub={oStopPrem > 0 ? `${optActualContracts} × $${oRiskPerContract.toFixed(0)}/ct` : "max risk (full premium)"} color="var(--tp-danger)"/>
             <ResultCard label="Cost / Contract" value={`$${(oPrem * 100).toFixed(0)}`} sub={`$${oPrem.toFixed(2)} × 100`} color="var(--tp-warning)"/>
-            <div style={{ background:theme.cardBg, borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
-              <div style={{ fontSize:9, color:theme.textFaintest, textTransform:"uppercase", marginBottom:3 }}>Premium Targets</div>
+            <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Premium Targets</div>
               <div style={{ fontSize:11, fontFamily:"'JetBrains Mono', monospace", lineHeight:1.7 }}>
-                <div style={{ color:"var(--tp-success)" }}>1R: ${oR1.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>+${(optActualContracts*(oR1-oPrem)*100).toFixed(0)}</span></div>
-                <div style={{ color:"#22d3ee" }}>2R: ${oR2.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>+${(optActualContracts*(oR2-oPrem)*100).toFixed(0)}</span></div>
-                <div style={{ color:"#a78bfa" }}>3R: ${oR3.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>+${(optActualContracts*(oR3-oPrem)*100).toFixed(0)}</span></div>
+                <div style={{ color:"var(--tp-success)" }}>1R: ${oR1.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>+${(optActualContracts*(oR1-oPrem)*100).toFixed(0)}</span></div>
+                <div style={{ color:"#22d3ee" }}>2R: ${oR2.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>+${(optActualContracts*(oR2-oPrem)*100).toFixed(0)}</span></div>
+                <div style={{ color:"#a78bfa" }}>3R: ${oR3.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>+${(optActualContracts*(oR3-oPrem)*100).toFixed(0)}</span></div>
               </div>
             </div>
             {!oStopPrem && <div style={{ gridColumn:"1 / -1", display:"flex", alignItems:"center", gap:6, padding:"8px 12px", background:"rgba(var(--tp-info-rgb), 0.08)", border:"1px solid rgba(var(--tp-info-rgb), 0.2)", borderRadius:8, fontSize:11, color:"var(--tp-info)" }}>💡 Set a stop premium for tighter risk control. Without it, max risk = full premium paid.</div>}
@@ -2154,10 +2154,10 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
           {assetType === "Futures" && <>
             {futMode === "auto" ? (
               <>
-                <div style={{ background:theme.cardBg, borderRadius:8, padding:"12px 14px", textAlign:"center", border:"1px solid rgba(var(--tp-danger-rgb), 0.25)" }}>
-                  <div style={{ fontSize:9, color:theme.textFaintest, textTransform:"uppercase", marginBottom:3 }}>Calculated Stop</div>
+                <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"12px 14px", textAlign:"center", border:"1px solid rgba(var(--tp-danger-rgb), 0.25)" }}>
+                  <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Calculated Stop</div>
                   <div style={{ fontSize:22, fontWeight:800, color:"var(--tp-danger)", fontFamily:"'JetBrains Mono', monospace" }}>{fAutoStop.toFixed(fTickSize < 0.01 ? 4 : fTickSize < 1 ? 2 : 0)}</div>
-                  <div style={{ fontSize:10, color:theme.textFaintest }}>{direction === "Long" ? "below" : "above"} entry</div>
+                  <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>{direction === "Long" ? "below" : "above"} entry</div>
                 </div>
                 <ResultCard label="Contracts" value={fContracts.toLocaleString()} sub={futContract || "futures"} color="var(--tp-accent-light)" large/>
                 <ResultCard label="Ticks to Stop" value={`${fAutoTicks}`} sub={`${fRiskPoints.toFixed(2)} pts · $${fAutoRiskPerContract.toFixed(2)}/ct`} color="var(--tp-info)"/>
@@ -2171,18 +2171,18 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
                 <ResultCard label="Total Risk" value={`$${futTotalRisk.toFixed(2)}`} sub={`${fRiskTicks}t × $${fTickValue} × ${futContracts}ct`} color="var(--tp-danger)"/>
               </>
             )}
-            <div style={{ background:theme.cardBg, borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
-              <div style={{ fontSize:9, color:theme.textFaintest, textTransform:"uppercase", marginBottom:3 }}>R-Targets (tick-based)</div>
+            <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
+              <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>R-Targets (tick-based)</div>
               <div style={{ fontSize:11, fontFamily:"'JetBrains Mono', monospace", lineHeight:1.8 }}>
-                <div style={{ color:"var(--tp-success)" }}>1R: {fR1.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>({fRiskTicks}t · +${fR1Dollar.toFixed(0)})</span></div>
-                <div style={{ color:"#22d3ee" }}>2R: {fR2.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>({fRiskTicks*2}t · +${fR2Dollar.toFixed(0)})</span></div>
-                <div style={{ color:"#a78bfa" }}>3R: {fR3.toFixed(2)} <span style={{ color:theme.textFaintest, fontSize:9 }}>({fRiskTicks*3}t · +${fR3Dollar.toFixed(0)})</span></div>
+                <div style={{ color:"var(--tp-success)" }}>1R: {fR1.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>({fRiskTicks}t · +${fR1Dollar.toFixed(0)})</span></div>
+                <div style={{ color:"#22d3ee" }}>2R: {fR2.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>({fRiskTicks*2}t · +${fR2Dollar.toFixed(0)})</span></div>
+                <div style={{ color:"#a78bfa" }}>3R: {fR3.toFixed(2)} <span style={{ color:"var(--tp-faintest)", fontSize:9 }}>({fRiskTicks*3}t · +${fR3Dollar.toFixed(0)})</span></div>
               </div>
             </div>
           </>}
         </div>
       ) : (
-        <div style={{ textAlign:"center", padding:"14px", color:theme.textFaintest, fontSize:12 }}>
+        <div style={{ textAlign:"center", padding:"14px", color:"var(--tp-faintest)", fontSize:12 }}>
           {(showStopWarning || showFutStopWarning) ?
             <span style={{ color:"var(--tp-danger)" }}>⚠️ Stop loss must be {direction === "Long" ? "below" : "above"} entry price for a {direction.toLowerCase()} trade</span> :
             assetType === "Futures" ? (
@@ -2194,7 +2194,7 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
                 {futMode === "auto" && fEntry > 0 && fTickSize > 0 && fTickValue > 0 && acct > 0 && fAutoTicks < 1 && <div style={{ color:"var(--tp-danger)", marginBottom:4 }}>⚠️ Risk budget too small for {fContracts} contract{fContracts>1?"s":""}. Try fewer contracts or higher risk %</div>}
                 {acct > 0 && fEntry > 0 && fTickSize > 0 && fTickValue > 0 && (futMode === "manual" ? fStop > 0 : true) && fAutoTicks >= 1 ? null :
                   (fTickSize > 0 && fTickValue > 0 && acct > 0 && fEntry > 0) ? null :
-                  <div style={{ color:theme.textFaintest }}>Fill in the fields above to calculate</div>
+                  <div style={{ color:"var(--tp-faintest)" }}>Fill in the fields above to calculate</div>
                 }
               </div>
             ) :
@@ -2206,7 +2206,7 @@ function RiskCalculator({ theme, accountBalances, futuresSettings, customFields,
   );
 }
 
-function Dashboard({ trades, customFields, accountBalances, theme, logo, banner, dashWidgets, futuresSettings, prefs, onSavePrefs, wheelTrades, cashTransactions, dividends, hideBalances, setHideBalances, onNavigate, onNewTrade }) {
+function Dashboard({ trades, customFields, accountBalances, logo, banner, dashWidgets, futuresSettings, prefs, onSavePrefs, wheelTrades, cashTransactions, dividends, hideBalances, setHideBalances, onNavigate, onNewTrade }) {
   const widgetConfig = useMemo(() => {
     if (!dashWidgets || dashWidgets.length === 0) return DEFAULT_DASH_WIDGETS;
     const merged = [];
@@ -2500,7 +2500,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
   const isBalanceView = chartType === "balance";
 
   // ── Panel style shorthand ──
-  const panel = (extra = {}) => ({ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"20px 22px", ...extra });
+  const panel = (extra = {}) => ({ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"20px 22px", ...extra });
 
   return (
     <div style={{ display:"flex", flexDirection:"column" }}>
@@ -2508,24 +2508,24 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
       {trades.length === 0 && (
         <div style={{ maxWidth:640, margin:"40px auto", textAlign:"center" }}>
           <div style={{ fontSize:48, marginBottom:16 }}>📊</div>
-          <div style={{ fontSize:24, fontWeight:800, color:theme.text, marginBottom:8 }}>Welcome to TradePulse</div>
-          <div style={{ fontSize:14, color:theme.textMuted, lineHeight:1.7, marginBottom:32, maxWidth:480, margin:"0 auto 32px" }}>Your personal trading journal. Track trades, analyze performance, and grow as a trader. Get started in three easy steps.</div>
+          <div style={{ fontSize:24, fontWeight:800, color:"var(--tp-text)", marginBottom:8 }}>Welcome to TradePulse</div>
+          <div style={{ fontSize:14, color:"var(--tp-muted)", lineHeight:1.7, marginBottom:32, maxWidth:480, margin:"0 auto 32px" }}>Your personal trading journal. Track trades, analyze performance, and grow as a trader. Get started in three easy steps.</div>
           
           <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16, marginBottom:32 }}>
-            <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:12, padding:"20px 16px" }}>
+            <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:12, padding:"20px 16px" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:"rgba(var(--tp-accent-rgb), 0.12)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 12px" }}><span style={{ fontSize:16, fontWeight:800, color:"var(--tp-accent-light)" }}>1</span></div>
-              <div style={{ fontSize:13, fontWeight:700, color:theme.text, marginBottom:4 }}>Set Up Accounts</div>
-              <div style={{ fontSize:11, color:theme.textFaint, lineHeight:1.5 }}>Go to Settings → Account Balances and add your starting capital</div>
+              <div style={{ fontSize:13, fontWeight:700, color:"var(--tp-text)", marginBottom:4 }}>Set Up Accounts</div>
+              <div style={{ fontSize:11, color:"var(--tp-faint)", lineHeight:1.5 }}>Go to Settings → Account Balances and add your starting capital</div>
             </div>
-            <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:12, padding:"20px 16px" }}>
+            <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:12, padding:"20px 16px" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:"rgba(var(--tp-success-rgb), 0.12)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 12px" }}><span style={{ fontSize:16, fontWeight:800, color:"var(--tp-success)" }}>2</span></div>
-              <div style={{ fontSize:13, fontWeight:700, color:theme.text, marginBottom:4 }}>Import or Log Trades</div>
-              <div style={{ fontSize:11, color:theme.textFaint, lineHeight:1.5 }}>Import from your broker (CSV or PDF) or log trades manually</div>
+              <div style={{ fontSize:13, fontWeight:700, color:"var(--tp-text)", marginBottom:4 }}>Import or Log Trades</div>
+              <div style={{ fontSize:11, color:"var(--tp-faint)", lineHeight:1.5 }}>Import from your broker (CSV or PDF) or log trades manually</div>
             </div>
-            <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:12, padding:"20px 16px" }}>
+            <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:12, padding:"20px 16px" }}>
               <div style={{ width:36, height:36, borderRadius:10, background:"rgba(var(--tp-warning-rgb), 0.12)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 12px" }}><span style={{ fontSize:16, fontWeight:800, color:"var(--tp-warning)" }}>3</span></div>
-              <div style={{ fontSize:13, fontWeight:700, color:theme.text, marginBottom:4 }}>Track & Improve</div>
-              <div style={{ fontSize:11, color:theme.textFaint, lineHeight:1.5 }}>Review your stats, set goals, and refine your edge over time</div>
+              <div style={{ fontSize:13, fontWeight:700, color:"var(--tp-text)", marginBottom:4 }}>Track & Improve</div>
+              <div style={{ fontSize:11, color:"var(--tp-faint)", lineHeight:1.5 }}>Review your stats, set goals, and refine your edge over time</div>
             </div>
           </div>
 
@@ -2540,7 +2540,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
       {(logo || banner) && (
         <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20, padding:"12px 0", overflow:"hidden", borderRadius:12, order:-1 }}>
           {logo && <img src={logo} alt="Logo" style={{ height:52, maxWidth:180, objectFit:"contain", borderRadius:6, flexShrink:0 }}/>}
-          {banner && <div style={{ flex:1, height:52, borderRadius:8, overflow:"hidden", background:theme.inputBg }}><img src={banner} alt="Banner" style={{ width:"100%", height:"100%", objectFit:"cover" }}/></div>}
+          {banner && <div style={{ flex:1, height:52, borderRadius:8, overflow:"hidden", background:"var(--tp-input)" }}><img src={banner} alt="Banner" style={{ width:"100%", height:"100%", objectFit:"cover" }}/></div>}
         </div>
       )}
 
@@ -2556,11 +2556,11 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
 
       {/* ═══════ RISK CALCULATOR TOGGLE ═══════ */}
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: showRiskCalc ? 0 : 12, order:-1 }}>
-        <button onClick={()=>setShowRiskCalc(!showRiskCalc)} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", borderRadius:8, border:`1px solid ${showRiskCalc ? "rgba(var(--tp-accent-rgb), 0.4)" : theme.borderLight}`, background: showRiskCalc ? "rgba(var(--tp-accent-rgb), 0.12)" : theme.inputBg, color: showRiskCalc ? "var(--tp-accent-light)" : theme.textMuted, cursor:"pointer", fontSize:12, fontWeight:600 }}>
+        <button onClick={()=>setShowRiskCalc(!showRiskCalc)} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", borderRadius:8, border:`1px solid ${showRiskCalc ? "rgba(var(--tp-accent-rgb), 0.4)" : "var(--tp-border-l)"}`, background: showRiskCalc ? "rgba(var(--tp-accent-rgb), 0.12)" : "var(--tp-input)", color: showRiskCalc ? "var(--tp-accent-light)" : "var(--tp-muted)", cursor:"pointer", fontSize:12, fontWeight:600 }}>
           <Calculator size={14}/> Risk Calculator {showRiskCalc ? "▾" : "▸"}
         </button>
       </div>
-      {showRiskCalc && <RiskCalculator theme={theme} accountBalances={accountBalances} futuresSettings={futuresSettings} customFields={customFields} accountSummaries={accountSummaries}/>}
+      {showRiskCalc && <RiskCalculator accountBalances={accountBalances} futuresSettings={futuresSettings} customFields={customFields} accountSummaries={accountSummaries}/>}
 
       {/* ═══════ ACCOUNT BALANCE CARDS ═══════ */}
       {wVis("accounts") && accountSummaries.length > 0 && (
@@ -2574,7 +2574,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
           <div style={{ display:"grid", gridTemplateColumns:`repeat(auto-fit, minmax(${accountSummaries.length === 1 ? "300px" : "220px"}, 1fr))`, gap:10 }}>
             {(accountFilter === "All" ? accountSummaries : accountSummaries.filter(a => a.name === accountFilter)).map(acct => (
               <div key={acct.name} style={{
-                background:theme.panelBg, borderRadius:12, padding:"16px 18px",
+                background:"var(--tp-panel)", borderRadius:12, padding:"16px 18px",
                 border:`1px solid ${acct.totalPnL >= 0 ? "rgba(var(--tp-success-rgb), 0.12)" : "rgba(var(--tp-danger-rgb), 0.12)"}`,
                 cursor:"pointer", transition:"all 0.2s",
                 outline: accountFilter === acct.name ? "2px solid rgba(var(--tp-accent-rgb), 0.5)" : "none", outlineOffset:1
@@ -2584,23 +2584,23 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
                 onMouseLeave={e=>e.currentTarget.style.borderColor=acct.totalPnL >= 0 ? "rgba(var(--tp-success-rgb), 0.12)" : "rgba(var(--tp-danger-rgb), 0.12)"}
               >
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:theme.text }}>{acct.name}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:"var(--tp-text)" }}>{acct.name}</div>
                   <span style={{ fontSize:9, fontWeight:600, color: acct.returnPct >= 0 ? "var(--tp-success)" : "var(--tp-danger)", background: acct.returnPct >= 0 ? "rgba(var(--tp-success-rgb), 0.1)" : "rgba(var(--tp-danger-rgb), 0.1)", padding:"2px 8px", borderRadius:10, fontFamily:"'JetBrains Mono', monospace" }}>
                     {hideBalances ? "•••" : `${acct.returnPct >= 0 ? "+" : ""}${(isNaN(acct.returnPct) ? 0 : acct.returnPct).toFixed(1)}%`}
                   </span>
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"end" }}>
                   <div>
-                    <div style={{ fontSize:9, color:theme.textFaintest, textTransform:"uppercase", letterSpacing:0.5, marginBottom:2 }}>Current Balance {acct.hasOverride && <span style={{ color:"var(--tp-warning)" }}>(Override)</span>}</div>
+                    <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:2 }}>Current Balance {acct.hasOverride && <span style={{ color:"var(--tp-warning)" }}>(Override)</span>}</div>
                     <div style={{ fontSize:20, fontWeight:700, color: acct.currentBal >= acct.startBal ? "var(--tp-success)" : "var(--tp-danger)", fontFamily:"'JetBrains Mono', monospace" }}>
                       {hideBalances ? "$•••••" : `$${(isNaN(acct.currentBal) ? 0 : acct.currentBal).toLocaleString("en-US",{minimumFractionDigits:2, maximumFractionDigits:2})}`}
                     </div>
                   </div>
                   <div style={{ textAlign:"right" }}>
-                    <div style={{ fontSize:9, color:theme.textFaintest, textTransform:"uppercase", letterSpacing:0.5, marginBottom:2 }}>P&L</div>
+                    <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:2 }}>P&L</div>
                     <div style={{ fontSize:13, fontWeight:600, color: acct.totalPnL >= 0 ? "var(--tp-success)" : "var(--tp-danger)", fontFamily:"'JetBrains Mono', monospace" }}>{hideBalances ? "$•••••" : fmt(acct.totalPnL)}</div>
                     {!hideBalances && (acct.unrealizedPnL !== 0 || acct.wheelPremium !== 0 || acct.cashNet !== 0 || acct.dividendIncome > 0 || acct.reconcileAdj !== 0) && !acct.hasOverride && !prefs.compactBalances && (
-                      <div style={{ fontSize:9, color:theme.textFaintest, marginTop:2 }}>
+                      <div style={{ fontSize:9, color:"var(--tp-faintest)", marginTop:2 }}>
                         <span style={{ color: acct.realizedPnL >= 0 ? "rgba(var(--tp-success-rgb), 0.6)" : "rgba(var(--tp-danger-rgb), 0.6)" }}>R: {fmt(acct.realizedPnL)}</span>
                         {acct.unrealizedPnL !== 0 && <>
                           {" · "}
@@ -2624,7 +2624,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
                         </>}
                       </div>
                     )}
-                    <div style={{ fontSize:9, color:theme.textFaintest, marginTop:2 }}>{hideBalances ? "started $••••• · " : `started $${acct.startBal.toLocaleString()} · `}{acct.tradeCount} trades</div>
+                    <div style={{ fontSize:9, color:"var(--tp-faintest)", marginTop:2 }}>{hideBalances ? "started $••••• · " : `started $${acct.startBal.toLocaleString()} · `}{acct.tradeCount} trades</div>
                     {!hideBalances && <button onClick={e=>{e.stopPropagation();setReconcileAccount(acct);setReconcileTarget("");}} style={{ background:"none", border:"none", color:"rgba(251,146,60,0.5)", cursor:"pointer", fontSize:8, padding:"2px 0", marginTop:2, textDecoration:"underline", textUnderlineOffset:2 }} onMouseEnter={e=>e.currentTarget.style.color="rgba(251,146,60,0.9)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(251,146,60,0.5)"}>Reconcile</button>}
                   </div>
                 </div>
@@ -2692,29 +2692,29 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
             <Filter size={13} color="var(--tp-accent)"/>
             <span style={{ fontSize:11, color:"var(--tp-accent)", fontWeight:600, textTransform:"uppercase", letterSpacing:0.8 }}>Filters</span>
-            {activeFilterCount > 0 && <span style={{ fontSize:10, fontWeight:700, color:theme.text, background:"var(--tp-accent)", borderRadius:10, padding:"1px 7px", minWidth:16, textAlign:"center" }}>{activeFilterCount}</span>}
+            {activeFilterCount > 0 && <span style={{ fontSize:10, fontWeight:700, color:"var(--tp-text)", background:"var(--tp-accent)", borderRadius:10, padding:"1px 7px", minWidth:16, textAlign:"center" }}>{activeFilterCount}</span>}
           </div>
           {activeFilterCount > 0 && <button onClick={()=>{setAccountFilter("All");setAssetFilter("All");setStrategyFilter("All");setDirectionFilter("All");setTimeframeFilter("All");setDateRangePreset("all");setCustomDateFrom("");setCustomDateTo("");}} style={{ padding:"3px 10px", borderRadius:12, border:"1px solid rgba(var(--tp-danger-rgb), 0.25)", background:"rgba(var(--tp-danger-rgb), 0.08)", color:"var(--tp-danger)", cursor:"pointer", fontSize:10, fontWeight:500 }}>Clear All</button>}
           {capVal > 0 && (
             <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
-              <span style={{ fontSize:10, color:theme.textFaint }}>Capital:</span>
+              <span style={{ fontSize:10, color:"var(--tp-faint)" }}>Capital:</span>
               <span style={{ fontSize:11, fontWeight:600, color:"var(--tp-warning)", fontFamily:"'JetBrains Mono', monospace" }}>${capVal.toLocaleString()}</span>
-              {accountFilter !== "All" && <span style={{ fontSize:9, color:theme.textFaintest }}>({accountFilter})</span>}
+              {accountFilter !== "All" && <span style={{ fontSize:9, color:"var(--tp-faintest)" }}>({accountFilter})</span>}
             </div>
           )}
         </div>
 
         {/* Date range filter */}
         <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, flexWrap:"wrap" }}>
-          <span style={{ fontSize:10, color:theme.textFaint, minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Period</span>
+          <span style={{ fontSize:10, color:"var(--tp-faint)", minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Period</span>
           {[{id:"all",label:"All Time"},{id:"today",label:"Today"},{id:"this_week",label:"This Week"},{id:"this_month",label:"This Month"},{id:"last_30",label:"Last 30d"},{id:"last_90",label:"Last 90d"},{id:"ytd",label:"YTD"},{id:"custom",label:"Custom"}].map(dr => (
             <FilterPill key={dr.id} label={dr.label} active={dateRangePreset===dr.id} onClick={()=>setDateRangePreset(dateRangePreset===dr.id && dr.id!=="all" ? "all" : dr.id)} color="#34d399"/>
           ))}
           {dateRangePreset === "custom" && (
             <div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:4 }}>
-              <input type="date" value={customDateFrom} onChange={e=>setCustomDateFrom(e.target.value)} style={{ padding:"4px 8px", background:theme.inputBg, border:"1px solid rgba(52,211,153,0.25)", borderRadius:6, color:theme.text, fontSize:11, outline:"none" }}/>
-              <span style={{ fontSize:10, color:theme.textFaintest }}>to</span>
-              <input type="date" value={customDateTo} onChange={e=>setCustomDateTo(e.target.value)} style={{ padding:"4px 8px", background:theme.inputBg, border:"1px solid rgba(52,211,153,0.25)", borderRadius:6, color:theme.text, fontSize:11, outline:"none" }}/>
+              <input type="date" value={customDateFrom} onChange={e=>setCustomDateFrom(e.target.value)} style={{ padding:"4px 8px", background:"var(--tp-input)", border:"1px solid rgba(52,211,153,0.25)", borderRadius:6, color:"var(--tp-text)", fontSize:11, outline:"none" }}/>
+              <span style={{ fontSize:10, color:"var(--tp-faintest)" }}>to</span>
+              <input type="date" value={customDateTo} onChange={e=>setCustomDateTo(e.target.value)} style={{ padding:"4px 8px", background:"var(--tp-input)", border:"1px solid rgba(52,211,153,0.25)", borderRadius:6, color:"var(--tp-text)", fontSize:11, outline:"none" }}/>
             </div>
           )}
         </div>
@@ -2722,7 +2722,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
         {/* Account filter */}
         {uniqueAccounts.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, flexWrap:"wrap" }}>
-            <span style={{ fontSize:10, color:theme.textFaint, minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Account</span>
+            <span style={{ fontSize:10, color:"var(--tp-faint)", minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Account</span>
             <FilterPill label="All" active={accountFilter==="All"} onClick={()=>setAccountFilter("All")}/>
             {uniqueAccounts.map(a => <FilterPill key={a} label={a} active={accountFilter===a} onClick={()=>setAccountFilter(accountFilter===a?"All":a)} color="var(--tp-info)"/>)}
           </div>
@@ -2730,14 +2730,14 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
 
         {/* Asset type filter */}
         <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, flexWrap:"wrap" }}>
-          <span style={{ fontSize:10, color:theme.textFaint, minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Asset</span>
+          <span style={{ fontSize:10, color:"var(--tp-faint)", minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Asset</span>
           <FilterPill label="All" active={assetFilter==="All"} onClick={()=>setAssetFilter("All")}/>
           {ASSET_TYPES.map(a => <FilterPill key={a} label={a} active={assetFilter===a} onClick={()=>setAssetFilter(assetFilter===a?"All":a)} color={a==="Stock"?"var(--tp-success)":a==="Options"?"#a78bfa":"var(--tp-warning)"}/>)}
         </div>
 
         {/* Direction filter */}
         <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, flexWrap:"wrap" }}>
-          <span style={{ fontSize:10, color:theme.textFaint, minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Direction</span>
+          <span style={{ fontSize:10, color:"var(--tp-faint)", minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Direction</span>
           <FilterPill label="All" active={directionFilter==="All"} onClick={()=>setDirectionFilter("All")}/>
           <FilterPill label="Long" active={directionFilter==="Long"} onClick={()=>setDirectionFilter(directionFilter==="Long"?"All":"Long")} color="var(--tp-info)"/>
           <FilterPill label="Short" active={directionFilter==="Short"} onClick={()=>setDirectionFilter(directionFilter==="Short"?"All":"Short")} color="#f472b6"/>
@@ -2746,7 +2746,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
         {/* Strategy filter */}
         {uniqueStrategies.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, flexWrap:"wrap" }}>
-            <span style={{ fontSize:10, color:theme.textFaint, minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Strategy</span>
+            <span style={{ fontSize:10, color:"var(--tp-faint)", minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Strategy</span>
             <FilterPill label="All" active={strategyFilter==="All"} onClick={()=>setStrategyFilter("All")}/>
             {uniqueStrategies.map(s => <FilterPill key={s} label={s} active={strategyFilter===s} onClick={()=>setStrategyFilter(strategyFilter===s?"All":s)} color="#c084fc"/>)}
           </div>
@@ -2755,7 +2755,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
         {/* Timeframe filter */}
         {uniqueTimeframes.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-            <span style={{ fontSize:10, color:theme.textFaint, minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Timeframe</span>
+            <span style={{ fontSize:10, color:"var(--tp-faint)", minWidth:62, textTransform:"uppercase", letterSpacing:0.6 }}>Timeframe</span>
             <FilterPill label="All" active={timeframeFilter==="All"} onClick={()=>setTimeframeFilter("All")}/>
             {uniqueTimeframes.map(tf => <FilterPill key={tf} label={tf} active={timeframeFilter===tf} onClick={()=>setTimeframeFilter(timeframeFilter===tf?"All":tf)} color="#fb923c"/>)}
           </div>
@@ -2792,7 +2792,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:8 }}>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <BarChart3 size={15} color="#8a8f9e"/>
-              <span style={{ fontSize:13, color:theme.textMuted, fontWeight:500 }}>
+              <span style={{ fontSize:13, color:"var(--tp-muted)", fontWeight:500 }}>
                 {chartType === "equity" ? "Equity Curve" : chartType === "balance" ? "Account Balance" : chartType === "daily" ? "Daily P&L" : chartType === "weekly" ? "Weekly P&L" : "Monthly P&L"}
                 {chartAccountFilter !== "All" && <span style={{ fontSize:11, color:"var(--tp-info)", marginLeft:6 }}>— {chartAccountFilter}</span>}
               </span>
@@ -2821,7 +2821,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
           {/* Chart-level account filter */}
           {uniqueAccounts.length > 0 && (
             <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:12, flexWrap:"wrap" }}>
-              <span style={{ fontSize:10, color:theme.textFaint, textTransform:"uppercase", letterSpacing:0.6 }}>Account</span>
+              <span style={{ fontSize:10, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.6 }}>Account</span>
               <button onClick={()=>setChartAccountFilter("All")} style={{
                 padding:"4px 12px", borderRadius:14, border:`1px solid ${chartAccountFilter==="All" ? "var(--tp-accent)" : "var(--tp-border-l)"}`,
                 background: chartAccountFilter==="All" ? "rgba(var(--tp-accent-rgb), 0.12)" : "var(--tp-card)",
@@ -2843,7 +2843,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
                 );
               })}
               {chartAccountFilter !== "All" && (
-                <span style={{ fontSize:10, color:theme.textFaintest, marginLeft:4, fontStyle:"italic" }}>
+                <span style={{ fontSize:10, color:"var(--tp-faintest)", marginLeft:4, fontStyle:"italic" }}>
                   Showing {chartAccountFilter} only on chart
                 </span>
               )}
@@ -2862,7 +2862,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--tp-input)"/>
                 <XAxis dataKey={chartType==="weekly"||chartType==="monthly"?"label":"date"} tick={{fill:"#5c6070",fontSize:10}} axisLine={false} tickLine={false} interval={chartData.length > 20 ? Math.floor(chartData.length/12) : 0}/>
                 <YAxis tick={{fill:"#5c6070",fontSize:10}} axisLine={false} tickLine={false} tickFormatter={yTickFmt}/>
-                <Tooltip contentStyle={{background:theme.tooltipBg,border:`1px solid ${theme.borderLight}`,borderRadius:8,color:theme.text,fontSize:12}} formatter={v=>[chartFormatter(v),"P&L"]}/>
+                <Tooltip contentStyle={{background:"var(--tp-panel)",border:`1px solid var(--tp-border-l)`,borderRadius:8,color:"var(--tp-text)",fontSize:12}} formatter={v=>[chartFormatter(v),"P&L"]}/>
                 <Bar dataKey={chartDataKey} radius={[3,3,0,0]}>
                   {chartData.map((entry, idx) => (
                     <Cell key={idx} fill={entry[chartDataKey] >= 0 ? "var(--tp-success)" : "var(--tp-danger)"}/>
@@ -2880,7 +2880,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--tp-input)"/>
                 <XAxis dataKey="date" tick={{fill:"#5c6070",fontSize:10}} axisLine={false} tickLine={false} interval={chartData.length > 20 ? Math.floor(chartData.length/12) : 0}/>
                 <YAxis tick={{fill:"#5c6070",fontSize:10}} axisLine={false} tickLine={false} tickFormatter={isBalanceView ? (v=>"$"+v.toLocaleString()) : yTickFmt}/>
-                <Tooltip contentStyle={{background:theme.tooltipBg,border:`1px solid ${theme.borderLight}`,borderRadius:8,color:theme.text,fontSize:12}} formatter={v=>[isBalanceView ? "$"+parseFloat(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) : chartFormatter(v), isBalanceView?"Balance":"Equity"]}/>
+                <Tooltip contentStyle={{background:"var(--tp-panel)",border:`1px solid var(--tp-border-l)`,borderRadius:8,color:"var(--tp-text)",fontSize:12}} formatter={v=>[isBalanceView ? "$"+parseFloat(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}) : chartFormatter(v), isBalanceView?"Balance":"Equity"]}/>
                 <Area type="monotone" dataKey={isBalanceView?"balance":chartDataKey} stroke={isBalanceView?"var(--tp-success)":"var(--tp-accent)"} strokeWidth={2} fill="url(#eqGradDash)"/>
               </AreaChart>
             )}
@@ -2894,21 +2894,21 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <Calendar size={15} color="#8a8f9e"/>
-              <span style={{ fontSize:13, color:theme.textMuted, fontWeight:500 }}>P&L Calendar</span>
+              <span style={{ fontSize:13, color:"var(--tp-muted)", fontWeight:500 }}>P&L Calendar</span>
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <button onClick={prevMonth} style={{ background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:6, color:theme.textMuted, cursor:"pointer", width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronLeft size={14}/></button>
+              <button onClick={prevMonth} style={{ background:"var(--tp-input)", border:`1px solid var(--tp-border-l)`, borderRadius:6, color:"var(--tp-muted)", cursor:"pointer", width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronLeft size={14}/></button>
               <button onClick={()=>{setCalendarMonth(new Date().getMonth());setCalendarYear(new Date().getFullYear());}} style={{ padding:"4px 12px", borderRadius:6, border:"1px solid rgba(var(--tp-accent-rgb), 0.2)", background:"rgba(var(--tp-accent-rgb), 0.08)", color:"var(--tp-accent-light)", cursor:"pointer", fontSize:10, fontWeight:500 }}>Today</button>
-              <button onClick={nextMonth} style={{ background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:6, color:theme.textMuted, cursor:"pointer", width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronRight size={14}/></button>
+              <button onClick={nextMonth} style={{ background:"var(--tp-input)", border:`1px solid var(--tp-border-l)`, borderRadius:6, color:"var(--tp-muted)", cursor:"pointer", width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronRight size={14}/></button>
             </div>
           </div>
           <CalendarHeatmap dailyMap={stats.dailyMap} month={calendarMonth} year={calendarYear} startingCapital={capVal}/>
           
           {/* Month legend */}
           <div style={{ display:"flex", justifyContent:"center", gap:16, marginTop:14, paddingTop:12, borderTop:"1px solid var(--tp-border)" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:10, height:10, borderRadius:2, background:"rgba(var(--tp-danger-rgb), 0.5)" }}/><span style={{ fontSize:10, color:theme.textFaint }}>Loss</span></div>
-            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:10, height:10, borderRadius:2, background:theme.inputBg }}/><span style={{ fontSize:10, color:theme.textFaint }}>Break-even</span></div>
-            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:10, height:10, borderRadius:2, background:"rgba(var(--tp-success-rgb), 0.5)" }}/><span style={{ fontSize:10, color:theme.textFaint }}>Win</span></div>
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:10, height:10, borderRadius:2, background:"rgba(var(--tp-danger-rgb), 0.5)" }}/><span style={{ fontSize:10, color:"var(--tp-faint)" }}>Loss</span></div>
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:10, height:10, borderRadius:2, background:"var(--tp-input)" }}/><span style={{ fontSize:10, color:"var(--tp-faint)" }}>Break-even</span></div>
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:10, height:10, borderRadius:2, background:"rgba(var(--tp-success-rgb), 0.5)" }}/><span style={{ fontSize:10, color:"var(--tp-faint)" }}>Win</span></div>
           </div>
         </div>
       )}
@@ -2918,13 +2918,13 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
         <div style={{ ...panel(), order:wOrder("breakdown") }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
             <Zap size={15} color="#8a8f9e"/>
-            <span style={{ fontSize:13, color:theme.textMuted, fontWeight:500 }}>Daily & Monthly Breakdown</span>
+            <span style={{ fontSize:13, color:"var(--tp-muted)", fontWeight:500 }}>Daily & Monthly Breakdown</span>
           </div>
 
           {/* Monthly summary table */}
           {stats.monthlyData.length > 0 && (
             <div style={{ marginBottom:18 }}>
-              <div style={{ fontSize:11, color:theme.textFaint, textTransform:"uppercase", letterSpacing:0.8, marginBottom:8, fontWeight:600 }}>Monthly Summary</div>
+              <div style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:8, fontWeight:600 }}>Monthly Summary</div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:8 }}>
                 {stats.monthlyData.map(m => (
                   <div key={m.date} style={{
@@ -2932,10 +2932,10 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
                     border:`1px solid ${m.pnl >= 0 ? "rgba(var(--tp-success-rgb), 0.15)" : "rgba(var(--tp-danger-rgb), 0.15)"}`,
                     borderRadius:8, padding:"10px 12px"
                   }}>
-                    <div style={{ fontSize:11, color:theme.textMuted, marginBottom:4 }}>{m.label}</div>
+                    <div style={{ fontSize:11, color:"var(--tp-muted)", marginBottom:4 }}>{m.label}</div>
                     <div style={{ fontSize:16, fontWeight:700, color: m.pnl >= 0 ? "var(--tp-success)" : "var(--tp-danger)", fontFamily:"'JetBrains Mono', monospace" }}>{fmt(m.pnl)}</div>
                     {capVal > 0 && <div style={{ fontSize:11, color: m.pct >= 0 ? "rgba(var(--tp-success-rgb), 0.65)" : "rgba(var(--tp-danger-rgb), 0.65)", fontFamily:"'JetBrains Mono', monospace", marginTop:2 }}>{fmtPct(m.pct)}</div>}
-                    <div style={{ fontSize:10, color:theme.textFaintest, marginTop:3 }}>{stats.closed.filter(t=>t.date.startsWith(m.date)).length} trades</div>
+                    <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:3 }}>{stats.closed.filter(t=>t.date.startsWith(m.date)).length} trades</div>
                   </div>
                 ))}
               </div>
@@ -2943,23 +2943,23 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
           )}
 
           {/* Recent daily P&L list */}
-          <div style={{ fontSize:11, color:theme.textFaint, textTransform:"uppercase", letterSpacing:0.8, marginBottom:8, fontWeight:600 }}>Recent Daily P&L</div>
+          <div style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:8, fontWeight:600 }}>Recent Daily P&L</div>
           <div style={{ maxHeight:260, overflowY:"auto", paddingRight:4 }}>
             {[...stats.dailyData].reverse().slice(0,30).map(d => {
               const dayTrades = stats.closed.filter(t=>t.date===d.date);
               const dayOfWeek = new Date(d.date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});
               return (
-                <div key={d.date} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 10px", borderBottom:`1px solid ${theme.borderFaint}`, transition:"background 0.15s" }}
+                <div key={d.date} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 10px", borderBottom:`1px solid var(--tp-border)`, transition:"background 0.15s" }}
                   onMouseEnter={e=>e.currentTarget.style.background="var(--tp-card)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                    <span style={{ fontSize:11, color:theme.textFaint, minWidth:32 }}>{dayOfWeek}</span>
-                    <span style={{ fontSize:12, color:theme.textSecondary }}>{d.date}</span>
-                    <span style={{ fontSize:10, color:theme.textFaintest }}>{dayTrades.length} trade{dayTrades.length!==1?"s":""}</span>
+                    <span style={{ fontSize:11, color:"var(--tp-faint)", minWidth:32 }}>{dayOfWeek}</span>
+                    <span style={{ fontSize:12, color:"var(--tp-text2)" }}>{d.date}</span>
+                    <span style={{ fontSize:10, color:"var(--tp-faintest)" }}>{dayTrades.length} trade{dayTrades.length!==1?"s":""}</span>
                     <div style={{ display:"flex", gap:3 }}>
                       {[...new Set(dayTrades.map(t=>t.ticker))].slice(0,4).map(tk => (
-                        <span key={tk} style={{ fontSize:9, color:theme.textFaint, background:theme.inputBg, padding:"1px 5px", borderRadius:3 }}>{tk}</span>
+                        <span key={tk} style={{ fontSize:9, color:"var(--tp-faint)", background:"var(--tp-input)", padding:"1px 5px", borderRadius:3 }}>{tk}</span>
                       ))}
-                      {[...new Set(dayTrades.map(t=>t.ticker))].length > 4 && <span style={{ fontSize:9, color:theme.textFaintest }}>+{[...new Set(dayTrades.map(t=>t.ticker))].length - 4}</span>}
+                      {[...new Set(dayTrades.map(t=>t.ticker))].length > 4 && <span style={{ fontSize:9, color:"var(--tp-faintest)" }}>+{[...new Set(dayTrades.map(t=>t.ticker))].length - 4}</span>}
                     </div>
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -2975,7 +2975,7 @@ function Dashboard({ trades, customFields, accountBalances, theme, logo, banner,
 
       {/* ═══════ EMPTY STATE ═══════ */}
       {stats.closed.length === 0 && (
-        <div style={{ textAlign:"center", padding:"60px 20px", color:theme.textFaint }}>
+        <div style={{ textAlign:"center", padding:"60px 20px", color:"var(--tp-faint)" }}>
           <Activity size={48} style={{ margin:"0 auto 16px", opacity:0.4 }}/>
           <p style={{ margin:0, fontSize:15 }}>
             {activeFilterCount > 0 ? "No closed trades match your filters." : "No closed trades yet. Start logging trades to see your dashboard."}
@@ -4521,7 +4521,7 @@ function DailyLogRow({ row, dailyLog, onUpdatePnL, onToggleHit, onUpdateNote, on
   );
 }
 
-function GoalTracker({ goals, onSave, trades, theme, accounts, prefs, accountBalances }) {
+function GoalTracker({ goals, onSave, trades, accounts, prefs, accountBalances }) {
   const defaultGoal = { startingBalance: 200, profitPct: 2, stopPct: 1, dailyLog: {}, weeklyGoalOverride: null, monthlyGoalOverride: null, weeklyLossLimit: null, cashFlows: [] };
 
   // Migrate old flat structure → per-account structure
@@ -5174,7 +5174,7 @@ const emptyEntry = (date) => ({
   tags: [],
 });
 
-function JournalTab({ journal, onSave, trades, theme }) {
+function JournalTab({ journal, onSave, trades }) {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [view, setView] = useState("daily"); // daily | weekly | calendar
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -5632,7 +5632,7 @@ function JournalTab({ journal, onSave, trades, theme }) {
 }
 
 // ─── HOLDINGS TAB ────────────────────────────────────────────────────────────
-function HoldingsTab({ trades, accountBalances, onEditTrade, theme, dividends, onSaveDividends, onSaveTrades, prefs, onSavePrefs, onStartWheel }) {
+function HoldingsTab({ trades, accountBalances, onEditTrade, dividends, onSaveDividends, onSaveTrades, prefs, onSavePrefs, onStartWheel }) {
   const [accountFilter, setAccountFilter] = useState("All");
   const [expandedTicker, setExpandedTicker] = useState(null);
   const [viewingSrc, setViewingSrc] = useState(null);
@@ -8438,7 +8438,7 @@ function SetupGuide() {
 }
 
 // ─── REPORTS TAB ─────────────────────────────────────────────────────────────
-function ReportsTab({ trades, wheelTrades, accountBalances, customFields, theme, prefs }) {
+function ReportsTab({ trades, wheelTrades, accountBalances, customFields, prefs }) {
   const [reportType, setReportType] = useState("summary");
   const [account, setAccount] = useState("All");
   const [dateRange, setDateRange] = useState("month");
@@ -8788,7 +8788,7 @@ function ReportsTab({ trades, wheelTrades, accountBalances, customFields, theme,
 }
 
 // ─── BACKUPS SECTION ────────────────────────────────────────────────────────
-function BackupsSection({ user, theme }) {
+function BackupsSection({ user }) {
   const [snapshots, setSnapshots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState(null);
@@ -8910,7 +8910,7 @@ function BackupsSection({ user, theme }) {
 
 
 // ─── ACCESS CODE ADMIN (admin only) ──────────────────────────────────────────
-function AccessCodeAdmin({ user, theme }) {
+function AccessCodeAdmin({ user }) {
   const [codes, setCodes] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -8963,54 +8963,54 @@ function AccessCodeAdmin({ user, theme }) {
     loadData();
   };
 
-  if (loading) return <div style={{ textAlign:"center", padding:40, color:theme.textFaint }}>Loading admin data...</div>;
+  if (loading) return <div style={{ textAlign:"center", padding:40, color:"var(--tp-faint)" }}>Loading admin data...</div>;
 
   return (
     <div>
-      <div style={{ fontSize:18, fontWeight:600, color:theme.text, marginBottom:4 }}>Access Code Management</div>
-      <div style={{ fontSize:13, color:theme.textFaint, marginBottom:24 }}>Manage beta access codes and view who has access to TradePulse</div>
+      <div style={{ fontSize:18, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Access Code Management</div>
+      <div style={{ fontSize:13, color:"var(--tp-faint)", marginBottom:24 }}>Manage beta access codes and view who has access to TradePulse</div>
 
       {error && <div style={{ padding:"10px 14px", background:"rgba(var(--tp-danger-rgb), 0.08)", border:"1px solid rgba(var(--tp-danger-rgb), 0.2)", borderRadius:8, color:"var(--tp-danger)", fontSize:12, marginBottom:16 }}>{error}</div>}
 
       {/* Create new code */}
-      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:12 }}>Create Access Code</div>
+      <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:12 }}>Create Access Code</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 100px auto", gap:10, alignItems:"end" }}>
           <div>
-            <div style={{ fontSize:10, color:theme.textFaint, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Code</div>
-            <input value={newCode} onChange={e=>setNewCode(e.target.value.toUpperCase())} placeholder="BETA-26" style={{ width:"100%", padding:"9px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace", letterSpacing:2, boxSizing:"border-box" }}/>
+            <div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Code</div>
+            <input value={newCode} onChange={e=>setNewCode(e.target.value.toUpperCase())} placeholder="BETA-26" style={{ width:"100%", padding:"9px 12px", background:"var(--tp-input)", border:`1px solid var(--tp-border-l)`, borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace", letterSpacing:2, boxSizing:"border-box" }}/>
           </div>
           <div>
-            <div style={{ fontSize:10, color:theme.textFaint, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Label</div>
-            <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Beta testers" style={{ width:"100%", padding:"9px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
+            <div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Label</div>
+            <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Beta testers" style={{ width:"100%", padding:"9px 12px", background:"var(--tp-input)", border:`1px solid var(--tp-border-l)`, borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
           </div>
           <div>
-            <div style={{ fontSize:10, color:theme.textFaint, marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Max uses</div>
-            <input type="number" value={newMaxUses} onChange={e=>setNewMaxUses(e.target.value)} placeholder="0" style={{ width:"100%", padding:"9px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:13, outline:"none", textAlign:"center", boxSizing:"border-box" }}/>
+            <div style={{ fontSize:10, color:"var(--tp-faint)", marginBottom:4, textTransform:"uppercase", letterSpacing:0.5 }}>Max uses</div>
+            <input type="number" value={newMaxUses} onChange={e=>setNewMaxUses(e.target.value)} placeholder="0" style={{ width:"100%", padding:"9px 12px", background:"var(--tp-input)", border:`1px solid var(--tp-border-l)`, borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", textAlign:"center", boxSizing:"border-box" }}/>
           </div>
           <button onClick={createCode} style={{ padding:"9px 20px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600 }}>Create</button>
         </div>
-        <div style={{ fontSize:10, color:theme.textFaintest, marginTop:8 }}>Max uses of 0 = unlimited</div>
+        <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:8 }}>Max uses of 0 = unlimited</div>
       </div>
 
       {/* Active codes */}
-      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:12 }}>Access Codes ({codes.length})</div>
+      <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:12 }}>Access Codes ({codes.length})</div>
         {codes.length === 0 ? (
-          <div style={{ fontSize:12, color:theme.textFaint, textAlign:"center", padding:20 }}>No access codes created yet</div>
+          <div style={{ fontSize:12, color:"var(--tp-faint)", textAlign:"center", padding:20 }}>No access codes created yet</div>
         ) : (
           <div style={{ display:"grid", gap:6 }}>
             {codes.map(c => (
-              <div key={c.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", background:theme.cardBg, borderRadius:8, border:`1px solid ${theme.borderLight}`, opacity: c.active ? 1 : 0.5 }}>
+              <div key={c.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", background:"var(--tp-card)", borderRadius:8, border:`1px solid var(--tp-border-l)`, opacity: c.active ? 1 : 0.5 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                  <span style={{ fontSize:14, fontWeight:700, fontFamily:"'JetBrains Mono', monospace", color: c.active ? "var(--tp-accent-light)" : theme.textFaint, letterSpacing:2 }}>{c.code}</span>
-                  {c.label && <span style={{ fontSize:11, color:theme.textFaint }}>{c.label}</span>}
+                  <span style={{ fontSize:14, fontWeight:700, fontFamily:"'JetBrains Mono', monospace", color: c.active ? "var(--tp-accent-light)" : "var(--tp-faint)", letterSpacing:2 }}>{c.code}</span>
+                  {c.label && <span style={{ fontSize:11, color:"var(--tp-faint)" }}>{c.label}</span>}
                   <span style={{ fontSize:10, padding:"2px 6px", borderRadius:4, background: c.active ? "rgba(var(--tp-success-rgb), 0.1)" : "rgba(var(--tp-danger-rgb), 0.1)", color: c.active ? "var(--tp-success)" : "var(--tp-danger)", fontWeight:600 }}>{c.active ? "Active" : "Disabled"}</span>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ fontSize:11, color:theme.textFaint, fontFamily:"'JetBrains Mono', monospace" }}>{c.use_count}/{c.max_uses || "∞"} used</span>
-                  <button onClick={()=>toggleCode(c.id, !c.active)} style={{ padding:"4px 10px", borderRadius:4, border:`1px solid ${theme.borderLight}`, background:"transparent", color: c.active ? "var(--tp-warning)" : "var(--tp-success)", cursor:"pointer", fontSize:10, fontWeight:600 }}>{c.active ? "Disable" : "Enable"}</button>
-                  <button onClick={()=>deleteCode(c.id)} style={{ padding:"4px 10px", borderRadius:4, border:"none", background:"transparent", color:theme.textFaintest, cursor:"pointer", fontSize:10 }} onMouseEnter={e=>e.currentTarget.style.color="var(--tp-danger)"} onMouseLeave={e=>e.currentTarget.style.color=theme.textFaintest}>Delete</button>
+                  <span style={{ fontSize:11, color:"var(--tp-faint)", fontFamily:"'JetBrains Mono', monospace" }}>{c.use_count}/{c.max_uses || "∞"} used</span>
+                  <button onClick={()=>toggleCode(c.id, !c.active)} style={{ padding:"4px 10px", borderRadius:4, border:`1px solid var(--tp-border-l)`, background:"transparent", color: c.active ? "var(--tp-warning)" : "var(--tp-success)", cursor:"pointer", fontSize:10, fontWeight:600 }}>{c.active ? "Disable" : "Enable"}</button>
+                  <button onClick={()=>deleteCode(c.id)} style={{ padding:"4px 10px", borderRadius:4, border:"none", background:"transparent", color:"var(--tp-faintest)", cursor:"pointer", fontSize:10 }} onMouseEnter={e=>e.currentTarget.style.color="var(--tp-danger)"} onMouseLeave={e=>e.currentTarget.style.color="var(--tp-faintest)"}>Delete</button>
                 </div>
               </div>
             ))}
@@ -9019,21 +9019,21 @@ function AccessCodeAdmin({ user, theme }) {
       </div>
 
       {/* Users with access */}
-      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px" }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:12 }}>Users with Access ({users.length})</div>
+      <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px" }}>
+        <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:12 }}>Users with Access ({users.length})</div>
         {users.length === 0 ? (
-          <div style={{ fontSize:12, color:theme.textFaint, textAlign:"center", padding:20 }}>No users yet</div>
+          <div style={{ fontSize:12, color:"var(--tp-faint)", textAlign:"center", padding:20 }}>No users yet</div>
         ) : (
           <div style={{ display:"grid", gap:4 }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 140px 80px", gap:8, padding:"6px 14px", fontSize:9, color:theme.textFaintest, fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 140px 80px", gap:8, padding:"6px 14px", fontSize:9, color:"var(--tp-faintest)", fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>
               <span>Email</span><span>Code</span><span>Activated</span><span></span>
             </div>
             {users.map(u => (
-              <div key={u.user_id} style={{ display:"grid", gridTemplateColumns:"1fr 120px 140px 80px", gap:8, padding:"8px 14px", background:theme.cardBg, borderRadius:6, alignItems:"center", fontSize:12 }}>
-                <span style={{ color:theme.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.email || u.user_id.slice(0,8)}</span>
+              <div key={u.user_id} style={{ display:"grid", gridTemplateColumns:"1fr 120px 140px 80px", gap:8, padding:"8px 14px", background:"var(--tp-card)", borderRadius:6, alignItems:"center", fontSize:12 }}>
+                <span style={{ color:"var(--tp-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.email || u.user_id.slice(0,8)}</span>
                 <span style={{ fontFamily:"'JetBrains Mono', monospace", fontSize:10, color: u.access_code === "GRANDFATHERED" ? "var(--tp-success)" : "var(--tp-accent-light)" }}>{u.access_code}</span>
-                <span style={{ fontSize:10, color:theme.textFaint }}>{u.activated_at ? new Date(u.activated_at).toLocaleDateString() : ""}</span>
-                <button onClick={()=>revokeUser(u.user_id)} style={{ padding:"3px 8px", borderRadius:4, border:`1px solid ${theme.borderLight}`, background:"transparent", color:theme.textFaintest, cursor:"pointer", fontSize:10 }} onMouseEnter={e=>e.currentTarget.style.color="var(--tp-danger)"} onMouseLeave={e=>e.currentTarget.style.color=theme.textFaintest}>Revoke</button>
+                <span style={{ fontSize:10, color:"var(--tp-faint)" }}>{u.activated_at ? new Date(u.activated_at).toLocaleDateString() : ""}</span>
+                <button onClick={()=>revokeUser(u.user_id)} style={{ padding:"3px 8px", borderRadius:4, border:`1px solid var(--tp-border-l)`, background:"transparent", color:"var(--tp-faintest)", cursor:"pointer", fontSize:10 }} onMouseEnter={e=>e.currentTarget.style.color="var(--tp-danger)"} onMouseLeave={e=>e.currentTarget.style.color="var(--tp-faintest)"}>Revoke</button>
               </div>
             ))}
           </div>
@@ -9043,7 +9043,7 @@ function AccessCodeAdmin({ user, theme }) {
   );
 }
 
-function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, theme, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances, isAdmin }) {
+function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSaveCustomFields, accountBalances, onSaveAccountBalances, trades, onSaveTrades, prefs, onSavePrefs, wheelTrades, cashTransactions, onSaveCashTransactions, hideBalances, isAdmin }) {
   const [section, setSection] = useState("accounts"); // accounts | appearance | futures | custom | importexport | ai
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPreset, setEditingPreset] = useState(null);
@@ -9065,9 +9065,9 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
     <div>
       {/* Section tabs */}
       <div className="tp-settings-tabs" style={{ display:"flex", gap:8, marginBottom:24, borderBottom:"1px solid var(--tp-border)", paddingBottom:2 }}>
-        <button onClick={()=>setSection("accounts")} style={{ padding:"8px 16px", border:"none", background:section==="accounts"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="accounts"?"var(--tp-accent-light)":theme.textFaint, cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="accounts"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Account Balances</button>
-        <button onClick={()=>setSection("appearance")} style={{ padding:"8px 16px", border:"none", background:section==="appearance"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="appearance"?"var(--tp-accent-light)":theme.textFaint, cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="appearance"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Appearance</button>
-        <button onClick={()=>setSection("importexport")} style={{ padding:"8px 16px", border:"none", background:section==="importexport"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="importexport"?"var(--tp-accent-light)":theme.textFaint, cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="importexport"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Import / Export</button>
+        <button onClick={()=>setSection("accounts")} style={{ padding:"8px 16px", border:"none", background:section==="accounts"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="accounts"?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="accounts"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Account Balances</button>
+        <button onClick={()=>setSection("appearance")} style={{ padding:"8px 16px", border:"none", background:section==="appearance"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="appearance"?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="appearance"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Appearance</button>
+        <button onClick={()=>setSection("importexport")} style={{ padding:"8px 16px", border:"none", background:section==="importexport"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="importexport"?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="importexport"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Import / Export</button>
         <button onClick={()=>setSection("futures")} style={{ padding:"8px 16px", border:"none", background:section==="futures"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="futures"?"var(--tp-accent-light)":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="futures"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Futures Presets</button>
         <button onClick={()=>setSection("custom")} style={{ padding:"8px 16px", border:"none", background:section==="custom"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="custom"?"var(--tp-accent-light)":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="custom"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>Custom Fields</button>
         <button onClick={()=>setSection("ai")} style={{ padding:"8px 16px", border:"none", background:section==="ai"?"rgba(var(--tp-accent-rgb), 0.15)":"transparent", color:section==="ai"?"var(--tp-accent-light)":"#6b7080", cursor:"pointer", fontSize:13, fontWeight:600, borderRadius:"6px 6px 0 0", borderBottom:section==="ai"?"2px solid #6366f1":"none", whiteSpace:"nowrap", flexShrink:0 }}>AI Integration</button>
@@ -9078,8 +9078,8 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
 
       {section === "accounts" && <AccountBalancesManager accountBalances={accountBalances} onSave={onSaveAccountBalances} customFields={customFields} trades={trades} prefs={prefs} onSavePrefs={onSavePrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={onSaveCashTransactions} hideBalances={hideBalances}/>}
 
-      {section === "backups" && <BackupsSection user={user} theme={theme}/>}
-      {section === "admin" && isAdmin && <AccessCodeAdmin user={user} theme={theme}/>}
+      {section === "backups" && <BackupsSection user={user}/>}
+      {section === "admin" && isAdmin && <AccessCodeAdmin user={user}/>}
 
       {section === "futures" && (
         <div>
@@ -9116,7 +9116,7 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
 
       {section === "importexport" && <ImportExportManager user={user} trades={trades} onSaveTrades={onSaveTrades} customFields={customFields} accountBalances={accountBalances}/>}
 
-      {section === "appearance" && <AppearanceManager prefs={prefs} onSave={onSavePrefs} theme={theme}/>}
+      {section === "appearance" && <AppearanceManager prefs={prefs} onSave={onSavePrefs}/>}
 
       {section === "custom" && <CustomFieldsManager customFields={customFields} onSave={onSaveCustomFields}/>}
 
@@ -9478,7 +9478,7 @@ function SchwabSetupWizard({ user }) {
 }
 
 // ─── APPEARANCE MANAGER ─────────────────────────────────────────────────────
-function AppearanceManager({ prefs, onSave, theme }) {
+function AppearanceManager({ prefs, onSave }) {
   const logoInputRef = { current: null };
   const bannerInputRef = { current: null };
 
@@ -9507,24 +9507,24 @@ function AppearanceManager({ prefs, onSave, theme }) {
 
   return (
     <div>
-      <div style={{ fontSize:18, fontWeight:600, color:theme.text, marginBottom:4 }}>Appearance</div>
-      <div style={{ fontSize:13, color:theme.textFaint, marginBottom:24 }}>Customize the look and feel of your trading journal</div>
+      <div style={{ fontSize:18, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Appearance</div>
+      <div style={{ fontSize:13, color:"var(--tp-faint)", marginBottom:24 }}>Customize the look and feel of your trading journal</div>
 
       {/* Theme Toggle */}
-      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:4 }}>Theme</div>
-        <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>Choose between dark and light mode</div>
+      <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Theme</div>
+        <div style={{ fontSize:12, color:"var(--tp-faint)", marginBottom:16 }}>Choose between dark and light mode</div>
 
         <div style={{ display:"flex", gap:12 }}>
           {/* Dark mode card */}
           <div onClick={()=>onSave(p=>({...p,theme:"dark"}))} style={{
             flex:1, padding:"16px", borderRadius:12, cursor:"pointer", transition:"all 0.2s",
-            border: prefs.theme==="dark" ? "2px solid #6366f1" : `1px solid ${theme.borderLight}`,
-            background: prefs.theme==="dark" ? "rgba(var(--tp-accent-rgb), 0.08)" : theme.inputBg
+            border: prefs.theme==="dark" ? "2px solid #6366f1" : `1px solid var(--tp-border-l)`,
+            background: prefs.theme==="dark" ? "rgba(var(--tp-accent-rgb), 0.08)" : "var(--tp-input)"
           }}>
             <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-              <Moon size={18} color={prefs.theme==="dark" ? "var(--tp-accent-light)" : theme.textFaint}/>
-              <span style={{ fontSize:14, fontWeight:600, color: prefs.theme==="dark" ? "var(--tp-accent-light)" : theme.textMuted }}>Dark Mode</span>
+              <Moon size={18} color={prefs.theme==="dark" ? "var(--tp-accent-light)" : "var(--tp-faint)"}/>
+              <span style={{ fontSize:14, fontWeight:600, color: prefs.theme==="dark" ? "var(--tp-accent-light)" : "var(--tp-muted)" }}>Dark Mode</span>
               {prefs.theme==="dark" && <Check size={14} color="var(--tp-accent)"/>}
             </div>
             {/* Mini preview */}
@@ -9545,12 +9545,12 @@ function AppearanceManager({ prefs, onSave, theme }) {
           {/* Light mode card */}
           <div onClick={()=>onSave(p=>({...p,theme:"light"}))} style={{
             flex:1, padding:"16px", borderRadius:12, cursor:"pointer", transition:"all 0.2s",
-            border: prefs.theme==="light" ? "2px solid #6366f1" : `1px solid ${theme.borderLight}`,
-            background: prefs.theme==="light" ? "rgba(var(--tp-accent-rgb), 0.08)" : theme.inputBg
+            border: prefs.theme==="light" ? "2px solid #6366f1" : `1px solid var(--tp-border-l)`,
+            background: prefs.theme==="light" ? "rgba(var(--tp-accent-rgb), 0.08)" : "var(--tp-input)"
           }}>
             <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-              <Sun size={18} color={prefs.theme==="light" ? "var(--tp-accent)" : theme.textFaint}/>
-              <span style={{ fontSize:14, fontWeight:600, color: prefs.theme==="light" ? "var(--tp-accent)" : theme.textMuted }}>Light Mode</span>
+              <Sun size={18} color={prefs.theme==="light" ? "var(--tp-accent)" : "var(--tp-faint)"}/>
+              <span style={{ fontSize:14, fontWeight:600, color: prefs.theme==="light" ? "var(--tp-accent)" : "var(--tp-muted)" }}>Light Mode</span>
               {prefs.theme==="light" && <Check size={14} color="var(--tp-accent)"/>}
             </div>
             {/* Mini preview */}
@@ -9571,73 +9571,73 @@ function AppearanceManager({ prefs, onSave, theme }) {
       </div>
 
       {/* Daily Quote Settings */}
-      <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:4 }}>Daily Quote</div>
-        <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>A trading mindset reminder shown on your dashboard each day</div>
+      <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px", marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Daily Quote</div>
+        <div style={{ fontSize:12, color:"var(--tp-faint)", marginBottom:16 }}>A trading mindset reminder shown on your dashboard each day</div>
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
           {[{id:"library",label:"Library"},{id:"personal",label:"Personal"},{id:"both",label:"Both"},{id:"off",label:"Off"}].map(opt => (
-            <button key={opt.id} onClick={()=>onSave(p=>({...p,quoteMode:opt.id}))} style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${(prefs.quoteMode||"library")===opt.id?"var(--tp-accent)":"var(--tp-border-l)"}`, background:(prefs.quoteMode||"library")===opt.id?"rgba(var(--tp-accent-rgb), 0.12)":"transparent", color:(prefs.quoteMode||"library")===opt.id?"var(--tp-accent-light)":theme.textFaint, cursor:"pointer", fontSize:11, fontWeight:(prefs.quoteMode||"library")===opt.id?600:400 }}>{opt.label}</button>
+            <button key={opt.id} onClick={()=>onSave(p=>({...p,quoteMode:opt.id}))} style={{ padding:"6px 14px", borderRadius:6, border:`1px solid ${(prefs.quoteMode||"library")===opt.id?"var(--tp-accent)":"var(--tp-border-l)"}`, background:(prefs.quoteMode||"library")===opt.id?"rgba(var(--tp-accent-rgb), 0.12)":"transparent", color:(prefs.quoteMode||"library")===opt.id?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:11, fontWeight:(prefs.quoteMode||"library")===opt.id?600:400 }}>{opt.label}</button>
           ))}
         </div>
         {(prefs.quoteMode === "personal" || prefs.quoteMode === "both") && (
           <div>
-            <div style={{ fontSize:11, color:theme.textFaint, marginBottom:6 }}>Your personal quotes (one per line)</div>
-            <textarea value={prefs.personalQuotes || ""} onChange={e=>onSave(p=>({...p,personalQuotes:e.target.value}))} placeholder={"Are you here to be right or to make money?\nI am a professional manager of risk."} rows={4} style={{ width:"100%", padding:"10px 12px", background:theme.inputBg, border:`1px solid ${theme.borderLight}`, borderRadius:8, color:theme.text, fontSize:12, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.6 }}/>
+            <div style={{ fontSize:11, color:"var(--tp-faint)", marginBottom:6 }}>Your personal quotes (one per line)</div>
+            <textarea value={prefs.personalQuotes || ""} onChange={e=>onSave(p=>({...p,personalQuotes:e.target.value}))} placeholder={"Are you here to be right or to make money?\nI am a professional manager of risk."} rows={4} style={{ width:"100%", padding:"10px 12px", background:"var(--tp-input)", border:`1px solid var(--tp-border-l)`, borderRadius:8, color:"var(--tp-text)", fontSize:12, outline:"none", fontFamily:"inherit", resize:"vertical", boxSizing:"border-box", lineHeight:1.6 }}/>
           </div>
         )}
-        {(() => { const q = getTradingQuote(prefs); return q ? (<div style={{ marginTop:12, padding:"8px 14px", background:theme.inputBg, borderRadius:6, textAlign:"center" }}><div style={{ fontSize:9, color:theme.textFaint, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Preview</div><div style={{ fontSize:12, color:theme.textMuted, fontStyle:"italic" }}>{q}</div></div>) : null; })()}
+        {(() => { const q = getTradingQuote(prefs); return q ? (<div style={{ marginTop:12, padding:"8px 14px", background:"var(--tp-input)", borderRadius:6, textAlign:"center" }}><div style={{ fontSize:9, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Preview</div><div style={{ fontSize:12, color:"var(--tp-muted)", fontStyle:"italic" }}>{q}</div></div>) : null; })()}
       </div>
 
       {/* Logo + Banner */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
         {/* Logo Upload */}
-        <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px" }}>
-          <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:4 }}>Dashboard Logo</div>
-          <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>Displays on the left side of the dashboard header</div>
+        <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px" }}>
+          <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Dashboard Logo</div>
+          <div style={{ fontSize:12, color:"var(--tp-faint)", marginBottom:16 }}>Displays on the left side of the dashboard header</div>
 
-          <div style={{ width:"100%", height:80, borderRadius:10, border:`2px dashed ${prefs.logo ? theme.accentPrimary : theme.borderLight}`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", background: prefs.logo ? "transparent" : theme.inputBg, marginBottom:10, cursor:"pointer" }} onClick={()=>logoInputRef.current?.click()}>
+          <div style={{ width:"100%", height:80, borderRadius:10, border:`2px dashed ${prefs.logo ? "var(--tp-accent)" : "var(--tp-border-l)"}`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", background: prefs.logo ? "transparent" : "var(--tp-input)", marginBottom:10, cursor:"pointer" }} onClick={()=>logoInputRef.current?.click()}>
             {prefs.logo ? (
               <img src={prefs.logo} alt="Logo" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }}/>
             ) : (
-              <div style={{ textAlign:"center" }}><Image size={22} color={theme.textFaintest}/><div style={{ fontSize:10, color:theme.textFaintest, marginTop:4 }}>Click to upload</div></div>
+              <div style={{ textAlign:"center" }}><Image size={22} color={"var(--tp-faintest)"}/><div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:4 }}>Click to upload</div></div>
             )}
           </div>
           <input ref={el=>logoInputRef.current=el} type="file" accept="image/*" onChange={e=>handleImageUpload(e.target.files?.[0], "logo", 400, 400)} style={{ display:"none" }}/>
           <div style={{ display:"flex", gap:6 }}>
-            <button onClick={()=>logoInputRef.current?.click()} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"7px 12px", borderRadius:7, border:`1px solid ${theme.borderLight}`, background:theme.inputBg, color:theme.textMuted, cursor:"pointer", fontSize:11 }}><Upload size={12}/> Upload</button>
+            <button onClick={()=>logoInputRef.current?.click()} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"7px 12px", borderRadius:7, border:`1px solid var(--tp-border-l)`, background:"var(--tp-input)", color:"var(--tp-muted)", cursor:"pointer", fontSize:11 }}><Upload size={12}/> Upload</button>
             {prefs.logo && <button onClick={()=>onSave(p=>({...p,logo:""}))} style={{ padding:"7px 12px", borderRadius:7, border:"1px solid rgba(var(--tp-danger-rgb), 0.25)", background:"rgba(var(--tp-danger-rgb), 0.06)", color:"var(--tp-danger)", cursor:"pointer", fontSize:11 }}>Remove</button>}
           </div>
-          <div style={{ fontSize:10, color:theme.textFaintest, marginTop:8 }}>PNG or SVG with transparent background works best</div>
+          <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:8 }}>PNG or SVG with transparent background works best</div>
         </div>
 
         {/* Banner Upload */}
-        <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px" }}>
-          <div style={{ fontSize:14, fontWeight:600, color:theme.text, marginBottom:4 }}>Dashboard Banner</div>
-          <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>Displays to the right of your logo as a wide banner</div>
+        <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px" }}>
+          <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)", marginBottom:4 }}>Dashboard Banner</div>
+          <div style={{ fontSize:12, color:"var(--tp-faint)", marginBottom:16 }}>Displays to the right of your logo as a wide banner</div>
 
-          <div style={{ width:"100%", height:80, borderRadius:10, border:`2px dashed ${prefs.banner ? theme.accentPrimary : theme.borderLight}`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", background: prefs.banner ? "transparent" : theme.inputBg, marginBottom:10, cursor:"pointer" }} onClick={()=>bannerInputRef.current?.click()}>
+          <div style={{ width:"100%", height:80, borderRadius:10, border:`2px dashed ${prefs.banner ? "var(--tp-accent)" : "var(--tp-border-l)"}`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", background: prefs.banner ? "transparent" : "var(--tp-input)", marginBottom:10, cursor:"pointer" }} onClick={()=>bannerInputRef.current?.click()}>
             {prefs.banner ? (
               <img src={prefs.banner} alt="Banner" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
             ) : (
-              <div style={{ textAlign:"center" }}><Image size={22} color={theme.textFaintest}/><div style={{ fontSize:10, color:theme.textFaintest, marginTop:4 }}>Click to upload</div></div>
+              <div style={{ textAlign:"center" }}><Image size={22} color={"var(--tp-faintest)"}/><div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:4 }}>Click to upload</div></div>
             )}
           </div>
           <input ref={el=>bannerInputRef.current=el} type="file" accept="image/*" onChange={e=>handleImageUpload(e.target.files?.[0], "banner", 1200, 300)} style={{ display:"none" }}/>
           <div style={{ display:"flex", gap:6 }}>
-            <button onClick={()=>bannerInputRef.current?.click()} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"7px 12px", borderRadius:7, border:`1px solid ${theme.borderLight}`, background:theme.inputBg, color:theme.textMuted, cursor:"pointer", fontSize:11 }}><Upload size={12}/> Upload</button>
+            <button onClick={()=>bannerInputRef.current?.click()} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:5, padding:"7px 12px", borderRadius:7, border:`1px solid var(--tp-border-l)`, background:"var(--tp-input)", color:"var(--tp-muted)", cursor:"pointer", fontSize:11 }}><Upload size={12}/> Upload</button>
             {prefs.banner && <button onClick={()=>onSave(p=>({...p,banner:""}))} style={{ padding:"7px 12px", borderRadius:7, border:"1px solid rgba(var(--tp-danger-rgb), 0.25)", background:"rgba(var(--tp-danger-rgb), 0.06)", color:"var(--tp-danger)", cursor:"pointer", fontSize:11 }}>Remove</button>}
           </div>
-          <div style={{ fontSize:10, color:theme.textFaintest, marginTop:8 }}>Wide images work best (e.g. 1200×200). Auto-cropped to fit.</div>
+          <div style={{ fontSize:10, color:"var(--tp-faintest)", marginTop:8 }}>Wide images work best (e.g. 1200×200). Auto-cropped to fit.</div>
         </div>
       </div>
 
       {/* Dashboard Widgets */}
-      <DashWidgetManager prefs={prefs} onSave={onSave} theme={theme}/>
+      <DashWidgetManager prefs={prefs} onSave={onSave}/>
     </div>
   );
 }
 
-function DashWidgetManager({ prefs, onSave, theme }) {
+function DashWidgetManager({ prefs, onSave }) {
   const defaults = [
     { id:"accounts", label:"Account Balances", visible:true },
     { id:"filters", label:"Filter Bar", visible:true },
@@ -9674,21 +9674,21 @@ function DashWidgetManager({ prefs, onSave, theme }) {
   const reset = () => onSave(p => ({ ...p, dashWidgets: [] }));
 
   return (
-    <div style={{ background:theme.panelBg, border:`1px solid ${theme.panelBorder}`, borderRadius:14, padding:"22px 24px" }}>
+    <div style={{ background:"var(--tp-panel)", border:`1px solid var(--tp-panel-b)`, borderRadius:14, padding:"22px 24px" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-        <div style={{ fontSize:14, fontWeight:600, color:theme.text }}>Dashboard Widgets</div>
-        <button onClick={reset} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${theme.borderLight}`, background:theme.inputBg, color:theme.textFaint, cursor:"pointer", fontSize:10 }}>Reset Default</button>
+        <div style={{ fontSize:14, fontWeight:600, color:"var(--tp-text)" }}>Dashboard Widgets</div>
+        <button onClick={reset} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid var(--tp-border-l)`, background:"var(--tp-input)", color:"var(--tp-faint)", cursor:"pointer", fontSize:10 }}>Reset Default</button>
       </div>
-      <div style={{ fontSize:12, color:theme.textFaint, marginBottom:16 }}>Toggle widgets on/off and reorder your dashboard layout</div>
+      <div style={{ fontSize:12, color:"var(--tp-faint)", marginBottom:16 }}>Toggle widgets on/off and reorder your dashboard layout</div>
       <div style={{ display:"grid", gap:4 }}>
         {current.map((w, idx) => (
-          <div key={w.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background: w.visible ? theme.cardBg : "transparent", borderRadius:8, border:`1px solid ${w.visible ? theme.borderLight : "transparent"}`, opacity: w.visible ? 1 : 0.5 }}>
-            <button onClick={()=>toggle(w.id)} style={{ width:20, height:20, borderRadius:5, border: w.visible ? "2px solid #6366f1" : `2px solid ${theme.borderLight}`, background: w.visible ? "var(--tp-accent)" : "transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, flexShrink:0 }}>
+          <div key={w.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background: w.visible ? "var(--tp-card)" : "transparent", borderRadius:8, border:`1px solid ${w.visible ? "var(--tp-border-l)" : "transparent"}`, opacity: w.visible ? 1 : 0.5 }}>
+            <button onClick={()=>toggle(w.id)} style={{ width:20, height:20, borderRadius:5, border: w.visible ? "2px solid #6366f1" : `2px solid var(--tp-border-l)`, background: w.visible ? "var(--tp-accent)" : "transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, flexShrink:0 }}>
               {w.visible && <Check size={12} color="#fff"/>}
             </button>
-            <span style={{ flex:1, fontSize:13, fontWeight:500, color: w.visible ? theme.text : theme.textFaint }}>{w.label}</span>
-            <button onClick={()=>move(idx,-1)} disabled={idx===0} style={{ width:26, height:26, borderRadius:6, border:`1px solid ${theme.borderLight}`, background: idx===0 ? "transparent" : theme.inputBg, color: idx===0 ? theme.textFaintest : theme.textMuted, cursor: idx===0 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronUp size={12}/></button>
-            <button onClick={()=>move(idx,1)} disabled={idx===current.length-1} style={{ width:26, height:26, borderRadius:6, border:`1px solid ${theme.borderLight}`, background: idx===current.length-1 ? "transparent" : theme.inputBg, color: idx===current.length-1 ? theme.textFaintest : theme.textMuted, cursor: idx===current.length-1 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronDown size={12}/></button>
+            <span style={{ flex:1, fontSize:13, fontWeight:500, color: w.visible ? "var(--tp-text)" : "var(--tp-faint)" }}>{w.label}</span>
+            <button onClick={()=>move(idx,-1)} disabled={idx===0} style={{ width:26, height:26, borderRadius:6, border:`1px solid var(--tp-border-l)`, background: idx===0 ? "transparent" : "var(--tp-input)", color: idx===0 ? "var(--tp-faintest)" : "var(--tp-muted)", cursor: idx===0 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronUp size={12}/></button>
+            <button onClick={()=>move(idx,1)} disabled={idx===current.length-1} style={{ width:26, height:26, borderRadius:6, border:`1px solid var(--tp-border-l)`, background: idx===current.length-1 ? "transparent" : "var(--tp-input)", color: idx===current.length-1 ? "var(--tp-faintest)" : "var(--tp-muted)", cursor: idx===current.length-1 ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}><ChevronDown size={12}/></button>
           </div>
         ))}
       </div>
@@ -11689,7 +11689,7 @@ function FuturesPresetModal({ onSave, onClose, editPreset }) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-export default function JournalModule({ user, tab, setTab, theme, prefs: shellPrefs, setPrefs: setShellPrefs, isAdmin }) {
+export default function JournalModule({ user, tab, setTab, prefs: shellPrefs, setPrefs: setShellPrefs, isAdmin }) {
   const [trades, setTrades] = useState([]);
   const [watchlists, setWatchlists] = useState([]);
   const [wheelTrades, setWheelTrades] = useState([]);
@@ -11903,22 +11903,22 @@ export default function JournalModule({ user, tab, setTab, theme, prefs: shellPr
 
   return (
     <>
-      {tab==="dashboard" && <Dashboard trades={trades} customFields={customFields} accountBalances={accountBalances} theme={theme} logo={prefs.logo} banner={prefs.banner} dashWidgets={prefs.dashWidgets} futuresSettings={futuresSettings} prefs={prefs} onSavePrefs={setPrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} dividends={dividends} hideBalances={hideBalances} setHideBalances={setHideBalances} onNavigate={setTab} onNewTrade={()=>{setEditingTrade(null);setShowTradeModal(true);}}/>}
-      {tab==="journal" && <JournalTab journal={journal} onSave={setJournal} trades={trades} theme={theme}/>}
-      {tab==="goals" && <GoalTracker goals={goals} onSave={setGoals} trades={trades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} prefs={prefs} accountBalances={accountBalances}/>}
-      {tab==="holdings" && <HoldingsTab trades={trades} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}} theme={theme} dividends={dividends} onSaveDividends={setDividends} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} onStartWheel={(ticker, account, shares, avgPrice) => {
+      {tab==="dashboard" && <Dashboard trades={trades} customFields={customFields} accountBalances={accountBalances} logo={prefs.logo} banner={prefs.banner} dashWidgets={prefs.dashWidgets} futuresSettings={futuresSettings} prefs={prefs} onSavePrefs={setPrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} dividends={dividends} hideBalances={hideBalances} setHideBalances={setHideBalances} onNavigate={setTab} onNewTrade={()=>{setEditingTrade(null);setShowTradeModal(true);}}/>}
+      {tab==="journal" && <JournalTab journal={journal} onSave={setJournal} trades={trades}/>}
+      {tab==="goals" && <GoalTracker goals={goals} onSave={setGoals} trades={trades} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} prefs={prefs} accountBalances={accountBalances}/>}
+      {tab==="holdings" && <HoldingsTab trades={trades} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}} dividends={dividends} onSaveDividends={setDividends} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} onStartWheel={(ticker, account, shares, avgPrice) => {
         const wheelShareEntry = { id: Date.now() + Math.random(), ticker, type: "Shares", date: new Date().toISOString().split("T")[0], shares: String(shares), avgPrice: String(avgPrice), notes: `Linked from Holdings (${shares} shares @ $${avgPrice.toFixed(2)})`, account, contracts:"", strike:"", openPremium:"", closePremium:"", expiry:"", assigned:false, calledAway:false, sharesCalledAway:"" };
         setWheelTrades(prev => [wheelShareEntry, ...prev]);
         setTab("wheel");
       }}/>}
-      {tab==="review" && <ReviewTab trades={trades} accountBalances={accountBalances} theme={theme} prefs={prefs} journal={journal} goals={goals} playbooks={playbooks}/>}
-      {tab==="playbook" && <PlaybookTab playbooks={playbooks} onSave={setPlaybooks} trades={trades} theme={theme}/>}
-      {tab==="wheel" && <WheelTab wheelTrades={wheelTrades} onSave={setWheelTrades} theme={theme} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} trades={trades} onSaveTrades={setTrades} prefs={prefs} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}}/>}
-      {tab==="watchlist" && <Watchlist watchlists={watchlists} onSave={setWatchlists} onPromoteTrade={promoteTrade} theme={theme}/>}
-      {tab==="log" && <TradeLog trades={trades} onEdit={t=>{setEditingTrade(t);setShowTradeModal(true);}} onDelete={handleTradeDelete} theme={theme} prefs={prefs}/>}
-      {tab==="reports" && <ReportsTab trades={trades} wheelTrades={wheelTrades} accountBalances={accountBalances} customFields={customFields} theme={theme} prefs={prefs}/>}
-      {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} theme={theme} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances} isAdmin={isAdmin}/>}
-      {showTradeModal && <TradeModal onSave={handleTradeSave} onClose={()=>{setShowTradeModal(false);setEditingTrade(null);}} editTrade={editingTrade} futuresSettings={futuresSettings} customFields={customFields} playbooks={playbooks} theme={theme} accountBalances={accountBalances} onAssign={handleAssignment}/>}
+      {tab==="review" && <ReviewTab trades={trades} accountBalances={accountBalances} prefs={prefs} journal={journal} goals={goals} playbooks={playbooks}/>}
+      {tab==="playbook" && <PlaybookTab playbooks={playbooks} onSave={setPlaybooks} trades={trades}/>}
+      {tab==="wheel" && <WheelTab wheelTrades={wheelTrades} onSave={setWheelTrades} accounts={[...new Set([...Object.keys(accountBalances||{}), ...(customFields?.accounts||[])])]} trades={trades} onSaveTrades={setTrades} prefs={prefs} accountBalances={accountBalances} onEditTrade={t=>{setEditingTrade(t);setShowTradeModal(true);}}/>}
+      {tab==="watchlist" && <Watchlist watchlists={watchlists} onSave={setWatchlists} onPromoteTrade={promoteTrade}/>}
+      {tab==="log" && <TradeLog trades={trades} onEdit={t=>{setEditingTrade(t);setShowTradeModal(true);}} onDelete={handleTradeDelete} prefs={prefs}/>}
+      {tab==="reports" && <ReportsTab trades={trades} wheelTrades={wheelTrades} accountBalances={accountBalances} customFields={customFields} prefs={prefs}/>}
+      {tab==="settings" && <SettingsTab user={user} futuresSettings={futuresSettings} onSaveFutures={setFuturesSettings} customFields={customFields} onSaveCustomFields={setCustomFields} accountBalances={accountBalances} onSaveAccountBalances={setAccountBalances} trades={trades} onSaveTrades={setTrades} prefs={prefs} onSavePrefs={setPrefs} wheelTrades={wheelTrades} cashTransactions={cashTransactions} onSaveCashTransactions={setCashTransactions} hideBalances={hideBalances} isAdmin={isAdmin}/>}
+      {showTradeModal && <TradeModal onSave={handleTradeSave} onClose={()=>{setShowTradeModal(false);setEditingTrade(null);}} editTrade={editingTrade} futuresSettings={futuresSettings} customFields={customFields} playbooks={playbooks} accountBalances={accountBalances} onAssign={handleAssignment}/>}
       {showMigration && <MigrationPrompt onMigrate={handleMigrate} onSkip={()=>setShowMigration(false)}/>}
     </>
   );
