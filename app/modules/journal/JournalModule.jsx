@@ -1856,6 +1856,28 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
   // Stock fields
   const [entryPrice, setEntryPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
+  const [stockStopDistance, setStockStopDistance] = useState("");
+  // Linked stock stop handlers (typing either updates the other)
+  const updateStockStopFromPrice = (priceVal) => {
+    setStopLoss(priceVal);
+    const e = parseFloat(entryPrice) || 0;
+    const p = parseFloat(priceVal);
+    if (e > 0 && !isNaN(p) && p > 0) {
+      const dist = direction === "Long" ? e - p : p - e;
+      setStockStopDistance(dist > 0 ? dist.toFixed(2) : "");
+    } else {
+      setStockStopDistance("");
+    }
+  };
+  const updateStockStopFromDistance = (distVal) => {
+    setStockStopDistance(distVal);
+    const e = parseFloat(entryPrice) || 0;
+    const d = parseFloat(distVal);
+    if (e > 0 && !isNaN(d) && d > 0) {
+      const stop = direction === "Long" ? e - d : e + d;
+      setStopLoss(stop.toFixed(2));
+    }
+  };
 
   // Options fields
   const [optPremium, setOptPremium] = useState("");
@@ -1870,6 +1892,30 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
   const [futTickValue, setFutTickValue] = useState("");
   const [futMode, setFutMode] = useState("manual"); // manual | auto
   const [futNumContracts, setFutNumContracts] = useState("1");
+  const [futStopDistance, setFutStopDistance] = useState("");
+  // Linked futures stop handlers — also tick-snap when tick size is set
+  const updateFutStopFromPrice = (priceVal) => {
+    setFutStop(priceVal);
+    const e = parseFloat(futEntry) || 0;
+    const p = parseFloat(priceVal);
+    if (e > 0 && !isNaN(p) && p > 0) {
+      const dist = direction === "Long" ? e - p : p - e;
+      setFutStopDistance(dist > 0 ? dist.toFixed(2) : "");
+    } else {
+      setFutStopDistance("");
+    }
+  };
+  const updateFutStopFromDistance = (distVal) => {
+    setFutStopDistance(distVal);
+    const e = parseFloat(futEntry) || 0;
+    const d = parseFloat(distVal);
+    const ts = parseFloat(futTickSize) || 0;
+    if (e > 0 && !isNaN(d) && d > 0) {
+      let stop = direction === "Long" ? e - d : e + d;
+      if (ts > 0) stop = Math.round(stop / ts) * ts;
+      setFutStop(stop.toFixed(Math.max(2, ts > 0 && ts < 1 ? -Math.floor(Math.log10(ts)) : 2)));
+    }
+  };
   const [futCommission, setFutCommission] = useState("0");
   const [stockCommission, setStockCommission] = useState("0");
   const [optCommission, setOptCommission] = useState("0");
@@ -2071,19 +2117,26 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
 
       {/* Row 2: Asset-specific inputs */}
       {assetType === "Stock" && (
-        <div className="tp-risk-calc-grid" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+        <div className="tp-risk-calc-grid" style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14 }}>
           <div>
             <label style={labelStyle}>Entry Price</label>
             <div style={{ position:"relative" }}>
               <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>$</span>
-              <input type="number" value={entryPrice} onChange={e=>setEntryPrice(e.target.value)} placeholder="150.00" style={{ ...inputStyle, paddingLeft:22 }}/>
+              <input type="number" value={entryPrice} onChange={e=>{setEntryPrice(e.target.value); /* keep distance in sync if stop is set */ const ev=parseFloat(e.target.value)||0; const sv=parseFloat(stopLoss)||0; if(ev>0&&sv>0){const d=direction==="Long"?ev-sv:sv-ev; setStockStopDistance(d>0?d.toFixed(2):"");}}} placeholder="150.00" style={{ ...inputStyle, paddingLeft:22 }}/>
             </div>
           </div>
           <div>
             <label style={labelStyle}>Stop Loss</label>
             <div style={{ position:"relative" }}>
               <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>$</span>
-              <input type="number" value={stopLoss} onChange={e=>setStopLoss(e.target.value)} placeholder="147.50" style={{ ...inputStyle, paddingLeft:22 }}/>
+              <input type="number" value={stopLoss} onChange={e=>updateStockStopFromPrice(e.target.value)} placeholder="147.50" style={{ ...inputStyle, paddingLeft:22 }}/>
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Stop Distance <span style={{ fontSize:8, color:"var(--tp-faintest)" }}>(linked)</span></label>
+            <div style={{ position:"relative" }}>
+              <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>$</span>
+              <input type="number" value={stockStopDistance} onChange={e=>updateStockStopFromDistance(e.target.value)} placeholder="2.50" step="0.01" style={{ ...inputStyle, paddingLeft:22 }}/>
             </div>
           </div>
         </div>
@@ -2141,10 +2194,16 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
               <input type="number" value={futEntry} onChange={e=>setFutEntry(e.target.value)} placeholder="5450.25" step="any" style={inputStyle}/>
             </div>
             {futMode === "manual" ? (
-              <div>
-                <label style={labelStyle}>Stop Loss</label>
-                <input type="number" value={futStop} onChange={e=>setFutStop(e.target.value)} placeholder="5445.00" step="any" style={inputStyle}/>
-              </div>
+              <>
+                <div>
+                  <label style={labelStyle}>Stop Loss</label>
+                  <input type="number" value={futStop} onChange={e=>updateFutStopFromPrice(e.target.value)} placeholder="5445.00" step="any" style={inputStyle}/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Stop Distance <span style={{ fontSize:8, color:"var(--tp-faintest)" }}>(pts)</span></label>
+                  <input type="number" value={futStopDistance} onChange={e=>updateFutStopFromDistance(e.target.value)} placeholder="5.25" step="any" style={inputStyle}/>
+                </div>
+              </>
             ) : (
               <div>
                 <label style={labelStyle}>Contracts</label>
