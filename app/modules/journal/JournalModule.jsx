@@ -1167,10 +1167,43 @@ function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields,
   const handleFuturesContractChange = (name) => {
     const preset = (futuresSettings || []).find(f => f.name === name);
     if (preset) {
-      setTrade(p => ({ ...p, futuresContract: name, tickSize: preset.tickSize, tickValue: preset.tickValue }));
+      setTrade(p => {
+        const qty = parseInt(p.quantity) || 1;
+        const presetCommission = parseFloat(preset.commission) || 0;
+        const updates = { ...p, futuresContract: name, tickSize: preset.tickSize, tickValue: preset.tickValue };
+        // Auto-fill fees if commission is set on the preset
+        if (presetCommission > 0) {
+          updates.fees = (presetCommission * qty).toFixed(2);
+          updates.feesAutoCalculated = true;
+        }
+        return updates;
+      });
     } else {
       setTrade(p => ({ ...p, futuresContract: name }));
     }
+  };
+  // Re-calc fees when quantity changes if auto-mode is on
+  useEffect(() => {
+    if (trade.assetType !== "Futures") return;
+    if (!trade.feesAutoCalculated) return;
+    const preset = (futuresSettings || []).find(f => f.name === trade.futuresContract);
+    if (!preset) return;
+    const presetCommission = parseFloat(preset.commission) || 0;
+    if (presetCommission <= 0) return;
+    const qty = parseInt(trade.quantity) || 1;
+    const newFees = (presetCommission * qty).toFixed(2);
+    if (trade.fees !== newFees) {
+      setTrade(p => ({ ...p, fees: newFees }));
+    }
+  }, [trade.quantity, trade.feesAutoCalculated, trade.futuresContract, trade.assetType, futuresSettings]);
+  // Reset to auto-mode helper
+  const resetFeesToAuto = () => {
+    const preset = (futuresSettings || []).find(f => f.name === trade.futuresContract);
+    if (!preset) return;
+    const presetCommission = parseFloat(preset.commission) || 0;
+    if (presetCommission <= 0) return;
+    const qty = parseInt(trade.quantity) || 1;
+    setTrade(p => ({ ...p, fees: (presetCommission * qty).toFixed(2), feesAutoCalculated: true }));
   };
 
   const updateLeg = (idx, updated) => setTrade(p => { const legs = [...p.legs]; legs[idx] = updated; return { ...p, legs }; });
@@ -1306,7 +1339,21 @@ function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields,
               <Input label="Entry Price" value={trade.entryPrice} onChange={set("entryPrice")} type="number" placeholder="0.00"/>
               <Input label="Exit Price" value={trade.exitPrice} onChange={set("exitPrice")} type="number" placeholder="0.00"/>
               <Input label="Contracts" value={trade.quantity} onChange={set("quantity")} type="number" placeholder="1"/>
-              <Input label="Fees ($)" value={trade.fees} onChange={set("fees")} type="number" placeholder="0"/>
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+                  <label style={{ fontSize:11, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8 }}>Fees ($)</label>
+                  {trade.feesAutoCalculated ? (
+                    <span style={{ fontSize:9, padding:"1px 5px", borderRadius:3, background:"rgba(var(--tp-success-rgb), 0.12)", color:"var(--tp-success)", fontWeight:600 }} title="Auto-calculated from preset commission × quantity">AUTO</span>
+                  ) : (() => {
+                    const preset = (futuresSettings || []).find(f => f.name === trade.futuresContract);
+                    const hasPresetCommission = preset && (parseFloat(preset.commission) || 0) > 0;
+                    return hasPresetCommission ? (
+                      <button type="button" onClick={resetFeesToAuto} title="Reset to auto-calculated commission" style={{ fontSize:9, padding:"1px 6px", borderRadius:3, border:"1px solid var(--tp-border-l)", background:"transparent", color:"var(--tp-faint)", cursor:"pointer" }}>↻ AUTO</button>
+                    ) : null;
+                  })()}
+                </div>
+                <input type="number" value={trade.fees} onChange={e=>setTrade(p=>({...p, fees:e.target.value, feesAutoCalculated:false}))} placeholder="0" style={{ width:"100%", padding:"9px 12px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:8, color:"var(--tp-text)", fontSize:13, outline:"none", fontFamily:"'JetBrains Mono', monospace", boxSizing:"border-box" }}/>
+              </div>
             </div>
             <div style={{ background:"rgba(var(--tp-warning-rgb), 0.07)", borderRadius:10, padding:"14px 16px", marginBottom:12, border:"1px solid rgba(var(--tp-warning-rgb), 0.18)" }}>
               <div style={{ fontSize:11, color:"var(--tp-warning)", fontWeight:600, marginBottom:10, textTransform:"uppercase", letterSpacing:0.8 }}>Futures Details</div>
@@ -2016,7 +2063,7 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
         <div>
           <label style={labelStyle}>Risk %</label>
           <div style={{ position:"relative" }}>
-            <input type="number" value={riskPct} onChange={e=>setRiskPct(e.target.value)} placeholder="1" step="0.25" min="0.1" max="10" style={{ ...inputStyle, paddingRight:22 }}/>
+            <input type="number" value={riskPct} onChange={e=>setRiskPct(e.target.value)} placeholder="1" step="0.5" min="0.1" max="10" style={{ ...inputStyle, paddingRight:22 }}/>
             <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>%</span>
           </div>
         </div>
@@ -2220,6 +2267,7 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
           pv = fTickValue / Math.max(fTickSize, 0.0001);  // points value (1 point = pv $)
           comm = parseFloat(futCommission) || 0;
           entry = fEntry;
+          var futTickSizeForPlanner = fTickSize;
           if (!futValid) insufficientReason = "Fill in entry, stop, contract details first";
           else if (n < 2) insufficientReason = "Need 2+ contracts to plan partial exits";
         } else if (assetType === "Stock") {
@@ -2249,7 +2297,7 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
           );
         }
 
-        const plannerInput = { contracts: n, stopDistance: stop, pointValue: pv, commissionPerContract: comm, entry, direction: dir };
+        const plannerInput = { contracts: n, stopDistance: stop, pointValue: pv, commissionPerContract: comm, entry, direction: dir, tickSize: assetType === "Futures" ? (parseFloat(futTickSizeForPlanner) || 0) : 0 };
         const scenarios = buildScenarios(plannerInput);
         const totalR = plannerTotalRisk(plannerInput);
         const stopRiskOnly = stop * pv * n;

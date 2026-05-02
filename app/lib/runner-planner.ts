@@ -29,6 +29,7 @@ export type RunnerPlannerInput = {
   commissionPerContract: number;  // round-trip dollars
   entry: number;
   direction: 'Long' | 'Short';
+  tickSize?: number;          // optional — snaps t1Price to tick increments (e.g. 0.25 for MES)
 };
 
 // Default T1 multipliers as fractions of stop distance (R-multiples).
@@ -68,7 +69,10 @@ export function buildScenarios(input: RunnerPlannerInput, multipliers: number[] 
 
     const runners = insufficient ? 0 : contracts - contractsToClose;
     const runnerPct = contracts > 0 ? runners / contracts : 0;
-    const t1Price = direction === 'Long' ? entry + t1Distance : entry - t1Distance;
+    let t1Price = direction === 'Long' ? entry + t1Distance : entry - t1Distance;
+    if (input.tickSize && input.tickSize > 0) {
+      t1Price = Math.round(t1Price / input.tickSize) * input.tickSize;
+    }
 
     return {
       t1Distance,
