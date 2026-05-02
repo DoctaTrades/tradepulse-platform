@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { buildScenarios, evAnalysis, totalRisk as plannerTotalRisk } from "../../lib/runner-planner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, Cell } from "recharts";
 import { TrendingUp, TrendingDown, Plus, X, BookOpen, List, Home, Filter, Award, Target, Activity, Trash2, Eye, EyeOff, ChevronDown, ChevronUp, ChevronRight, Crosshair, Calculator, RefreshCw, Settings, Calendar, DollarSign, BarChart3, Percent, ChevronLeft, Layers, Zap, Camera, Image, CalendarDays, Clipboard, Shield, AlertTriangle, Lightbulb, SkipForward, SkipBack, Upload, Download, Check, FileText, Briefcase, Sun, Moon, Menu, Clock } from "lucide-react";
 
@@ -1822,6 +1823,10 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
   const [futTickValue, setFutTickValue] = useState("");
   const [futMode, setFutMode] = useState("manual"); // manual | auto
   const [futNumContracts, setFutNumContracts] = useState("1");
+  const [futCommission, setFutCommission] = useState("0");
+  const [stockCommission, setStockCommission] = useState("0");
+  const [optCommission, setOptCommission] = useState("0");
+  const [selectedScenario, setSelectedScenario] = useState(null);
 
   // Account names from balances + custom fields
   const allAccounts = useMemo(() => {
@@ -1868,6 +1873,7 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
       if (preset) {
         setFutTickSize(String(preset.tickSize || ""));
         setFutTickValue(String(preset.tickValue || ""));
+        setFutCommission(String(preset.commission || "0"));
       }
     }
   }, [futContract, futuresSettings]);
@@ -2202,6 +2208,166 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
           }
         </div>
       )}
+
+      {/* ── Runner Planner ─────────────────────────────────────────────── */}
+      {(() => {
+        // Decide which asset's data feeds the planner
+        let n = 0, stop = 0, pv = 1, comm = 0, entry = 0, dir = direction;
+        let insufficientReason = "";
+        if (assetType === "Futures") {
+          n = futContracts;
+          stop = fRiskPoints;
+          pv = fTickValue / Math.max(fTickSize, 0.0001);  // points value (1 point = pv $)
+          comm = parseFloat(futCommission) || 0;
+          entry = fEntry;
+          if (!futValid) insufficientReason = "Fill in entry, stop, contract details first";
+          else if (n < 2) insufficientReason = "Need 2+ contracts to plan partial exits";
+        } else if (assetType === "Stock") {
+          n = stockShares;
+          stop = stockRiskPerShare;
+          pv = 1;
+          comm = parseFloat(stockCommission) || 0;
+          entry = stockEntry;
+          if (!stockValid) insufficientReason = "Fill in entry and stop first";
+          else if (n < 2) insufficientReason = "Need 2+ shares to plan partial exits";
+        } else if (assetType === "Options") {
+          n = optActualContracts;
+          stop = (oPrem - oStopPrem);
+          pv = 100;  // each contract = 100 shares
+          comm = parseFloat(optCommission) || 0;
+          entry = oPrem;
+          if (!optValid || stop <= 0) insufficientReason = "Fill in premium and stop premium first";
+          else if (n < 2) insufficientReason = "Need 2+ contracts to plan partial exits";
+        }
+
+        if (insufficientReason) {
+          return (
+            <div style={{ marginTop:16, padding:"14px 16px", background:"var(--tp-card)", border:"1px solid var(--tp-border)", borderRadius:10 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:6 }}>🎯 Runner Planner</div>
+              <div style={{ fontSize:12, color:"var(--tp-faintest)", fontStyle:"italic" }}>{insufficientReason}</div>
+            </div>
+          );
+        }
+
+        const plannerInput = { contracts: n, stopDistance: stop, pointValue: pv, commissionPerContract: comm, entry, direction: dir };
+        const scenarios = buildScenarios(plannerInput);
+        const totalR = plannerTotalRisk(plannerInput);
+        const stopRiskOnly = stop * pv * n;
+        const commTotal = comm * n;
+
+        const ev = selectedScenario !== null && scenarios[selectedScenario] && !scenarios[selectedScenario].insufficient
+          ? evAnalysis(scenarios[selectedScenario], plannerInput)
+          : null;
+
+        // Asset-aware unit labels
+        const distLabel = assetType === "Stock" ? "$" : "pts";
+        const contractWord = assetType === "Stock" ? "shares" : "contracts";
+
+        return (
+          <div style={{ marginTop:16, padding:"16px 18px", background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"var(--tp-warning)", textTransform:"uppercase", letterSpacing:0.8 }}>🎯 Runner Planner</div>
+              <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>Click any row for EV analysis</div>
+            </div>
+
+            {/* Total risk breakdown */}
+            <div style={{ marginBottom:10, padding:"8px 10px", background:"var(--tp-card)", borderRadius:6, fontSize:11, fontFamily:"'JetBrains Mono', monospace" }}>
+              <div style={{ color:"var(--tp-text2)", marginBottom:2 }}>Total risk to recover: <strong style={{ color:"var(--tp-danger)" }}>${totalR.toFixed(2)}</strong></div>
+              <div style={{ color:"var(--tp-faint)", fontSize:10 }}>├ Stop loss: {n} × {stop.toFixed(2)}{distLabel} × {pv === 1 ? "$1" : `$${pv}/pt`} = ${stopRiskOnly.toFixed(2)}</div>
+              <div style={{ color:"var(--tp-faint)", fontSize:10 }}>└ Commissions: {n} × ${comm.toFixed(2)} = ${commTotal.toFixed(2)}</div>
+            </div>
+
+            {/* Scenario table */}
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, fontFamily:"'JetBrains Mono', monospace" }}>
+                <thead>
+                  <tr style={{ borderBottom:"1px solid var(--tp-border)", color:"var(--tp-faint)" }}>
+                    <th style={{ textAlign:"left", padding:"6px 6px" }}>T1 ({distLabel})</th>
+                    <th style={{ textAlign:"left", padding:"6px 6px" }}>R</th>
+                    <th style={{ textAlign:"right", padding:"6px 6px" }}>T1 Price</th>
+                    <th style={{ textAlign:"right", padding:"6px 6px" }}>Close</th>
+                    <th style={{ textAlign:"right", padding:"6px 6px" }}>Runners</th>
+                    <th style={{ textAlign:"right", padding:"6px 6px" }}>%</th>
+                    <th style={{ textAlign:"left", padding:"6px 6px" }}>Tag</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scenarios.map((s, i) => {
+                    const sel = selectedScenario === i;
+                    const greyed = s.insufficient;
+                    const bg = sel ? "rgba(var(--tp-accent-rgb), 0.10)" : "transparent";
+                    const txt = greyed ? "var(--tp-faintest)" : "var(--tp-text2)";
+                    return (
+                      <tr key={i}
+                          onClick={()=> !greyed && setSelectedScenario(sel ? null : i)}
+                          style={{ cursor: greyed ? "default" : "pointer", background:bg, color:txt, transition:"background 0.1s" }}>
+                        <td style={{ padding:"5px 6px" }}>{s.t1Distance.toFixed(2)}</td>
+                        <td style={{ padding:"5px 6px" }}>{s.rMultiple.toFixed(2)}R</td>
+                        <td style={{ padding:"5px 6px", textAlign:"right" }}>{s.t1Price.toFixed(2)}</td>
+                        <td style={{ padding:"5px 6px", textAlign:"right" }}>{greyed ? "—" : s.contractsToClose}</td>
+                        <td style={{ padding:"5px 6px", textAlign:"right", color: !greyed && s.runners > 0 ? "var(--tp-success)" : txt }}>{greyed ? "—" : s.runners}</td>
+                        <td style={{ padding:"5px 6px", textAlign:"right" }}>{greyed ? "—" : `${(s.runnerPct*100).toFixed(0)}%`}</td>
+                        <td style={{ padding:"5px 6px", fontSize:9 }}>
+                          {s.insufficient && <span style={{ color:"var(--tp-danger)" }}>⚠ Insufficient</span>}
+                          {s.isMin && <span style={{ color:"var(--tp-warning)" }}>⊕ Min runner</span>}
+                          {s.isIdeal && <span style={{ color:"var(--tp-success)", marginLeft: s.isMin ? 6 : 0 }}>★ Ideal</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* EV Panel */}
+            {ev && (
+              <div style={{ marginTop:14, padding:"12px 14px", background:"var(--tp-card)", border:"1px solid var(--tp-border)", borderRadius:8 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:"var(--tp-accent-light)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:8 }}>
+                  📊 EV Analysis — T1 = {scenarios[selectedScenario].t1Distance.toFixed(2)}{distLabel} ({scenarios[selectedScenario].rMultiple.toFixed(2)}R), close {scenarios[selectedScenario].contractsToClose} / runners {scenarios[selectedScenario].runners}
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:8, marginBottom:10, fontSize:10, fontFamily:"'JetBrains Mono', monospace" }}>
+                  <div style={{ padding:"6px 8px", background:"rgba(var(--tp-success-rgb), 0.08)", borderRadius:4 }}>
+                    <div style={{ color:"var(--tp-faint)", marginBottom:2 }}>Full win (T1 + T2)</div>
+                    <div style={{ color:"var(--tp-success)", fontWeight:700 }}>+${ev.fullWinProfit.toFixed(2)}</div>
+                  </div>
+                  <div style={{ padding:"6px 8px", background:"rgba(var(--tp-warning-rgb), 0.08)", borderRadius:4 }}>
+                    <div style={{ color:"var(--tp-faint)", marginBottom:2 }}>Partial (runners scratch)</div>
+                    <div style={{ color:"var(--tp-warning)", fontWeight:700 }}>+${ev.partialWinProfit.toFixed(2)}</div>
+                  </div>
+                  <div style={{ padding:"6px 8px", background:"rgba(var(--tp-danger-rgb), 0.08)", borderRadius:4 }}>
+                    <div style={{ color:"var(--tp-faint)", marginBottom:2 }}>Full loss (stopped)</div>
+                    <div style={{ color:"var(--tp-danger)", fontWeight:700 }}>${ev.fullLossAmount.toFixed(2)}</div>
+                  </div>
+                </div>
+
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10, fontFamily:"'JetBrains Mono', monospace" }}>
+                  <thead>
+                    <tr style={{ borderBottom:"1px solid var(--tp-border)", color:"var(--tp-faint)" }}>
+                      <th style={{ textAlign:"left", padding:"4px 6px" }}>Win Rate</th>
+                      <th style={{ textAlign:"right", padding:"4px 6px" }}>EV / trade</th>
+                      <th style={{ textAlign:"right", padding:"4px 6px" }}>Per 100 trades</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ev.perWinRate.map(p => (
+                      <tr key={p.winRate} style={{ color: p.ev >= 0 ? "var(--tp-success)" : "var(--tp-danger)" }}>
+                        <td style={{ padding:"3px 6px" }}>{(p.winRate*100).toFixed(0)}%</td>
+                        <td style={{ padding:"3px 6px", textAlign:"right" }}>{p.ev >= 0 ? "+" : ""}${p.ev.toFixed(2)}</td>
+                        <td style={{ padding:"3px 6px", textAlign:"right" }}>{p.per100 >= 0 ? "+" : ""}${p.per100.toFixed(0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div style={{ marginTop:8, fontSize:9, color:"var(--tp-faintest)", fontStyle:"italic" }}>
+                  Assumes T2 = 2× T1 distance, runners follow through 50% of times T1 hits. Planning aid only — actual outcomes vary.
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -9104,6 +9270,7 @@ function SettingsTab({ user, futuresSettings, onSaveFutures, customFields, onSav
                   <div style={{ fontSize:12, color:"var(--tp-muted)", lineHeight:1.6 }}>
                     <div>Tick Size: <span style={{ fontWeight:600, color:"var(--tp-text2)" }}>{f.tickSize}</span></div>
                     <div>Tick Value: <span style={{ fontWeight:600, color:"var(--tp-text2)" }}>${f.tickValue}</span></div>
+                    {f.commission ? <div>Commission RT: <span style={{ fontWeight:600, color:"var(--tp-text2)" }}>${f.commission}</span></div> : null}
                   </div>
                 </div>
               ))}
@@ -11670,7 +11837,7 @@ function CustomFieldsManager({ customFields, onSave }) {
 }
 
 function FuturesPresetModal({ onSave, onClose, editPreset }) {
-  const [p, setP] = useState(editPreset || { name:"", tickSize:"", tickValue:"" });
+  const [p, setP] = useState(editPreset || { name:"", tickSize:"", tickValue:"", commission:"" });
   const set = k => v => setP(prev=>({...prev,[k]:v}));
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, backdropFilter:"blur(3px)" }}>
@@ -11680,8 +11847,9 @@ function FuturesPresetModal({ onSave, onClose, editPreset }) {
           <Input label="Contract Name" value={p.name} onChange={set("name")} placeholder="e.g. ES, NQ, YM"/>
           <Input label="Tick Size" value={p.tickSize} onChange={set("tickSize")} type="number" placeholder="0.25"/>
           <Input label="Tick Value ($)" value={p.tickValue} onChange={set("tickValue")} type="number" placeholder="12.50"/>
+          <Input label="Commission Round-Trip ($)" value={p.commission} onChange={set("commission")} type="number" placeholder="1.48"/>
         </div>
-        <div style={{ fontSize:11, color:"var(--tp-faint)", marginBottom:20, fontStyle:"italic" }}>Tick Value = Tick Size × Point Value. For ES: 0.25 × $50 = $12.50</div>
+        <div style={{ fontSize:11, color:"var(--tp-faint)", marginBottom:20, fontStyle:"italic" }}>Tick Value = Tick Size × Point Value. For ES: 0.25 × $50 = $12.50. Commission varies by broker (e.g. Webull MES = $1.48 round-trip).</div>
         <div style={{ display:"flex", justifyContent:"flex-end", gap:10 }}><button onClick={onClose} style={{ padding:"9px 20px", borderRadius:8, border:"1px solid rgba(255,255,255,0.12)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:13 }}>Cancel</button><button onClick={()=>{if(p.name.trim()) onSave(p);}} style={{ padding:"9px 22px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600, boxShadow:"0 4px 14px rgba(var(--tp-accent-rgb), 0.3)" }}>{editPreset?"Update":"Add Preset"}</button></div>
       </div>
     </div>
