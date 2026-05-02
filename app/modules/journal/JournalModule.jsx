@@ -2029,14 +2029,15 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
   const fAutoTotalRisk = fContracts * fAutoRiskPerContract;
   const fAutoValid = futMode === "auto" && acct > 0 && fEntry > 0 && fTickSize > 0 && fTickValue > 0 && risk > 0 && fContracts >= 1 && fAutoTicks >= 1;
 
-  // MANUAL MODE: compute contracts from stop
+  // MANUAL MODE: user provides stop + contracts; we compute resulting risk %
   const fStop = parseFloat(futStop) || 0;
   const fManualPriceDist = direction === "Long" ? fEntry - fStop : fStop - fEntry;
   const fManualTicks = fTickSize > 0 ? Math.max(0, Math.floor(fManualPriceDist / fTickSize)) : 0;
   const fManualRiskPerContract = fManualTicks * fTickValue;
-  const fManualValid = futMode === "manual" && acct > 0 && fEntry > 0 && fStop > 0 && fTickSize > 0 && fTickValue > 0 && risk > 0 && fManualTicks >= 1;
-  const fManualContracts = fManualValid && fManualRiskPerContract > 0 ? Math.max(1, Math.floor(dollarRisk / fManualRiskPerContract)) : 0;
+  const fManualContracts = futMode === "manual" ? Math.max(1, parseInt(futNumContracts) || 1) : 0;
+  const fManualValid = futMode === "manual" && acct > 0 && fEntry > 0 && fStop > 0 && fTickSize > 0 && fTickValue > 0 && fManualTicks >= 1 && fManualContracts >= 1;
   const fManualTotalRisk = fManualContracts * fManualRiskPerContract;
+  const fManualRiskPctOfAcct = (fManualValid && acct > 0) ? (fManualTotalRisk / acct) * 100 : 0;
 
   // Unified futures outputs (pick from correct mode)
   const futValid = futMode === "auto" ? fAutoValid : fManualValid;
@@ -2106,13 +2107,19 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
             <option value="Short" style={{ background:"var(--tp-sel-bg)" }}>Short</option>
           </select>
         </div>
-        <div>
-          <label style={labelStyle}>Risk %</label>
-          <div style={{ position:"relative" }}>
-            <input type="number" value={riskPct} onChange={e=>setRiskPct(e.target.value)} placeholder="1" step="0.5" min="0.1" max="10" style={{ ...inputStyle, paddingRight:22 }}/>
-            <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>%</span>
+        {!(assetType === "Futures" && futMode === "manual") ? (
+          <div>
+            <label style={labelStyle}>Risk %</label>
+            <div style={{ position:"relative" }}>
+              <input type="number" value={riskPct} onChange={e=>setRiskPct(e.target.value)} placeholder="1" step="0.5" min="0.5" max="10" style={{ ...inputStyle, paddingRight:22 }}/>
+              <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"var(--tp-faintest)", fontSize:13 }}>%</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 8px", fontSize:10, color:"var(--tp-faintest)", fontStyle:"italic", textAlign:"center" }}>
+            Risk % is calculated from your stop &amp; contracts
+          </div>
+        )}
       </div>
 
       {/* Row 2: Asset-specific inputs */}
@@ -2203,6 +2210,10 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
                   <label style={labelStyle}>Stop Distance <span style={{ fontSize:8, color:"var(--tp-faintest)" }}>(pts)</span></label>
                   <input type="number" value={futStopDistance} onChange={e=>updateFutStopFromDistance(e.target.value)} placeholder="5.25" step="any" style={inputStyle}/>
                 </div>
+                <div>
+                  <label style={labelStyle}>Contracts</label>
+                  <input type="number" value={futNumContracts} onChange={e=>setFutNumContracts(e.target.value)} placeholder="1" min="1" style={inputStyle}/>
+                </div>
               </>
             ) : (
               <div>
@@ -2281,6 +2292,11 @@ function RiskCalculator({ accountBalances, futuresSettings, customFields, accoun
                 <ResultCard label="Ticks to Stop" value={`${fRiskTicks}`} sub={`${fRiskPoints.toFixed(2)} pts`} color="var(--tp-info)"/>
                 <ResultCard label="Risk / Contract" value={`$${fRiskPerContract.toFixed(2)}`} sub={`${fRiskTicks} ticks × $${fTickValue}/tick`} color="var(--tp-warning)"/>
                 <ResultCard label="Total Risk" value={`$${futTotalRisk.toFixed(2)}`} sub={`${fRiskTicks}t × $${fTickValue} × ${futContracts}ct`} color="var(--tp-danger)"/>
+                <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"12px 14px", textAlign:"center", border:`1px solid ${fManualRiskPctOfAcct > 2 ? "rgba(var(--tp-warning-rgb), 0.3)" : "rgba(var(--tp-info-rgb), 0.25)"}` }}>
+                  <div style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", marginBottom:3 }}>Risk % of Account</div>
+                  <div style={{ fontSize:22, fontWeight:800, color: fManualRiskPctOfAcct > 2 ? "var(--tp-warning)" : "var(--tp-info)", fontFamily:"'JetBrains Mono', monospace" }}>{fManualRiskPctOfAcct.toFixed(2)}%</div>
+                  <div style={{ fontSize:10, color:"var(--tp-faintest)" }}>${fManualTotalRisk.toFixed(0)} / ${acct.toLocaleString()}</div>
+                </div>
               </>
             )}
             <div style={{ background:"var(--tp-card)", borderRadius:8, padding:"12px 14px", textAlign:"center" }}>
