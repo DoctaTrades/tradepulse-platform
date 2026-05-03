@@ -102,7 +102,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
       </div>
 
       {/* ═══ TOP ROW: Fear & Greed + VIX + Premium Rec ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 1fr', gap: 14, marginBottom: 14 }}>
+      <div className="tp-mp-top-row" style={{ display: 'grid', gridTemplateColumns: '200px 1fr 1fr', gap: 14, marginBottom: 14 }}>
         {/* Fear & Greed Gauge */}
         <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px 16px', textAlign: 'center' }}>
           <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700, marginBottom: 8 }}>Fear & Greed</div>
@@ -144,7 +144,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
       </div>
 
       {/* ═══ INDICES ROW ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+      <div className="tp-mp-strat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
         {data.indices.map(idx => (
           <div key={idx.symbol} style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -158,7 +158,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
       </div>
 
       {/* ═══ MIDDLE ROW: SPY Technicals + Breadth ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+      <div className="tp-mp-half" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
         {/* SPY Technicals */}
         <div style={{ background: 'var(--shell-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px' }}>
           <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700, marginBottom: 12 }}>SPY Technical Health</div>
@@ -166,7 +166,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
             <span style={{ fontSize: 16, fontWeight: 700 }}>{trendLabels[data.spyTechnicals.trend] || '🟡 Mixed'}</span>
             <span style={{ fontSize: 12, color: 'var(--text-mid)', fontFamily: 'monospace' }}>RSI: {data.spyTechnicals.rsi}</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <div className="tp-mp-trio" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
             {[
               { label: 'EMA 20', value: data.spyTechnicals.ema20, above: data.indices[0]?.price > data.spyTechnicals.ema20 },
               { label: 'EMA 50', value: data.spyTechnicals.ema50, above: data.indices[0]?.price > data.spyTechnicals.ema50 },
@@ -193,7 +193,7 @@ export default function MarketPulseModule({ user }: { user?: any }) {
             </span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 12 }}>{data.breadth.context}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="tp-mp-half" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div style={{ background: 'var(--navy3)', borderRadius: 8, padding: '8px 10px' }}>
               <div style={{ fontSize: 9, color: 'var(--text-dim)' }}>RSP (Equal Weight)</div>
               <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', color: pctColor(data.breadth.rspChange) }}>{fmtPct(data.breadth.rspChange)}</div>

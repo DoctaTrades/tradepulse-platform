@@ -3761,7 +3761,7 @@ function WheelTab({ wheelTrades, onSave, accounts, trades, onSaveTrades, prefs, 
           <div style={{ fontSize:12, color:"var(--tp-faint)", marginTop:2 }}>Track options income across all strategies</div>
         </div>
         {allAccounts.length > 0 && (
-          <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+          <div className="tp-prem-acct-bar" style={{ display:"flex", gap:4, alignItems:"center" }}>
             <span style={{ fontSize:9, color:"var(--tp-faintest)", textTransform:"uppercase", letterSpacing:0.5 }}>Acct:</span>
             <button onClick={()=>setAccountFilter("All")} style={{ padding:"3px 10px", borderRadius:5, border:`1px solid ${accountFilter==="All"?"var(--tp-accent)":"var(--tp-border-l)"}`, background:accountFilter==="All"?"rgba(var(--tp-accent-rgb), 0.12)":"transparent", color:accountFilter==="All"?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:10, fontWeight:600 }}>All</button>
             {allAccounts.map(a => <button key={a} onClick={()=>setAccountFilter(a)} style={{ padding:"3px 10px", borderRadius:5, border:`1px solid ${accountFilter===a?"var(--tp-accent)":"var(--tp-border-l)"}`, background:accountFilter===a?"rgba(var(--tp-accent-rgb), 0.12)":"transparent", color:accountFilter===a?"var(--tp-accent-light)":"var(--tp-faint)", cursor:"pointer", fontSize:10, fontWeight:600 }}>{a}</button>)}
@@ -6795,7 +6795,7 @@ function DividendTracker({ dividends, onSave, trades, onSaveTrades, holdings, ac
       ) : (
         <div style={{ display:"grid", gap:8 }}>
           {sorted.map(d => (
-            <div key={d.id} style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:10, padding:"14px 18px", display:"grid", gridTemplateColumns:"90px 70px 1fr auto auto", gap:12, alignItems:"center" }}>
+            <div key={d.id} className="tp-div-row" style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:10, padding:"14px 18px", display:"grid", gridTemplateColumns:"90px 70px 1fr auto auto", gap:12, alignItems:"center" }}>
               <div style={{ fontSize:12, color:"var(--tp-muted)", fontFamily:"'JetBrains Mono', monospace" }}>{d.date}</div>
               <div style={{ fontSize:14, fontWeight:700, color:"var(--tp-text)" }}>{d.ticker}</div>
               <div>

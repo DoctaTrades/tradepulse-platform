@@ -203,7 +203,7 @@ export default function MarketCalendarModule() {
           </div>
 
           {/* Day columns */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+          <div className="tp-cal-week-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
             {DAYS.map((day, i) => {
               const events = filteredEconomicByDay[i];
               const hasHigh = events.some(e => e.impact?.toLowerCase() === 'high' || e.impact === '3');
@@ -268,7 +268,7 @@ export default function MarketCalendarModule() {
       {/* ═══ EARNINGS VIEW ═══ */}
       {!loading && activeView === 'earnings' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+          <div className="tp-cal-week-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
             {DAYS.map((day, i) => {
               const dayEarnings = earningsByDay[i];
               const bmo = dayEarnings.filter(e => e.hour === 'bmo');

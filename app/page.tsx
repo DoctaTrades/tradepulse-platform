@@ -394,6 +394,10 @@ export default function TradePulsePlatform() {
                 ))}
               </div>
             ))}
+            <div style={{ padding:"12px 14px 4px", fontSize:9, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:1.2, fontWeight:700, marginTop:8, borderTop:"1px solid var(--border)", paddingTop:14 }}>Account</div>
+            <button onClick={()=>{setTab("settings");setMobileOpen(false);}} style={{ display:"flex", alignItems:"center", gap:12, width:"100%", padding:"10px 14px", borderRadius:10, border:"none", background:tab==="settings"?"rgba(var(--tp-accent-rgb), 0.12)":"transparent", color:tab==="settings"?"var(--tp-accent-light)":"var(--tp-muted)", cursor:"pointer", fontSize:14, fontWeight:tab==="settings"?600:500, marginBottom:2 }}>
+              <SidebarIcon icon="settings"/> Settings
+            </button>
           </div>
           <div style={{ padding:"14px 20px", borderTop:"1px solid var(--border)" }}>
             <div style={{ fontSize:11, color:"var(--text-dim)", marginBottom:8 }}>{user.email}</div>

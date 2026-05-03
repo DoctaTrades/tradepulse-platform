@@ -227,4 +227,33 @@ body {
   .tp-prem-summary { grid-template-columns: repeat(2, 1fr) !important; }
   .tp-prem-mid { grid-template-columns: 1fr !important; }
   .tp-prem-strat-hdr, .tp-prem-strat-row { grid-template-columns: 80px 40px 75px 70px 70px 70px 50px !important; font-size: 10px !important; }
+  /* ── Phase 1 mobile additions ────────────────────────────── */
+  /* Premium account filter buttons: allow wrap so they don't overflow right */
+  .tp-prem-acct-bar { flex-wrap: wrap !important; row-gap: 4px !important; }
+  /* Holdings unrealized banner: shrink font, allow content to fit */
+  .tp-unrealized-banner > div > div:last-child { font-size: 14px !important; word-break: break-all; }
+  .tp-unrealized-banner { gap: 6px !important; }
+  .tp-unrealized-banner > div { padding: 10px 8px !important; }
+  /* Holdings dividend ticker rows: collapse fixed columns to fluid */
+  .tp-div-row { grid-template-columns: 60px 1fr auto !important; row-gap: 6px !important; }
+  .tp-div-row > *:nth-child(n+4) { grid-column: 1 / -1 !important; }
+  /* Calendar 5-column → 1 column on mobile */
+  .tp-cal-week-grid { grid-template-columns: 1fr !important; }
+  /* Market Pulse layouts collapse */
+  .tp-mp-top-row { grid-template-columns: 1fr !important; }
+  .tp-mp-strat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .tp-mp-half { grid-template-columns: 1fr !important; }
+  .tp-mp-trio { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
+  /* iOS input zoom prevention: font must be >= 16px on focused inputs */
+  input[type="text"], input[type="number"], input[type="date"], input[type="time"], textarea, select {
+    font-size: 16px !important;
+  }
+}
+/* Tighter constraint for very narrow phones (iPhone SE width = 375px) */
+@media (max-width: 480px) {
+  /* Trade modal date/time row: allow inputs more breathing room with tighter font */
+  .tp-modal-grid4 { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .tp-modal-grid4 input { font-size: 14px !important; padding: 6px 8px !important; }
+  /* Holdings unrealized banner: 1 column on very narrow screens */
+  .tp-unrealized-banner { grid-template-columns: 1fr !important; }
 }
