@@ -3852,6 +3852,8 @@ function PremiumOverview({ data }) {
       {data.strategies.length > 0 && (
         <div style={{ background:"var(--tp-panel)", border:"1px solid var(--tp-panel-b)", borderRadius:12, padding:"18px 20px", marginBottom:16 }}>
           <div style={{ fontSize:11, fontWeight:700, color:"var(--tp-faint)", textTransform:"uppercase", letterSpacing:0.8, marginBottom:14 }}>📊 Performance by Strategy</div>
+          <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch", marginRight:-8, marginLeft:-8, paddingRight:8, paddingLeft:8 }}>
+          <div style={{ minWidth:540 }}>
           <div className="tp-prem-strat-hdr" style={{ display:"grid", gridTemplateColumns:"100px 55px 95px 85px 85px 85px 65px", gap:6, padding:"8px 12px", fontSize:9, color:"var(--tp-faintest)", fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>
             <span>Strategy</span><span style={{textAlign:"center"}}>Trades</span><span style={{textAlign:"right"}}>Collected</span><span style={{textAlign:"right"}}>Net Kept</span><span style={{textAlign:"right"}}>Slippage</span><span style={{textAlign:"right"}}>Avg/Trade</span><span style={{textAlign:"right"}}>Win%</span>
           </div>
@@ -3866,6 +3868,8 @@ function PremiumOverview({ data }) {
               <span style={{ textAlign:"right", color:s.winRate>=80?"var(--tp-success)":s.winRate>=50?"var(--tp-warning)":"var(--tp-danger)", fontWeight:700, fontFamily:"'JetBrains Mono', monospace" }}>{s.winRate.toFixed(0)}%</span>
             </div>
           ))}
+          </div>
+          </div>
         </div>
       )}
 
