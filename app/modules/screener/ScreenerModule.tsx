@@ -529,7 +529,7 @@ export default function ScreenerModule({ user }: { user?: any }) {
                 <Panel title="📊 Sector Performance (ranked by daily change)">
                   <div className="space-y-0">
                     {dashData.sectors?.map((sec: any, i: number) => (
-                      <div key={sec.symbol} className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                      <div key={sec.symbol} className="tp-sector-row flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-[10px] w-4 text-right" style={{ color: 'var(--text-dim)' }}>{i + 1}</span>
                           <span className="font-display text-sm font-bold w-12" style={{ color: 'var(--blue3)' }}>{sec.symbol}</span>
