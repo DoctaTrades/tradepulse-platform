@@ -250,6 +250,17 @@ body {
   }
   /* Risk Calculator: collapse all input grids to 2 cols at tablet width */
   .tp-risk-calc-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  /* Settings tabs: enable horizontal scroll so all sections are reachable */
+  .tp-settings-tabs {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    margin-left: -10px !important;
+    margin-right: -10px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  .tp-settings-tabs::-webkit-scrollbar { display: none !important; }
 }
 /* Tighter constraint for very narrow phones (iPhone SE width = 375px) */
 @media (max-width: 480px) {
