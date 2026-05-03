@@ -268,13 +268,16 @@ body {
     gap: 6px !important;
   }
   .tp-sector-row > div { width: 100%; justify-content: space-between; }
-  /* Calendar Press leg row: collapse 8 cols to 4 on mobile (auto-flow wraps to row 2) */
+  /* Calendar Press leg row: clean 4×2 grid on mobile */
   .tp-cal-leg-row {
-    grid-template-columns: 28px 1fr 1fr 1fr !important;
-    gap: 4px !important;
-    row-gap: 8px !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 6px !important;
+    row-gap: 10px !important;
   }
-  .tp-cal-leg-row > div:first-child { grid-row: span 2; align-self: center !important; }
+  /* Index pill keeps its size, doesn't stretch */
+  .tp-cal-leg-row > div:first-child {
+    justify-self: start;
+  }
 }
 /* Tighter constraint for very narrow phones (iPhone SE width = 375px) */
 @media (max-width: 480px) {
