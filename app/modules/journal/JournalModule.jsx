@@ -1071,7 +1071,7 @@ function CalendarLegRow({ leg, index, onChange, showRolls }) {
   
   return (
     <div style={{ marginBottom:6 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"28px 0.7fr 0.55fr 0.7fr 0.9fr 0.5fr 0.7fr 0.7fr", gap:6, alignItems:"end" }}>
+      <div className="tp-cal-leg-row" style={{ display:"grid", gridTemplateColumns:"28px 0.7fr 0.55fr 0.7fr 0.9fr 0.5fr 0.7fr 0.7fr", gap:6, alignItems:"end" }}>
         <div style={{ width:24, height:24, borderRadius:6, background:"rgba(var(--tp-accent-rgb), 0.18)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"var(--tp-accent-light)", alignSelf:"center" }}>{index+1}</div>
         {/* Action */}
         <div>
