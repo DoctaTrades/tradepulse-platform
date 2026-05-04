@@ -4846,6 +4846,7 @@ function GoalTracker({ goals, onSave, trades, accounts, prefs, accountBalances }
   const [showProjection, setShowProjection] = useState(false);
   const [projectionDays, setProjectionDays] = useState(30);
   const [showBacklog, setShowBacklog] = useState(false);
+  const [showAllDays, setShowAllDays] = useState(false);
   const [backlogDate, setBacklogDate] = useState("");
   const [weeklyGoalOverride, setWeeklyGoalOverride] = useState(g.weeklyGoalOverride || null);
   const [monthlyGoalOverride, setMonthlyGoalOverride] = useState(g.monthlyGoalOverride || null);
@@ -5445,12 +5446,19 @@ function GoalTracker({ goals, onSave, trades, accounts, prefs, accountBalances }
           </div>
 
           {/* Day rows */}
+          {runningBalances.length > 7 && (
+            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:8 }}>
+              <button onClick={()=>setShowAllDays(p=>!p)} style={{ background:"transparent", border:"1px solid var(--tp-border-l)", color:"var(--tp-muted)", padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:500, cursor:"pointer" }}>
+                {showAllDays ? `Show less` : `Show all (${runningBalances.length} days)`}
+              </button>
+            </div>
+          )}
           <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch", marginRight:-12, marginLeft:-12, paddingRight:12, paddingLeft:12 }}>
           <div style={{ minWidth:480, display:"grid", gap:4 }}>
             <div style={{ display:"grid", gridTemplateColumns:"90px 1fr 80px 50px 80px 80px 28px", gap:8, padding:"6px 10px", fontSize:9, color:"var(--tp-faintest)", fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>
               <span>Date</span><span>Note</span><span style={{ textAlign:"right" }}>P&L</span><span style={{ textAlign:"right" }}>%</span><span style={{ textAlign:"right" }}>Balance</span><span style={{ textAlign:"center" }}>Goal</span><span/>
             </div>
-            {[...runningBalances].reverse().map(row => (
+            {(showAllDays ? [...runningBalances].reverse() : [...runningBalances].reverse().slice(0, 7)).map(row => (
               <DailyLogRow key={row.date} row={row} dailyLog={dailyLog} onUpdatePnL={(date, pnl) => { const entry = dailyLog[date]; logDay(date, pnl, entry?.hit ?? (pnl >= (currentBalance * profitPct / 100))); }} onToggleHit={(date) => { const entry = dailyLog[date]; if (entry) logDay(date, entry.pnl, !entry.hit); }} onUpdateNote={updateNote} onRemove={removeDay}/>
             ))}
           </div>
