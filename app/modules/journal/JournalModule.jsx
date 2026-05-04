@@ -4916,20 +4916,41 @@ function GoalTracker({ goals, onSave, trades, accounts, prefs, accountBalances }
     [cashFlows]
   );
   const runningBalances = useMemo(() => {
+    // Sort cash flows by date so we can apply them in order.
+    const sortedCashFlows = [...cashFlows].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    let cfIndex = 0;
+    let cumulativeCashFlow = 0;
+    // Apply cash flows that occurred BEFORE the first trade date.
+    const firstTradeDate = sortedDays[0] || "9999-99-99";
+    while (cfIndex < sortedCashFlows.length && (sortedCashFlows[cfIndex].date || "") < firstTradeDate) {
+      const cf = sortedCashFlows[cfIndex];
+      cumulativeCashFlow += cf.type === 'deposit' ? (cf.amount || 0) : -(cf.amount || 0);
+      cfIndex++;
+    }
+
     const bals = [];
-    let bal = startingBalance;
+    let tradingBal = startingBalance;  // trading-only running total
     sortedDays.forEach(date => {
+      // Apply any cash flows that occurred ON or BEFORE this trade date.
+      while (cfIndex < sortedCashFlows.length && (sortedCashFlows[cfIndex].date || "") <= date) {
+        const cf = sortedCashFlows[cfIndex];
+        cumulativeCashFlow += cf.type === 'deposit' ? (cf.amount || 0) : -(cf.amount || 0);
+        cfIndex++;
+      }
       const entry = dailyLog[date];
       const pnl = entry.pnl || 0;
-      const prevBal = bal;
-      bal += pnl;
-      const pctPnL = prevBal > 0 ? (pnl / prevBal) * 100 : 0;
-      bals.push({ date, pnl, hit: entry.hit, balance: bal, note: entry.note || "", pctPnL });
+      const prevTrueBal = tradingBal + cumulativeCashFlow - pnl;  // pre-this-day true balance
+      tradingBal += pnl;
+      const trueBal = tradingBal + cumulativeCashFlow;
+      const pctPnL = prevTrueBal > 0 ? (pnl / prevTrueBal) * 100 : 0;
+      bals.push({ date, pnl, hit: entry.hit, balance: trueBal, note: entry.note || "", pctPnL });
     });
     return bals;
-  }, [sortedDays, dailyLog, startingBalance]);
+  }, [sortedDays, dailyLog, startingBalance, cashFlows]);
 
-  const balanceFromTrading = runningBalances.length > 0 ? runningBalances[runningBalances.length - 1].balance : startingBalance;
+  // balanceFromTrading = startingBalance + cumulative trade P&L only (no cash flows).
+  // We derive it from the daily log directly so cash flows don't pollute the calc.
+  const balanceFromTrading = sortedDays.reduce((acc, date) => acc + (dailyLog[date]?.pnl || 0), startingBalance);
   const currentBalance = balanceFromTrading + netCashFlow;
   const totalPnL = balanceFromTrading - startingBalance;
   const totalPct = startingBalance > 0 ? (totalPnL / startingBalance) * 100 : 0;
