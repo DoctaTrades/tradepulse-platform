@@ -321,12 +321,23 @@ export async function POST(req: NextRequest) {
     : effectiveTickers;
 
   const allQuotes: any = {};
+  let schwabAuthWarned = false;
   for (let i = 0; i < allTickers.length; i += 50) {
     const batch = allTickers.slice(i, i + 50);
     try {
       const data = await schwabFetch('/quotes', { symbols: batch.join(','), fields: 'quote,fundamental' });
       Object.assign(allQuotes, data);
-    } catch { logs.push(`⚠ Quote batch failed`); }
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.error('[SCAN] Quote batch failed:', msg, 'batch first 5:', batch.slice(0, 5).join(','));
+      logs.push(`⚠ Quote batch failed: ${msg.slice(0, 120)}`);
+      // If this looks like an auth issue, surface a clear reconnect prompt — once.
+      const looksLikeAuth = /401|token refresh|reconnect|unauthorized/i.test(msg);
+      if (looksLikeAuth && !schwabAuthWarned) {
+        logs.push('🔌 Schwab connection appears broken. Reconnect at Settings → Schwab API.');
+        schwabAuthWarned = true;
+      }
+    }
   }
 
   // ─── Pre-fetch sector ETF price histories for RS calculation ───
