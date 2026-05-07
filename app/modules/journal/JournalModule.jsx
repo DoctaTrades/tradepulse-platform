@@ -4547,11 +4547,46 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
         {activeTab === "timeline" && (<div style={{ padding:"16px 20px" }}>
           <div style={{ position:"relative", paddingLeft:20, marginLeft:8 }}>
             <div style={{ position:"absolute", left:8, top:8, bottom:8, width:1.5, background:"var(--tp-border)" }}/>
-            {[...trades].sort((a,b) => new Date(a.date) - new Date(b.date)).map((trade, i, arr) => {
+            {(() => {
+              // Flatten trades + rolls into a single chronological event list.
+              const events = [];
+              trades.forEach(trade => {
+                events.push({ kind: "trade", date: trade.date, trade });
+                (trade.rolls || []).forEach(roll => {
+                  events.push({ kind: "roll", date: roll.date, trade, roll });
+                });
+              });
+              return events.sort((a,b) => new Date(a.date) - new Date(b.date));
+            })().map((evt, i, arr) => {
+              if (evt.kind === "roll") {
+                const { roll, trade } = evt;
+                const net = rollTotal(roll, trade.contracts);
+                const netPer = rollNetPer(roll);
+                const isLast = i === arr.length - 1;
+                return (<div key={`roll-${roll.id || i}`} style={{ position:"relative", marginBottom: isLast ? 0 : 16 }}>
+                  <div style={{ position:"absolute", left:-20, top:3, width:14, height:14, borderRadius:"50%", background:"var(--tp-warning)", border:"2px solid var(--tp-panel)", zIndex:1 }}/>
+                  <div style={{ paddingLeft:6 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:10, fontWeight:600, color:"var(--tp-warning)", background:"rgba(var(--tp-warning-rgb), 0.12)", padding:"1px 6px", borderRadius:3 }}>ROLL</span>
+                      <span style={{ fontSize:11, color:"var(--tp-faintest)" }}>{roll.date}</span>
+                      {roll.newExpiration && <span style={{ fontSize:11, color:"var(--tp-faintest)" }}>→ Exp: {roll.newExpiration}</span>}
+                    </div>
+                    <div style={{ fontSize:12, color:"var(--tp-muted)", marginTop:3 }}>
+                      {trade.type} {trade.strike && `$${trade.strike}`}
+                      {roll.newStrike && roll.newStrike !== trade.strike && ` → $${roll.newStrike}`}
+                      {" → "}
+                      <span style={{ color: net >= 0 ? "var(--tp-success)" : "var(--tp-danger)", fontWeight:600 }}>{net >= 0 ? "+" : ""}${net.toFixed(2)}</span>
+                      {netPer !== 0 && <span style={{ color:"var(--tp-faintest)", fontSize:10 }}> ({netPer >= 0 ? "+" : ""}${netPer.toFixed(2)}/contract)</span>}
+                    </div>
+                  </div>
+                </div>);
+              }
+              const trade = evt.trade;
               const isLast = i === arr.length - 1;
               const dotColor = trade.type === "CSP" ? (trade.assigned ? "#7F77DD" : "var(--tp-info)") : trade.type === "CC" ? "#BA7517" : "var(--tp-accent)";
               const dotGlow = isLast && !isCompleted;
-              const net = trade.type !== "Shares" ? ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0) + (trade.rolls||[]).reduce((s,r)=> s + rollTotal(r, trade.contracts), 0) : 0;
+              // Parent net excludes rolls — rolls are rendered as their own timeline events below.
+              const net = trade.type !== "Shares" ? ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0) : 0;
               let label = "";
               if (trade.type === "CSP" && trade.assigned) label = `Assigned ${(parseInt(trade.contracts)||1)*100} shares @ $${trade.strike}`;
               else if (trade.type === "CSP") label = `${trade.contracts} contracts @ $${trade.strike} \u2192 +$${net.toFixed(0)}`;
@@ -4583,17 +4618,23 @@ function WheelPositionCard({ position, collapsed, onToggle, onAddTrade, onEditTr
 }
 
 function TradeHistoryRow({ trade, onEdit, onDelete }) {
+  const [showRolls, setShowRolls] = useState(false);
   const typeColor = { CSP:"var(--tp-info)", CC:"var(--tp-warning)", Shares:"var(--tp-accent)" }[trade.type] || "var(--tp-muted)";
   const typeBg = { CSP:"rgba(var(--tp-info-rgb), 0.12)", CC:"rgba(var(--tp-warning-rgb), 0.12)", Shares:"rgba(var(--tp-accent-rgb), 0.12)" }[trade.type] || "rgba(138,143,158,0.12)";
+  const rolls = trade.rolls || [];
+  const hasRolls = rolls.length > 0;
+  const totalRollNet = hasRolls ? rolls.reduce((s,r)=> s + rollTotal(r, trade.contracts), 0) : 0;
   
   let summary = "";
   if (trade.type === "CSP") {
-    const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0);
+    const baseNet = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0);
+    const net = baseNet + totalRollNet;
     summary = `${trade.contracts} contracts @ $${trade.strike} → $${net.toFixed(2)}`;
     if (parseFloat(trade.fees) > 0) summary += ` (fees: $${parseFloat(trade.fees).toFixed(2)})`;
     if (trade.assigned) summary += " (Assigned)";
   } else if (trade.type === "CC") {
-    const net = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0);
+    const baseNet = ((parseFloat(trade.openPremium)||0) - (parseFloat(trade.closePremium)||0)) * (parseInt(trade.contracts)||0) * 100 - (parseFloat(trade.fees)||0);
+    const net = baseNet + totalRollNet;
     summary = `${trade.contracts} contracts @ $${trade.strike} → $${net.toFixed(2)}`;
     if (parseFloat(trade.fees) > 0) summary += ` (fees: $${parseFloat(trade.fees).toFixed(2)})`;
     if (trade.calledAway) summary += ` (Called ${trade.sharesCalledAway})`;
@@ -4603,12 +4644,18 @@ function TradeHistoryRow({ trade, onEdit, onDelete }) {
   }
 
   return (
-    <div style={{ background:"var(--tp-card)", border:"1px solid rgba(255,255,255,0.05)", borderRadius:8, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+    <div style={{ background:"var(--tp-card)", border:"1px solid rgba(255,255,255,0.05)", borderRadius:8, padding:"10px 12px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
       <div style={{ flex:1 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
           <span style={{ fontSize:10, fontWeight:600, color:typeColor, background:typeBg, padding:"2px 6px", borderRadius:4, textTransform:"uppercase" }}>{trade.type}</span>
           <span style={{ fontSize:11, color:"var(--tp-faint)" }}>{trade.date}</span>
           {trade.expiry && <span style={{ fontSize:11, color:"var(--tp-faint)" }}>Exp: {trade.expiry}</span>}
+          {hasRolls && (
+            <button onClick={()=>setShowRolls(p=>!p)} style={{ background:"rgba(var(--tp-warning-rgb), 0.10)", border:"1px solid rgba(var(--tp-warning-rgb), 0.25)", color:"var(--tp-warning)", padding:"1px 7px", borderRadius:4, fontSize:10, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
+              ↻ {rolls.length} {rolls.length === 1 ? "roll" : "rolls"} (+${totalRollNet.toFixed(0)}) {showRolls ? <ChevronDown size={10}/> : <ChevronRight size={10}/>}
+            </button>
+          )}
         </div>
         <div style={{ fontSize:12, color:"var(--tp-text2)" }}>{summary}</div>
         {trade.notes && <div style={{ fontSize:11, color:"var(--tp-faint)", marginTop:4, fontStyle:"italic" }}>{trade.notes}</div>}
@@ -4618,6 +4665,31 @@ function TradeHistoryRow({ trade, onEdit, onDelete }) {
         <button onClick={onEdit} style={{ padding:"4px 8px", borderRadius:4, border:"1px solid var(--tp-border-l)", background:"transparent", color:"var(--tp-muted)", cursor:"pointer", fontSize:10 }}>Edit</button>
         <button onClick={onDelete} style={{ padding:"4px 6px", borderRadius:4, border:"none", background:"transparent", color:"var(--tp-faint)", cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.color="var(--tp-danger)"} onMouseLeave={e=>e.currentTarget.style.color="var(--tp-faint)"}><Trash2 size={11}/></button>
       </div>
+      </div>
+      {hasRolls && showRolls && (
+        <div style={{ marginTop:8, marginLeft:10, paddingLeft:12, borderLeft:"2px solid var(--tp-border)", display:"flex", flexDirection:"column", gap:6 }}>
+          {rolls.map((roll, i) => {
+            const net = rollTotal(roll, trade.contracts);
+            const netPer = rollNetPer(roll);
+            return (
+              <div key={roll.id || i} style={{ fontSize:11, color:"var(--tp-text2)", background:"rgba(var(--tp-warning-rgb), 0.05)", borderRadius:6, padding:"6px 10px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                  <span style={{ fontSize:9, fontWeight:600, color:"var(--tp-warning)", background:"rgba(var(--tp-warning-rgb), 0.12)", padding:"1px 5px", borderRadius:3, textTransform:"uppercase" }}>ROLL</span>
+                  <span style={{ fontSize:10, color:"var(--tp-faint)" }}>{roll.date}</span>
+                  {roll.newExpiration && <span style={{ fontSize:10, color:"var(--tp-faint)" }}>→ Exp: {roll.newExpiration}</span>}
+                  <span style={{ fontSize:10, fontWeight:600, color: net >= 0 ? "var(--tp-success)" : "var(--tp-danger)", marginLeft:"auto" }}>{net >= 0 ? "+" : ""}${net.toFixed(2)}</span>
+                </div>
+                <div style={{ fontSize:10, color:"var(--tp-faint)" }}>
+                  {roll.newStrike && <>Strike: ${roll.newStrike}</>}
+                  {roll.newStrike && netPer !== 0 && " · "}
+                  {netPer !== 0 && <>Net: ${netPer.toFixed(2)}/contract</>}
+                  {parseFloat(roll.fee) > 0 && <> · Fee: ${parseFloat(roll.fee).toFixed(2)}</>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -4678,7 +4750,7 @@ function WheelTradeModal({ ticker, onSave, onClose, editTrade, accounts, default
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
               <Input label="Open Premium (per contract)" value={t.openPremium} onChange={set("openPremium")} type="number" placeholder="0.50"/>
-              <Input label="Close Premium (if closed)" value={t.closePremium} onChange={set("closePremium")} type="number" placeholder="0.10"/>
+              <Input label="Close Premium (if closed)" value={t.closePremium} onChange={set("closePremium")} type="number" placeholder="0.00"/>
               <Input label="Fees / Commissions" value={t.fees} onChange={set("fees")} type="number" placeholder="0.00"/>
             </div>
             {netPremium !== 0 && <div style={{ fontSize:12, color: netPremium > 0 ? "var(--tp-success)" : "var(--tp-danger)", fontWeight:600 }}>Net Premium: ${netPremium.toFixed(2)}{fees > 0 ? ` (after $${fees.toFixed(2)} fees)` : ""}{rollCredit !== 0 ? ` (incl ${rollCredit > 0 ? "+" : ""}$${rollCredit.toFixed(0)} from rolls)` : ""}</div>}
