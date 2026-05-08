@@ -268,6 +268,10 @@ body {
     gap: 6px !important;
   }
   .tp-sector-row > div { width: 100%; justify-content: space-between; }
+  /* Roll history rows: hide header, stack inputs into 2-col grids on mobile */
+  .tp-roll-header { display: none !important; }
+  .tp-roll-top { grid-template-columns: 1fr 1fr !important; row-gap: 8px !important; }
+  .tp-roll-bottom { grid-template-columns: 1fr 1fr !important; row-gap: 8px !important; }
   /* Calendar Press leg row: clean 4×2 grid on mobile */
   .tp-cal-leg-row {
     grid-template-columns: repeat(4, 1fr) !important;

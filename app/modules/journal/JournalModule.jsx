@@ -1001,9 +1001,7 @@ function LegRow({ leg, index, onChange, onRemove, showRemove, locked, showRolls 
           
           {showRollHistory && (leg.rolls || []).length > 0 && (
             <div style={{ display:"grid", gap:6 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 1fr 70px 24px", gap:8, padding:"0 10px", fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", letterSpacing:0.5 }}>
-                <span>Date</span><span style={{textAlign:"center"}}>Qty</span><span>Buyback $</span><span>Sell $</span><span style={{textAlign:"right"}}>Net</span><span/>
-              </div>
+              <RollHeader/>
               {(leg.rolls || []).map((roll, rollIdx) => (
                 <RollRow key={roll.id} roll={roll} index={rollIdx} onChange={(updated) => updateRoll(rollIdx, updated)} onRemove={() => removeRoll(rollIdx)} legContracts={parseInt(leg.contracts)||1}/>
               ))}
@@ -1011,6 +1009,14 @@ function LegRow({ leg, index, onChange, onRemove, showRemove, locked, showRolls 
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RollHeader() {
+  return (
+    <div className="tp-roll-header" style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 60px 70px 24px", gap:8, padding:"0 10px", fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", letterSpacing:0.5 }}>
+      <span>Date</span><span style={{textAlign:"center"}}>Qty</span><span>Net $</span><span>Fee</span><span style={{textAlign:"right"}}>Total</span><span/>
     </div>
   );
 }
@@ -1026,7 +1032,7 @@ function RollRow({ roll, index, onChange, onRemove, legContracts }) {
   
   return (
     <div style={{ background:"rgba(0,0,0,0.2)", borderRadius:6, padding:"8px 10px" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 60px 70px 24px", gap:8, alignItems:"center" }}>
+      <div className="tp-roll-top" style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 60px 70px 24px", gap:8, alignItems:"center" }}>
         <input type="date" value={roll.date} onChange={e=>set("date")(e.target.value)} style={{ padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/>
         <div><input type="number" value={roll.contracts || ""} onChange={e=>set("contracts")(e.target.value)} placeholder={String(legContracts || 1)} min="1" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", textAlign:"center" }}/></div>
         <div><input type="number" value={roll.netAmount ?? ""} onChange={e=>set("netAmount")(e.target.value)} placeholder="Net credit/debit $" step="0.01" style={{ width:"100%", padding:"5px 6px", background: hasNet ? "rgba(var(--tp-accent-rgb), 0.08)" : "var(--tp-input)", border:`1px solid ${hasNet ? "rgba(var(--tp-accent-rgb), 0.25)" : "var(--tp-border-l)"}`, borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
@@ -1036,7 +1042,7 @@ function RollRow({ roll, index, onChange, onRemove, legContracts }) {
         </div>
         <button onClick={onRemove} style={{ background:"none", border:"none", color:"var(--tp-faint)", cursor:"pointer", padding:2 }} onMouseEnter={e=>e.currentTarget.style.color="var(--tp-danger)"} onMouseLeave={e=>e.currentTarget.style.color="var(--tp-faint)"}><X size={12}/></button>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginTop:6 }}>
+      <div className="tp-roll-bottom" style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginTop:6 }}>
         <div><input type="number" value={roll.newStrike || ""} onChange={e=>set("newStrike")(e.target.value)} placeholder="New strike $" step="0.5" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div><input type="date" value={roll.newExpiration || ""} onChange={e=>set("newExpiration")(e.target.value)} style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box" }}/></div>
         <div><input type="number" value={roll.buybackPremium} onChange={e=>set("buybackPremium")(e.target.value)} placeholder="Buyback $" style={{ width:"100%", padding:"5px 6px", background:"var(--tp-input)", border:"1px solid var(--tp-border-l)", borderRadius:4, color:"var(--tp-text)", fontSize:11, outline:"none", boxSizing:"border-box", opacity: hasNet ? 0.4 : 1 }}/></div>
@@ -1133,9 +1139,7 @@ function CalendarLegRow({ leg, index, onChange, showRolls }) {
           
           {showRollHistory && (leg.rolls || []).length > 0 && (
             <div style={{ display:"grid", gap:6 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"80px 50px 1fr 1fr 70px 24px", gap:8, padding:"0 10px", fontSize:8, color:"var(--tp-faintest)", textTransform:"uppercase", letterSpacing:0.5 }}>
-                <span>Date</span><span style={{textAlign:"center"}}>Qty</span><span>Buyback $</span><span>Sell $</span><span style={{textAlign:"right"}}>Net</span><span/>
-              </div>
+              <RollHeader/>
               {(leg.rolls || []).map((roll, rollIdx) => (
                 <RollRow key={roll.id} roll={roll} index={rollIdx} onChange={(updated) => updateRoll(rollIdx, updated)} onRemove={() => removeRoll(rollIdx)} legContracts={parseInt(leg.contracts)||1}/>
               ))}
