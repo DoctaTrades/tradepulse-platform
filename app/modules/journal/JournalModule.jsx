@@ -1174,7 +1174,7 @@ function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields,
       setTrade(p => {
         const qty = parseInt(p.quantity) || 1;
         const presetCommission = parseFloat(preset.commission) || 0;
-        const updates = { ...p, futuresContract: name, tickSize: preset.tickSize, tickValue: preset.tickValue };
+        const updates = { ...p, futuresContract: name, ticker: name, tickSize: preset.tickSize, tickValue: preset.tickValue };
         // Auto-fill fees if commission is set on the preset
         if (presetCommission > 0) {
           updates.fees = (presetCommission * qty).toFixed(2);
@@ -1183,7 +1183,7 @@ function TradeModal({ onSave, onClose, editTrade, futuresSettings, customFields,
         return updates;
       });
     } else {
-      setTrade(p => ({ ...p, futuresContract: name }));
+      setTrade(p => ({ ...p, futuresContract: name, ticker: name }));
     }
   };
   // Re-calc fees when quantity changes if auto-mode is on
